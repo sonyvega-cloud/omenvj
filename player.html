@@ -1,0 +1,2243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ØMEN Player</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    background: #000;
+    color: #fff;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* ── Video layer ─────────────────────────────────────── */
+  #videoLayer {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 0;
+    overflow: hidden;
+    background: #000;
+  }
+  #videoLayer video {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100vh;
+    height: 100vh;
+    object-fit: cover;
+    opacity: 0;
+  }
+  #videoLayer video.active {
+    opacity: 1;
+  }
+
+  /* ── Vignette over video ─────────────────────────────── */
+  #videoVignette {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 1;
+    pointer-events: none;
+    background: radial-gradient(circle closest-side,
+      transparent 0%,
+      transparent 40%,
+      rgba(0,0,0,0.08) 52%,
+      rgba(0,0,0,0.25) 62%,
+      rgba(0,0,0,0.50) 72%,
+      rgba(0,0,0,0.75) 82%,
+      rgba(0,0,0,0.92) 92%,
+      rgba(0,0,0,1.0) 100%
+    );
+  }
+
+  /* ── Fullscreen canvas (GFX over vignette) ─────────── */
+  #canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 2;
+  }
+
+  /* ── Setup overlay ─────────────────────────────────── */
+  #setup {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 100;
+    background: rgba(0,0,0,0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.5s;
+  }
+  #setup.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .setup-box {
+    text-align: center;
+    max-width: 400px;
+    padding: 40px;
+  }
+  .setup-box h1 {
+    font-size: 2.5rem;
+    letter-spacing: 1rem;
+    font-weight: 100;
+    margin-bottom: 0.3rem;
+    color: #fff;
+  }
+  .setup-box .sub {
+    font-size: 0.65rem;
+    letter-spacing: 0.4rem;
+    color: rgba(255,255,255,0.2);
+    margin-bottom: 3rem;
+    text-transform: uppercase;
+  }
+  .source-btn {
+    display: block;
+    width: 100%;
+    padding: 14px 20px;
+    margin-bottom: 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    color: rgba(255,255,255,0.6);
+    font-size: 0.8rem;
+    letter-spacing: 0.15rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+  }
+  .source-btn:hover {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.15);
+    color: #fff;
+  }
+  .source-btn .label {
+    font-size: 0.85rem;
+    letter-spacing: 0.1rem;
+  }
+  .source-btn .desc {
+    font-size: 0.6rem;
+    color: rgba(255,255,255,0.25);
+    margin-top: 4px;
+    letter-spacing: 0.05rem;
+  }
+
+  /* ── HUD overlay ───────────────────────────────────── */
+  #hud {
+    position: fixed;
+    top: 20px; left: 20px;
+    z-index: 100;
+    font-size: 0.65rem;
+    letter-spacing: 0.15rem;
+    color: rgba(255,255,255,0.3);
+    transition: opacity 0.3s;
+  }
+  #hud.hidden { opacity: 0; pointer-events: none; }
+  #hud .bpm {
+    font-size: 1.8rem;
+    font-weight: 100;
+    letter-spacing: 0.3rem;
+    color: rgba(255,255,255,0.5);
+    line-height: 1;
+  }
+  .bdot {
+    width: 7px;
+    height: 7px;
+    border-radius: 1px;
+    background: rgba(255,255,255,0.08);
+    transition: background 0.05s;
+  }
+  .bdot.on {
+    background: rgba(255,255,255,0.7);
+  }
+  .bdot.downbeat {
+    background: #ff2200;
+  }
+  .pgrid {
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.2);
+    font-size: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    cursor: pointer;
+    user-select: none;
+  }
+  .pgrid:hover {
+    border-color: rgba(255,255,255,0.25);
+  }
+  .pgrid.active {
+    background: rgba(255,34,0,0.25);
+    border-color: rgba(255,34,0,0.5);
+    color: #ff2200;
+  }
+  .pgrid.loaded {
+    border-color: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.4);
+  }
+  .pgrid.bc-active {
+    background: rgba(255,34,0,0.15);
+    border-color: rgba(255,34,0,0.4);
+    color: rgba(255,34,0,0.8);
+  }
+  .pgrid.cut-on {
+    background: rgba(255,34,0,0.2);
+    border-color: rgba(255,34,0,0.4);
+    color: #ff2200;
+  }
+  .cdot {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .cdot.active {
+    border-color: rgba(255,255,255,0.5);
+    box-shadow: 0 0 4px rgba(255,255,255,0.2);
+  }
+  .cdot.excluded {
+    opacity: 0.2;
+  }
+  #hud .energy-bar {
+    width: 120px;
+    height: 2px;
+    background: rgba(255,255,255,0.06);
+    margin-top: 8px;
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  #hud .energy-fill {
+    height: 100%;
+    background: #ff2200;
+    transition: width 0.15s;
+    border-radius: 1px;
+  }
+  #hud .mood {
+    margin-top: 4px;
+    font-size: 0.55rem;
+    letter-spacing: 0.2rem;
+    text-transform: uppercase;
+  }
+  #hud .source-label {
+    margin-top: 12px;
+    font-size: 0.5rem;
+    letter-spacing: 0.1rem;
+    color: rgba(255,255,255,0.15);
+  }
+
+  /* ── Controls hint ─────────────────────────────────── */
+  #controls-hint {
+    position: fixed;
+    bottom: 20px;
+    left: 0; right: 0;
+    text-align: center;
+    z-index: 50;
+    font-size: 0.5rem;
+    letter-spacing: 0.15rem;
+    color: rgba(255,255,255,0.12);
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  #controls-hint.hidden { opacity: 0; }
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<!-- ── Video layer (generated dynamically) ────────────── -->
+<div id="videoLayer"></div>
+<div id="videoVignette"></div>
+
+<!-- ── Setup: Audio source selector ──────────────────── -->
+<div id="setup">
+  <div class="setup-box">
+    <h1>ØMEN</h1>
+    <div class="sub">Visual Engine</div>
+    
+    <div style="margin-bottom: 1.5rem;">
+      <div style="font-size:0.6rem; letter-spacing:0.15rem; color:rgba(255,255,255,0.2); margin-bottom:8px; text-transform:uppercase;">Presets (auto-load from folder)</div>
+      <div style="font-size:0.5rem; color:rgba(255,255,255,0.12); letter-spacing:0.05rem; line-height:1.6;">
+        omen2a.mp4 / omen2b.mp4<br>
+        omen3a.mp4 / omen3b.mp4<br>
+        omen4a.mp4 / omen4b.mp4
+      </div>
+    </div>
+
+    <div style="font-size:0.6rem; letter-spacing:0.15rem; color:rgba(255,255,255,0.2); margin-bottom:8px; text-transform:uppercase;">Audio Source</div>
+    
+    <button class="source-btn" onclick="startAudio('system')">
+      <div class="label">▶ SYSTEM AUDIO</div>
+      <div class="desc">Capture what's playing on this computer</div>
+    </button>
+    
+    <button class="source-btn" onclick="startAudio('linein')">
+      <div class="label">▶ LINE-IN / USB AUDIO</div>
+      <div class="desc">External audio interface, mixer REC out</div>
+    </button>
+
+    <button class="source-btn" onclick="startAudio('mic')">
+      <div class="label">▶ MICROPHONE</div>
+      <div class="desc">Built-in mic — fallback option</div>
+    </button>
+  </div>
+</div>
+
+<!-- ── HUD ───────────────────────────────────────────── -->
+<div id="hud" class="hidden">
+  <div class="bpm" id="bpmDisplay">— BPM</div>
+  
+  <!-- 16 beat dots -->
+  <div id="beatDots" style="display:flex; gap:2px; margin-top:8px;">
+    <div class="bdot" id="bd0"></div><div class="bdot" id="bd1"></div>
+    <div class="bdot" id="bd2"></div><div class="bdot" id="bd3"></div>
+    <div style="width:4px;"></div>
+    <div class="bdot" id="bd4"></div><div class="bdot" id="bd5"></div>
+    <div class="bdot" id="bd6"></div><div class="bdot" id="bd7"></div>
+    <div style="width:4px;"></div>
+    <div class="bdot" id="bd8"></div><div class="bdot" id="bd9"></div>
+    <div class="bdot" id="bd10"></div><div class="bdot" id="bd11"></div>
+    <div style="width:4px;"></div>
+    <div class="bdot" id="bd12"></div><div class="bdot" id="bd13"></div>
+    <div class="bdot" id="bd14"></div><div class="bdot" id="bd15"></div>
+  </div>
+  
+  <div class="energy-bar"><div class="energy-fill" id="energyFill"></div></div>
+  
+  <!-- Preset buttons (generated dynamically from PRESETS array) -->
+  <div id="presetBtns" style="display:flex; gap:3px; margin-top:8px; flex-wrap:wrap; pointer-events:auto;"></div>
+  
+  <!-- Beat cut + A/B -->
+  <div style="display:flex; gap:3px; margin-top:4px; pointer-events:auto;">
+    <div class="pgrid" id="abIndicator" style="font-size:7px; width:auto; padding:0 6px;">A</div>
+    <div style="width:2px;"></div>
+    <div class="pgrid" id="bcToggle" style="font-size:7px; width:auto; padding:0 6px; cursor:pointer;" onclick="toggleBeatCut()">CUT</div>
+    <div class="pgrid" id="bci1" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(1)">1</div>
+    <div class="pgrid" id="bci2" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(2)">2</div>
+    <div class="pgrid" id="bci4" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(4)">4</div>
+    <div class="pgrid" id="bci8" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(8)">8</div>
+  </div>
+  
+  <!-- Color palette -->
+  <div style="display:flex; gap:3px; margin-top:6px; pointer-events:auto;">
+    <div class="cdot" id="cd0" style="background:#FF2200;" onclick="handleColorClick(0)"></div>
+    <div class="cdot" id="cd1" style="background:#2244FF;" onclick="handleColorClick(1)"></div>
+    <div class="cdot" id="cd2" style="background:#22FF44;" onclick="handleColorClick(2)"></div>
+    <div class="cdot" id="cd3" style="background:#FFCC00;" onclick="handleColorClick(3)"></div>
+    <div class="cdot" id="cd4" style="background:#CCCCCC;" onclick="handleColorClick(4)"></div>
+  </div>
+  
+  <!-- FX controls -->
+  <div style="display:flex; gap:3px; margin-top:6px; align-items:center; pointer-events:auto;">
+    <div class="pgrid" id="strbBtn" onclick="toggleStrobo()" style="font-size:7px; width:auto; padding:0 6px; cursor:pointer;">STRB</div>
+    <div class="pgrid" id="vhidBtn" onclick="toggleVideoHide()" style="font-size:7px; width:auto; padding:0 6px; cursor:pointer;">VHID</div>
+    <div style="width:4px;"></div>
+    <div style="font-size:7px; color:rgba(255,255,255,0.2); letter-spacing:1px;">FX</div>
+    <input type="range" id="fxSlider" min="0" max="200" value="100" 
+      oninput="fxSliderValue = this.value / 100" 
+      style="width:60px; height:2px; accent-color:#ff2200; cursor:pointer;">
+  </div>
+  
+  <!-- Video speed -->
+  <div style="display:flex; gap:3px; margin-top:4px; pointer-events:auto;">
+    <div style="font-size:7px; color:rgba(255,255,255,0.2); letter-spacing:1px; margin-right:2px;">SPD</div>
+    <div class="pgrid" id="spd05" onclick="setVideoSpeed(0.5)" style="font-size:7px; cursor:pointer;">½×</div>
+    <div class="pgrid active" id="spd10" onclick="setVideoSpeed(1.0)" style="font-size:7px; cursor:pointer;">1×</div>
+    <div class="pgrid" id="spd20" onclick="setVideoSpeed(2.0)" style="font-size:7px; cursor:pointer;">2×</div>
+  </div>
+  
+  <div class="mood" id="moodDisplay">LISTENING...</div>
+  <div class="source-label" id="sourceLabel"></div>
+  <div class="source-label" id="debugDisplay" style="margin-top:8px; font-family:monospace; font-size:10px; color:rgba(255,255,255,0.3);"></div>
+</div>
+
+<div id="controls-hint" class="hidden">
+  SPACE = tap/sync &nbsp;&nbsp; Q/W/E = preset &nbsp;&nbsp; B = beat cut &nbsp;&nbsp; S = strobo &nbsp;&nbsp; V = video hide &nbsp;&nbsp; 2/4/8 = interval &nbsp;&nbsp; F = fullscreen
+</div>
+
+<script src="presets.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// ØMEN Web Engine — Sprint 1
+// ═══════════════════════════════════════════════════════════════
+
+// ── Audio state ────────────────────────────────────────────────
+let audioCtx = null;
+let analyser = null;
+let freqData = null;
+let timeData = null;
+const FFT_SIZE = 2048;
+
+// ── Audio bands ────────────────────────────────────────────────
+let bass = 0, mid = 0, high = 0, volume = 0;
+let smoothBass = 0, smoothMid = 0, smoothHigh = 0, smoothVol = 0;
+
+// ── Beat detection ─────────────────────────────────────────────
+let bpm = 0;
+let beatIndex = 0;
+let lastBeatTime = 0;
+let beatThreshold = 0.12;
+let beatCooldown = 180; // ms min between beats
+let bassHistory = [];
+const BASS_HISTORY_LEN = 60; // ~1 second
+
+// ── BPM tap ────────────────────────────────────────────────────
+let tapTimes = [];
+const TAP_TIMEOUT = 2500;
+
+// ── Energy & Mood ──────────────────────────────────────────────
+let energy = 0;
+let normEnergy = 0;
+let mood = 'LISTENING';
+let moodCandidate = 'LISTENING';
+let moodHoldFrames = 0;
+let prevBass = 0;
+let bassPulse = 0;
+let bassPulseAvg = 0;
+let volAvg = 0; // volume baseline (ratchet)
+let energyHistory = [];
+const ENERGY_HISTORY_LEN = 360; // 6 seconds at 60fps — enough for breakdown detection
+
+// ── Visual state ───────────────────────────────────────────────
+let beatFlash = 0;
+let pulseScale = 1.0;
+let compassAngle = 0;
+let compassTarget = 0;
+
+// ── FX state (iOS port) ───────────────────────────────────────
+let fxIntensity = 1.0;     // global FX multiplier
+let fxSliderValue = 1.0;   // user-set FX intensity (slider)
+let exposureOpacity = 0;   // white center glow on beat
+let silenceTimer = 0;      // frames since last significant audio
+let stroboActive = false;  // STRB toggle
+let manualStrobo = false;  // true when user toggled strobo manually
+let stroboFlash = false;   // current strobo frame state
+let videoSpeedMultiplier = 1.0; // ½×, 1×, 2×
+const SILENCE_THRESHOLD = 0.05;
+const SILENCE_DAMPEN_AFTER = 90;
+
+// ── Preset Registry (like iOS kPresets) ──────────────────────────
+// ── Preset Registry (from presets.js) ─────────────────────────────
+let PRESETS = typeof PRESETS_DATA !== 'undefined' ? PRESETS_DATA : [
+  { name: 'OMEN2', videoA: 'omen2a.mp4', videoB: 'omen2b.mp4', gfx: 'video_rings' },
+  { name: 'OMEN3', videoA: 'omen3a.mp4', videoB: 'omen3b.mp4', gfx: 'beat_circles' },
+  { name: 'OMEN4', videoA: 'omen4a.mp4', videoB: 'omen4b.mp4', gfx: 'dot_matrix' },
+];
+
+let videoLoaded = false;
+let presetReady = new Array(PRESETS.length).fill(false);
+let activePreset = 0;
+let currentAB = 0;
+
+// Beat cut (iOS-style with active set)
+let beatCutEnabled = false;
+let beatCutInterval = 4;
+let beatCutSequenceIdx = 0;
+let beatCutActive = new Set(PRESETS.map((_, i) => i));
+
+// Video specs — FIXED: 600 frames, 25fps, 48-beat sync
+const VIDEO_FRAMES = 600;
+const VIDEO_FPS = 25;
+const VIDEO_DURATION_S = VIDEO_FRAMES / VIDEO_FPS;
+const VIDEO_SYNC_BEATS = 48;
+
+// Scale — web: CSS object-fit:cover fills viewport, we just need margin for rotation
+const SQRT2 = 1.41421356;
+const VIDEO_BASE_SCALE = 1.0; // web: 1.0 = viewport fill (iOS was 0.375 due to different chain)
+
+// Speed
+let videoSpeed = 1.0;
+let videoCompassAngle = 0;
+
+// A/B monotonic clock
+let abClockStart = 0;
+let abBaseLoops = 0;
+let abLastSpeed = 1.0;
+
+// ── Color palettes (from iOS) ──────────────────────────────────
+const palettes = [
+  ['#1A0000','#8B0000','#FF2200','#FF6644'], // red
+  ['#0A0A1A','#1A1A8B','#2244FF','#44AAFF'], // blue
+  ['#001A00','#008B00','#22FF44','#88FF66'], // green
+  ['#1A1A00','#8B8B00','#FFCC00','#FFEE44'], // yellow
+  ['#1A1A1A','#666666','#CCCCCC','#FFFFFF'], // white/mono
+];
+let colorIndex = 0;
+let colorPool = new Set([0, 1, 2, 3, 4]); // which colors autopilot can use
+
+// ── Canvas ─────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H, CX, CY;
+
+function resize() {
+  W = canvas.width = window.innerWidth * devicePixelRatio;
+  H = canvas.height = window.innerHeight * devicePixelRatio;
+  CX = W / 2;
+  CY = H / 2;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  W /= devicePixelRatio;
+  H /= devicePixelRatio;
+  CX = W / 2;
+  CY = H / 2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ═══════════════════════════════════════════════════════════════
+// Audio Init
+// ═══════════════════════════════════════════════════════════════
+
+async function startAudio(source) {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = FFT_SIZE;
+    analyser.smoothingTimeConstant = 0.5;  // less smoothing = sharper transients
+    analyser.minDecibels = -90;
+    analyser.maxDecibels = -10;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    timeData = new Uint8Array(analyser.fftSize);
+
+    let stream;
+    let sourceLabel = '';
+
+    if (source === 'system') {
+      // System audio via getDisplayMedia
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        audio: true,
+        video: true // required but we discard it
+      });
+      // Remove video track — we only want audio
+      stream.getVideoTracks().forEach(t => t.stop());
+      sourceLabel = 'SYSTEM AUDIO';
+    }
+    else if (source === 'linein') {
+      // Let user pick specific audio device
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(d => d.kind === 'audioinput');
+      
+      // If multiple inputs, prefer non-default (likely USB interface)
+      let deviceId = undefined;
+      const usbDevice = audioInputs.find(d => 
+        d.label.toLowerCase().includes('usb') || 
+        d.label.toLowerCase().includes('interface') ||
+        d.label.toLowerCase().includes('line')
+      );
+      if (usbDevice) deviceId = usbDevice.deviceId;
+      else if (audioInputs.length > 1) deviceId = audioInputs[1].deviceId;
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: deviceId ? { deviceId: { exact: deviceId } } : true
+      });
+      const activeDevice = audioInputs.find(d => d.deviceId === deviceId);
+      sourceLabel = 'LINE-IN: ' + (activeDevice?.label || 'USB Audio');
+    }
+    else {
+      // Mic fallback
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      sourceLabel = 'MICROPHONE';
+    }
+
+    const audioSource = audioCtx.createMediaStreamSource(stream);
+    // Gain boost — system audio often comes in low
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = 2.5;
+    audioSource.connect(gainNode);
+    gainNode.connect(analyser);
+    // Don't connect to destination — no feedback loop
+
+    // UI
+    document.getElementById('setup').classList.add('hidden');
+    document.getElementById('hud').classList.remove('hidden');
+    document.getElementById('controls-hint').classList.remove('hidden');
+    document.getElementById('sourceLabel').textContent = sourceLabel;
+
+    // Reinit preset arrays (presets.json already loaded at page load)
+    presetReady = new Array(PRESETS.length).fill(false);
+    beatCutActive = new Set(PRESETS.map((_, i) => i));
+
+    // Start render loop
+    initPresets();
+    requestAnimationFrame(tick);
+    
+  } catch (err) {
+    console.error('Audio init failed:', err);
+    alert('Audio access denied or not available.\n\n' + err.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FFT Analysis
+// ═══════════════════════════════════════════════════════════════
+
+function analyseAudio() {
+  analyser.getByteFrequencyData(freqData);
+  analyser.getByteTimeDomainData(timeData);
+  
+  const binCount = analyser.frequencyBinCount;
+  const nyquist = audioCtx.sampleRate / 2;
+  
+  // Frequency band boundaries
+  const bassEnd = Math.floor(150 / nyquist * binCount);   // 0-150 Hz
+  const midEnd = Math.floor(2000 / nyquist * binCount);    // 150-2000 Hz
+  const highEnd = Math.floor(8000 / nyquist * binCount);   // 2000-8000 Hz
+  
+  // Raw band averages (0-1)
+  let bassSum = 0, midSum = 0, highSum = 0, volSum = 0;
+  
+  for (let i = 0; i < bassEnd; i++) bassSum += freqData[i];
+  for (let i = bassEnd; i < midEnd; i++) midSum += freqData[i];
+  for (let i = midEnd; i < highEnd; i++) highSum += freqData[i];
+  for (let i = 0; i < binCount; i++) volSum += freqData[i];
+  
+  bass = (bassSum / bassEnd / 255) || 0;
+  mid = (midSum / (midEnd - bassEnd) / 255) || 0;
+  high = (highSum / (highEnd - midEnd) / 255) || 0;
+  volume = (volSum / binCount / 255) || 0;
+  
+  // Smoothing (EMA) — bass less smoothed for punch
+  smoothBass = smoothBass * 0.70 + bass * 0.30;
+  smoothMid = smoothMid * 0.82 + mid * 0.18;
+  smoothHigh = smoothHigh * 0.75 + high * 0.25;
+  smoothVol = smoothVol * 0.80 + volume * 0.20;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Beat Detection (from bass transients)
+// ═══════════════════════════════════════════════════════════════
+
+function detectBeat() {
+  bassHistory.push(bass);
+  if (bassHistory.length > BASS_HISTORY_LEN) bassHistory.shift();
+  
+  if (bassHistory.length < 10) return false;
+  
+  const avg = bassHistory.reduce((a, b) => a + b) / bassHistory.length;
+  const now = performance.now();
+  
+  if (bass > avg * 1.2 + beatThreshold && 
+      now - lastBeatTime > beatCooldown) {
+    lastBeatTime = now;
+    beatIndex++;
+    
+    // Auto-BPM from beat intervals
+    if (tapTimes.length === 0) {
+      // Use detected beats for BPM estimation
+    }
+    
+    return true;
+  }
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Energy & Mood Detection
+// ═══════════════════════════════════════════════════════════════
+
+function updateEnergy() {
+  const bpmFactor = bpm > 0 ? Math.min(bpm / 150, 1.0) : 0.5;
+  const rawEnergy = (smoothBass * 0.4 + smoothVol * 0.3 + bpmFactor * 0.3);
+  energy = energy * 0.95 + rawEnergy * 0.05;
+  
+  energyHistory.push(energy);
+  if (energyHistory.length > ENERGY_HISTORY_LEN) energyHistory.shift();
+  
+  // ── Bass PULSE detection (kick vs pad) ──────────────────────
+  const bassDelta = Math.abs(smoothBass - prevBass);
+  prevBass = smoothBass;
+  
+  // Fast pulse tracker (~1s)
+  bassPulse = bassPulse * 0.95 + bassDelta * 0.05;
+  
+  // Very slow baseline — remembers "normal kick energy" for 30+ seconds
+  // Only updates UPWARD fast, downward very slow (ratchet effect)
+  if (bassPulse > bassPulseAvg) {
+    bassPulseAvg = bassPulseAvg * 0.99 + bassPulse * 0.01; // rises in ~2s
+  } else {
+    bassPulseAvg = bassPulseAvg * 0.9998 + bassPulse * 0.0002; // falls in ~30s
+  }
+  
+  // Also track volume baseline (same ratchet)
+  if (smoothVol > volAvg) {
+    volAvg = volAvg * 0.99 + smoothVol * 0.01;
+  } else {
+    volAvg = volAvg * 0.9998 + smoothVol * 0.0002;
+  }
+  
+  const pulseRatio = bassPulseAvg > 0.0003 ? bassPulse / bassPulseAvg : 1.0;
+  const volRatio = volAvg > 0.005 ? smoothVol / volAvg : 1.0;
+  
+  if (energyHistory.length < 60) { mood = 'LISTENING'; return; }
+  
+  // ── Adaptive normalization ──────────────────────────────────
+  let histMin = Infinity, histMax = -Infinity;
+  for (let i = 0; i < energyHistory.length; i++) {
+    if (energyHistory[i] < histMin) histMin = energyHistory[i];
+    if (energyHistory[i] > histMax) histMax = energyHistory[i];
+  }
+  const range = histMax - histMin;
+  normEnergy = range > 0.02 ? (energy - histMin) / range : 0.5;
+  
+  // ── Candidate mood — COMBINED pulse + volume ─────────────
+  let candidateMood = 'GROOVE';
+  
+  // AMBIENT: real silence
+  if (smoothVol < 0.01) {
+    candidateMood = 'AMBIENT';
+  }
+  // DROP: pulse returns hard after BUILDING
+  else if (pulseRatio > 1.8 && (mood === 'BUILDING' || mood === 'AMBIENT')) {
+    candidateMood = 'DROP';
+  }
+  // BUILDING: EITHER kick pulse gone OR volume dropped significantly
+  // This catches: breakdowns (no kick), quiet sections, filter sweeps
+  else if ((pulseRatio < 0.4 || volRatio < 0.5) && smoothVol > 0.005) {
+    candidateMood = 'BUILDING';
+  }
+  // PEAK: strong pulse + high energy
+  else if (pulseRatio > 1.2 && normEnergy > 0.7) {
+    candidateMood = 'PEAK';
+  }
+  
+  // ── Hysteresis ──────────────────────────────────────────────
+  if (candidateMood !== moodCandidate) {
+    moodCandidate = candidateMood;
+    moodHoldFrames = 0;
+  } else {
+    moodHoldFrames++;
+  }
+  
+  const holdRequired = candidateMood === 'AMBIENT' ? 180
+                     : candidateMood === 'DROP' ? 3
+                     : candidateMood === 'PEAK' ? 60
+                     : candidateMood === 'BUILDING' ? 120
+                     : 30;
+  
+  if (moodHoldFrames >= holdRequired) {
+    mood = candidateMood;
+  }
+  
+  // Store for debug
+  _dbgPulseRatio = pulseRatio;
+}
+let _dbgPulseRatio = 1;
+
+// ═══════════════════════════════════════════════════════════════
+// BPM Tap (Space key)
+// ═══════════════════════════════════════════════════════════════
+
+function handleTap() {
+  const now = performance.now();
+  
+  // Clear old taps
+  if (tapTimes.length > 0 && now - tapTimes[tapTimes.length - 1] > TAP_TIMEOUT) {
+    tapTimes = [];
+  }
+  
+  tapTimes.push(now);
+  
+  // ── 1 TAP = SYNC (BPM already set) ───────────────────────
+  if (tapTimes.length === 1 && bpm > 0) {
+    beatIndex = 0;
+    beatFlash = 1.0;
+    beatCount++;
+    abClockStart = performance.now();
+    abBaseLoops = 0;
+    abLastSpeed = videoSpeed;
+    startBeatClock(bpm);
+    if (videoLoaded) updateVideoSpeed(bpm);
+    return;
+  }
+  
+  if (tapTimes.length < 2) return;
+  
+  // Keep last 12 taps
+  if (tapTimes.length > 12) tapTimes.shift();
+  
+  // ── Calculate intervals (iOS: iv >= 250 && iv <= 1500) ────
+  const intervals = [];
+  for (let i = 1; i < tapTimes.length; i++) {
+    const iv = tapTimes[i] - tapTimes[i - 1];
+    if (iv >= 250 && iv <= 1500) intervals.push(iv);
+  }
+  if (intervals.length < 1) return;
+  
+  // ── IQR outlier rejection ─────────────────────────────────
+  intervals.sort((a, b) => a - b);
+  const q1 = intervals[Math.floor(intervals.length * 0.25)];
+  const q3 = intervals[Math.floor(intervals.length * 0.75)];
+  const iqr = q3 - q1;
+  const clean = intervals.filter(v => v >= q1 - 1.5 * iqr && v <= q3 + 1.5 * iqr);
+  if (clean.length < 1) return;
+  
+  const avg = clean.reduce((a, b) => a + b) / clean.length;
+  const newBpm = Math.min(Math.max(60000 / avg, 40), 240);
+  
+  // ── Progressive locking (iOS 1:1) ─────────────────────────
+  if (bpm === 0) {
+    // First measurement
+    bpm = Math.round(newBpm * 10) / 10;
+  } else if (clean.length <= 3) {
+    // Few taps → fast learning: 70% new
+    bpm = Math.round((bpm * 0.3 + newBpm * 0.7) * 10) / 10;
+  } else if (clean.length <= 8) {
+    // Mid phase → gradual refinement: 30% new
+    bpm = Math.round((bpm * 0.7 + newBpm * 0.3) * 10) / 10;
+  } else {
+    // 8+ taps → BPM locked, micro correction only: max ±2 BPM × 15%
+    const diff = Math.min(Math.max(newBpm - bpm, -2.0), 2.0);
+    bpm = Math.round((bpm + diff * 0.15) * 10) / 10;
+  }
+  
+  // Beat flash on tap
+  beatFlash = 1.0;
+  beatIndex++;
+  beatCount++;
+  
+  // Sync video speed
+  if (videoLoaded) updateVideoSpeed(bpm);
+  
+  // ── Clock restart logic (iOS 1:1) ─────────────────────────
+  if (clean.length <= 4) {
+    // Learning phase → full restart with phase reset
+    startBeatClock(bpm);
+  } else {
+    // Locked → update speed only, NO phase reset
+    if (beatClockTimer) clearInterval(beatClockTimer);
+    const intervalMs = 60000 / bpm;
+    beatClockTimer = setInterval(() => onBeatTick(), intervalMs);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Beat Clock — timer-based, fires on every beat (from iOS)
+// ═══════════════════════════════════════════════════════════════
+
+let beatClockTimer = null;
+
+function startBeatClock(newBpm) {
+  if (beatClockTimer) clearInterval(beatClockTimer);
+  if (newBpm <= 0) return;
+  
+  const intervalMs = 60000 / newBpm;
+  
+  // Reset auto-correction state
+  peakSkipCount = 0;
+  detectedPeakTimes = [];
+  
+  // Reset beatIndex on first few taps (learning phase)
+  if (tapTimes.length <= 4) {
+    beatIndex = 0;
+  }
+  
+  beatClockTimer = setInterval(() => {
+    onBeatTick();
+  }, intervalMs);
+}
+
+function onBeatTick() {
+  beatIndex++;
+  beatCount++;
+  beatFiredFrames = 5; // broadcast urgently for 5 frames
+  
+  const bar4 = beatIndex % 4;
+  const bar8 = beatIndex % 8;
+  const bar16 = beatIndex % 16;
+  
+  // ── FX hierarchy (iOS: fx16 > fx8 > fx4 > every beat) ──────
+  if (bar16 === 0) {
+    // FX16: full intensity flash + exposure + big pulse
+    beatFlash = 1.0 * fxIntensity;
+    exposureOpacity = 0.4 * fxIntensity;
+    pulseScale = 1.35 + smoothBass * 0.4;
+  } else if (bar8 === 0) {
+    // FX8: strong flash
+    beatFlash = 0.75 * fxIntensity;
+    exposureOpacity = 0.2 * fxIntensity;
+    pulseScale = 1.25 + smoothBass * 0.3;
+  } else if (bar4 === 0) {
+    // FX4: medium flash
+    beatFlash = 0.5 * fxIntensity;
+    exposureOpacity = 0.08 * fxIntensity;
+    pulseScale = 1.15 + smoothBass * 0.2;
+  } else {
+    // Every beat: subtle pulse only
+    pulseScale = 1.05 + smoothBass * 0.1;
+  }
+  
+  // ── Strobo (½ beat white flash toggle) ───────────────────────
+  if (stroboActive) {
+    stroboFlash = !stroboFlash;
+  } else {
+    stroboFlash = false;
+  }
+  
+  // Update video speed on every beat
+  if (videoLoaded && bpm > 0) {
+    updateVideoSpeed(bpm);
+  }
+  
+  // Beat cut — switch preset on interval (iOS: single clock)
+  if (beatCutEnabled && beatIndex % beatCutInterval === 0) {
+    beatCutNext();
+  }
+}
+
+// ── Silence detection → dampen FX ─────────────────────────────
+function updateSilenceDampen() {
+  if (smoothVol > SILENCE_THRESHOLD) {
+    silenceTimer = 0;
+    fxIntensity = fxIntensity * 0.9 + fxSliderValue * 0.1; // ramp to slider value
+  } else {
+    silenceTimer++;
+    if (silenceTimer > SILENCE_DAMPEN_AFTER) {
+      fxIntensity = fxIntensity * 0.95 + (0.15 * fxSliderValue) * 0.05; // dampen but scaled
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Autopilot — Feature container (toggleable sub-features)
+// ═══════════════════════════════════════════════════════════════
+
+let autopilotEnabled = false;       // master toggle
+let autoEnergyEnabled = true;       // sub: energy-based preset switch
+let autoFxEnabled = true;           // sub: FX amount driven by volume
+let autoBeatCutEnabled = true;      // sub: beat cut interval by energy
+let autoStroboEnabled = true;       // sub: strobo on cymbal/crash detect
+let autoColorEnabled = true;        // sub: color palette by mood
+let autoSpeedEnabled = true;        // sub: video speed by energy
+
+let lastAutopilotMood = '';
+let autopilotCooldown = 0;
+const AUTOPILOT_MIN_INTERVAL = 600;
+
+// Auto strobo state
+let highAvg = 0;          // running high-freq average (ratchet)
+let highPeakBuffer = [];  // last 5 frames raw high values
+let stroboAutoFrames = 0; // frames remaining for auto-strobo burst
+
+function getPresetsByEnergy(cat) {
+  return PRESETS.map((p, i) => ({ ...p, idx: i }))
+    .filter(p => p.energy === cat && presetReady[p.idx]);
+}
+
+// Map normEnergy to beat cut interval
+function getAutoBeatCutInterval() {
+  // Base: energy → interval
+  let interval;
+  if (normEnergy < 0.25) interval = 8;
+  else if (normEnergy < 0.50) interval = 4;
+  else if (normEnergy < 0.75) interval = 2;
+  else interval = 1;
+  
+  // Mood override
+  if (mood === 'AMBIENT' || mood === 'LISTENING') return 0; // beat cut OFF
+  if (mood === 'BUILDING') interval = Math.max(interval, 4); // cap at 4 during buildup
+  if (mood === 'DROP') interval = 1; // force 1 on drop
+  
+  // Hi-hat boost: snare rolls / open hats → one step faster
+  if (smoothHigh > 0.25 && interval > 1) {
+    interval = interval === 8 ? 4 : interval === 4 ? 2 : 1;
+  }
+  
+  return interval;
+}
+
+function updateAutopilot() {
+  if (!autopilotEnabled) return;
+  
+  // ── Sub-feature: FX AMOUNT (runs every frame) ───────────────
+  if (autoFxEnabled) {
+    const targetFx = 0.3 + smoothVol * 2.4;
+    fxSliderValue = fxSliderValue * 0.95 + Math.min(targetFx, 2.0) * 0.05;
+  }
+  
+  // ── Sub-feature: AUTO STROBO (cymbal/crash detection) ───────
+  if (autoStroboEnabled) {
+    // Use RAW high (not smoothed) — crashes are transients
+    // Ratchet baseline: rises fast with sustained highs, falls very slowly
+    if (high > highAvg) {
+      highAvg = highAvg * 0.999 + high * 0.001;   // rises very slow ~15s
+    } else {
+      highAvg = highAvg * 0.9999 + high * 0.0001;  // falls ultra slow ~60s
+    }
+    
+    // Peak tracker: max high in last 5 frames (catches transient spikes)
+    highPeakBuffer.push(high);
+    if (highPeakBuffer.length > 5) highPeakBuffer.shift();
+    const highPeak = Math.max(...highPeakBuffer);
+    
+    const highRatio = highAvg > 0.002 ? highPeak / highAvg : 1.0;
+    
+    // Crash/open hat: high freq spike 1.3x+ above baseline → quick flash
+    if (highRatio > 1.3) {
+      stroboAutoFrames = 8; // ~0.13s flash
+    }
+    
+    if (stroboAutoFrames > 0) {
+      stroboAutoFrames--;
+      if (!stroboActive) stroboActive = true;
+    } else {
+      if (stroboActive && !manualStrobo) stroboActive = false;
+    }
+  }
+  
+  // ── Sub-feature: BEAT CUT interval (runs every frame) ───────
+  if (autoBeatCutEnabled) {
+    const autoInterval = getAutoBeatCutInterval();
+    if (autoInterval === 0) {
+      // AMBIENT → beat cut OFF
+      if (beatCutEnabled) { beatCutEnabled = false; updatePresetGrid(); }
+    } else {
+      // Enable beat cut + set interval
+      if (!beatCutEnabled || beatCutInterval !== autoInterval) {
+        beatCutEnabled = true;
+        beatCutInterval = autoInterval;
+        // Activate all loaded presets in current category
+        const cat = mood === 'BUILDING' ? 2 : 3;
+        const candidates = getPresetsByEnergy(cat);
+        if (candidates.length >= 2) {
+          beatCutActive = new Set(candidates.map(p => p.idx));
+        }
+        updatePresetGrid();
+      }
+    }
+  }
+  
+  // ── Sub-feature: AUTO SPEED (energy → 1× or 2×) ─────────────
+  if (autoSpeedEnabled) {
+    const targetSpeed = (mood === 'DROP' || mood === 'PEAK') ? 2.0 : 1.0;
+    if (videoSpeedMultiplier !== targetSpeed) {
+      setVideoSpeed(targetSpeed);
+    }
+  }
+  
+  // ── Sub-feature: ENERGY preset switch (gated by cooldown) ───
+  if (!autoEnergyEnabled) return;
+  if (autopilotCooldown > 0) { autopilotCooldown--; return; }
+  if (mood === lastAutopilotMood) return;
+  
+  lastAutopilotMood = mood;
+  
+  let targetCat = 2;
+  switch (mood) {
+    case 'AMBIENT':
+    case 'LISTENING':
+      targetCat = 1; break;
+    case 'BUILDING':
+      targetCat = 2; break;
+    case 'GROOVE':
+    case 'DROP':
+    case 'PEAK':
+      targetCat = 3; break;
+  }
+  
+  let candidates = getPresetsByEnergy(targetCat);
+  if (candidates.length === 0 && targetCat > 1) {
+    candidates = getPresetsByEnergy(targetCat - 1 >= 2 ? targetCat - 1 : targetCat + 1);
+  }
+  if (candidates.length === 0) candidates = getPresetsByEnergy(targetCat + 1);
+  if (candidates.length === 0) return;
+  
+  const filtered = candidates.filter(p => p.idx !== activePreset);
+  const pick = filtered.length > 0 ? filtered[Math.floor(Math.random() * filtered.length)] : candidates[0];
+  
+  switchToPreset(pick.idx);
+  
+  // ── Sub-feature: AUTO COLOR (change palette on mood switch) ──
+  if (autoColorEnabled) {
+    const moodPalettes = {
+      'AMBIENT': [1, 4],
+      'LISTENING': [1, 4],
+      'BUILDING': [1, 2],
+      'GROOVE': [0, 3],
+      'DROP': [3, 4],
+      'PEAK': [0, 3, 4],
+    };
+    // Intersect mood palette with user's color pool
+    const moodChoices = moodPalettes[mood] || [0];
+    const poolChoices = moodChoices.filter(c => colorPool.has(c));
+    // Fallback: any color in pool
+    const choices = poolChoices.length > 0 ? poolChoices : [...colorPool];
+    if (choices.length > 0) {
+      const colorFiltered = choices.filter(c => c !== colorIndex);
+      const newColor = colorFiltered.length > 0 
+        ? colorFiltered[Math.floor(Math.random() * colorFiltered.length)]
+        : choices[0];
+      setColor(newColor);
+    }
+  }
+  
+  updatePresetGrid();
+  autopilotCooldown = AUTOPILOT_MIN_INTERVAL;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Auto BPM Correction — detected peaks refine tapped BPM
+// ═══════════════════════════════════════════════════════════════
+
+let detectedPeakTimes = [];
+const PEAK_HISTORY = 16;
+const MAX_CORRECTION = 2.0; // max ±2 BPM drift
+const CORRECTION_RATE = 0.08; // 8% per correction step
+let peakSkipCount = 0; // skip first 2 after clock start
+
+function autoCorrectBpm() {
+  const now = performance.now();
+  
+  // Skip first 2 detected peaks — usually off-beat
+  peakSkipCount++;
+  if (peakSkipCount <= 2) return;
+  
+  // Log detected peak
+  detectedPeakTimes.push(now);
+  if (detectedPeakTimes.length > PEAK_HISTORY) detectedPeakTimes.shift();
+  if (detectedPeakTimes.length < 6) return; // need enough data
+  
+  // Calculate average peak interval
+  const intervals = [];
+  for (let i = 1; i < detectedPeakTimes.length; i++) {
+    intervals.push(detectedPeakTimes[i] - detectedPeakTimes[i - 1]);
+  }
+  
+  // IQR filter (reject outliers)
+  intervals.sort((a, b) => a - b);
+  const q1 = intervals[Math.floor(intervals.length * 0.25)];
+  const q3 = intervals[Math.floor(intervals.length * 0.75)];
+  const iqr = q3 - q1;
+  const clean = intervals.filter(v => v >= q1 - 1.5 * iqr && v <= q3 + 1.5 * iqr);
+  if (clean.length < 3) return;
+  
+  const avgInterval = clean.reduce((a, b) => a + b) / clean.length;
+  const detectedBpm = 60000 / avgInterval;
+  
+  // Only correct if detected BPM is close to current (within ±15 BPM)
+  // Prevents correction from noise or half/double time
+  if (Math.abs(detectedBpm - bpm) > 15) return;
+  
+  // Nudge toward detected BPM
+  const delta = (detectedBpm - bpm) * CORRECTION_RATE;
+  const clampedDelta = Math.max(-MAX_CORRECTION * CORRECTION_RATE, 
+                       Math.min(MAX_CORRECTION * CORRECTION_RATE, delta));
+  
+  const newBpm = Math.round((bpm + clampedDelta) * 10) / 10;
+  
+  if (newBpm !== bpm) {
+    bpm = newBpm;
+    // Restart clock with corrected BPM (preserve phase — don't reset beatIndex)
+    if (beatClockTimer) clearInterval(beatClockTimer);
+    const intervalMs = 60000 / bpm;
+    beatClockTimer = setInterval(() => onBeatTick(), intervalMs);
+    
+    if (videoLoaded) updateVideoSpeed(bpm);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Video Preset A/B System — Hardcoded Registry (like iOS)
+// ═══════════════════════════════════════════════════════════════
+
+function initPresets() {
+  // Set initial vignette
+  document.getElementById('videoVignette').style.background = 
+    'radial-gradient(circle closest-side, transparent 0%, transparent 40%, rgba(0,0,0,0.08) 52%, rgba(0,0,0,0.25) 62%, rgba(0,0,0,0.50) 72%, rgba(0,0,0,0.75) 82%, rgba(0,0,0,0.92) 92%, rgba(0,0,0,1.0) 100%)';
+  
+  // ── Generate video elements ─────────────────────────────────
+  const videoLayer = document.getElementById('videoLayer');
+  videoLayer.innerHTML = '';
+  PRESETS.forEach((preset, i) => {
+    if (!preset.videoA) return; // GFX-only preset (OMEN1)
+    const vidA = document.createElement('video');
+    const vidB = document.createElement('video');
+    [vidA, vidB].forEach((v, j) => {
+      v.id = `vid${i}${j === 0 ? 'a' : 'b'}`;
+      v.loop = true; v.muted = true; v.playsInline = true;
+      v.setAttribute('playsinline', '');
+      videoLayer.appendChild(v);
+    });
+  });
+  
+  // ── Generate preset buttons ─────────────────────────────────
+  const presetBtns = document.getElementById('presetBtns');
+  presetBtns.innerHTML = '';
+  PRESETS.forEach((preset, i) => {
+    const btn = document.createElement('div');
+    btn.id = 'pg' + i;
+    btn.className = 'pgrid' + (i === 0 ? ' active' : '');
+    btn.textContent = preset.name.replace('OMEN', '');
+    btn.style.cursor = 'pointer';
+    btn.onclick = () => handlePresetClick(i);
+    presetBtns.appendChild(btn);
+  });
+  
+  applyVideoColor();
+  updateColorDots();
+  
+  // ── Load videos ─────────────────────────────────────────────
+  PRESETS.forEach((preset, i) => {
+    // GFX-only preset → mark ready immediately
+    if (!preset.videoA) {
+      presetReady[i] = true;
+      return;
+    }
+    
+    const vidA = document.getElementById(`vid${i}a`);
+    const vidB = document.getElementById(`vid${i}b`);
+    
+    vidA.src = preset.videoA;
+    vidB.src = preset.videoB;
+    
+    let aReady = false, bReady = false;
+    
+    vidA.oncanplaythrough = () => {
+      if (aReady) return;
+      aReady = true;
+      vidA.play().catch(() => {});
+      checkPresetReady(i);
+    };
+    vidB.oncanplaythrough = () => {
+      if (bReady) return;
+      bReady = true;
+      vidB.play().catch(() => {});
+    };
+    
+    vidA.onerror = () => { console.warn(`${preset.videoA} not found`); };
+    vidB.onerror = () => { console.warn(`${preset.videoB} not found`); };
+    
+    vidA.load();
+    vidB.load();
+  });
+}
+
+function checkPresetReady(idx) {
+  presetReady[idx] = true;
+  videoLoaded = true;
+  
+  if (abClockStart === 0) {
+    abClockStart = performance.now();
+    abLastSpeed = videoSpeed;
+  }
+  
+  updateVideoVisibility();
+  updatePresetGrid();
+}
+
+// BPM → playback speed: 24s video synced to 48 beats
+function updateVideoSpeed(newBpm) {
+  if (newBpm <= 0) return;
+  
+  const targetSeconds = (VIDEO_SYNC_BEATS * 60.0) / newBpm;
+  const speed = Math.min(Math.max((VIDEO_DURATION_S / targetSeconds) * videoSpeedMultiplier, 0.1), 8.0);
+  
+  if (Math.abs(speed - videoSpeed) < 0.01) return;
+  
+  // Resync A/B clock
+  const elapsed = performance.now() - abClockStart;
+  const durationMs = VIDEO_DURATION_S * 1000;
+  if (abLastSpeed > 0 && durationMs > 0) {
+    abBaseLoops += Math.floor(elapsed * abLastSpeed / durationMs);
+  }
+  abClockStart = performance.now();
+  abLastSpeed = speed;
+  videoSpeed = speed;
+  
+  // Apply to all video elements
+  PRESETS.forEach((preset, i) => {
+    if (!preset.videoA) return; // GFX-only, no video elements
+    const a = document.getElementById(`vid${i}a`);
+    const b = document.getElementById(`vid${i}b`);
+    if (a && a.readyState >= 2) a.playbackRate = speed;
+    if (b && b.readyState >= 2) b.playbackRate = speed;
+  });
+}
+
+// A/B: monotonic clock, even=A odd=B
+function getCurrentAB() {
+  if (videoSpeed <= 0) return 0;
+  const elapsed = performance.now() - abClockStart;
+  const durationMs = VIDEO_DURATION_S * 1000;
+  const loopIndex = abBaseLoops + Math.floor(elapsed * videoSpeed / durationMs);
+  return loopIndex % 2 === 0 ? 0 : 1;
+}
+
+function updateVideoVisibility() {
+  currentAB = getCurrentAB();
+  const currentPresetHasVideo = PRESETS[activePreset]?.videoA != null;
+  
+  // Hide/show entire video layer based on current preset
+  const vl = document.getElementById('videoLayer');
+  if (vl) vl.style.opacity = (currentPresetHasVideo && !videoHidden) ? '1' : '0';
+  
+  PRESETS.forEach((preset, i) => {
+    if (!preset.videoA) return; // GFX-only, no video elements
+    const vidA = document.getElementById(`vid${i}a`);
+    const vidB = document.getElementById(`vid${i}b`);
+    if (!vidA || !vidB) return;
+    
+    if (i === activePreset && presetReady[i]) {
+      vidA.classList.toggle('active', currentAB === 0);
+      vidB.classList.toggle('active', currentAB === 1);
+    } else {
+      vidA.classList.remove('active');
+      vidB.classList.remove('active');
+    }
+  });
+}
+
+function switchToPreset(idx) {
+  if (!presetReady[idx]) return;
+  activePreset = idx;
+  updateVideoVisibility();
+  updatePresetGrid();
+}
+
+function getLoadedPresets() {
+  return PRESETS.map((_, i) => i).filter(i => presetReady[i] && beatCutActive.has(i));
+}
+
+function beatCutNext() {
+  const loaded = getLoadedPresets();
+  if (loaded.length < 2) return;
+  beatCutSequenceIdx = (beatCutSequenceIdx + 1) % loaded.length;
+  switchToPreset(loaded[beatCutSequenceIdx]);
+}
+
+// iOS-style: beat cut ON = toggle in/out of pool, OFF = instant switch
+function handlePresetClick(idx) {
+  if (!presetReady[idx]) return;
+  
+  if (beatCutEnabled) {
+    // Toggle in/out of beat cut pool
+    if (beatCutActive.has(idx)) {
+      if (beatCutActive.size > 1) beatCutActive.delete(idx);
+    } else {
+      beatCutActive.add(idx);
+    }
+    beatCutSequenceIdx = 0;
+  } else {
+    // Normal: instant switch
+    switchToPreset(idx);
+  }
+  updatePresetGrid();
+}
+
+function updateVideoLayer() {
+  const currentPreset = PRESETS[activePreset];
+  const hasVideo = currentPreset && currentPreset.videoA != null;
+  
+  // ── Auto-rotation (replaces iOS gyro compass) — runs always ──
+  compassTarget += smoothBass * 0.003 - smoothMid * 0.001;
+  compassAngle += (compassTarget - compassAngle) * 0.015;
+  
+  if (!hasVideo || !videoLoaded) return; // GFX-only, skip video transforms
+  
+  // Video: 100vh square via CSS. Scale just fills mask + margin for rotation/bass.
+  // Mask = 72% closest-side → radius 36vh. Video at 0.95 → half = 47.5vh > 36vh ✓
+  const videoPulse = 1.0 + (pulseScale - 1.0) * 0.25;
+  const videoScale = (0.95 + smoothBass * 0.04) * pinchScale * videoPulse;
+  
+  videoCompassAngle = videoCompassAngle * 0.97 + compassAngle * 0.03;
+  
+  const transform = `translate(-50%, -50%) scale(${videoScale.toFixed(4)}) rotate(${videoCompassAngle.toFixed(4)}rad)`;
+  
+  // Apply to active videos only
+  PRESETS.forEach((_, i) => {
+    const vidA = document.getElementById(`vid${i}a`);
+    const vidB = document.getElementById(`vid${i}b`);
+    if (vidA && vidA.classList.contains('active')) vidA.style.transform = transform;
+    if (vidB && vidB.classList.contains('active')) vidB.style.transform = transform;
+  });
+  
+  // Vignette scales WITH video — same pinchScale → edges go beyond viewport
+  const vig = document.getElementById('videoVignette');
+  vig.style.transform = `scale(${pinchScale})`;
+  
+  updateVideoVisibility();
+}
+
+function updatePresetGrid() {
+  PRESETS.forEach((preset, i) => {
+    const el = document.getElementById('pg' + i);
+    if (!el) return;
+    el.className = 'pgrid';
+    if (i === activePreset) {
+      el.classList.add('active');
+    } else if (beatCutEnabled && beatCutActive.has(i) && presetReady[i]) {
+      el.classList.add('bc-active');
+    } else if (presetReady[i]) {
+      el.classList.add('loaded');
+    }
+  });
+  
+  document.getElementById('abIndicator').textContent = currentAB === 0 ? 'A' : 'B';
+  
+  const bcEl = document.getElementById('bcToggle');
+  bcEl.textContent = beatCutEnabled ? 'CUT ON' : 'CUT OFF';
+  bcEl.className = 'pgrid' + (beatCutEnabled ? ' cut-on' : '');
+  
+  // Highlight active interval button
+  [1, 2, 4, 8].forEach(n => {
+    const el = document.getElementById('bci' + n);
+    el.className = 'pgrid' + (beatCutInterval === n ? ' active' : '');
+  });
+  
+  updateColorDots();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Canvas GFX Rendering (iOS OmenPainter port)
+// ═══════════════════════════════════════════════════════════════
+
+// Animation time for wave variation
+let animTime = 0;
+
+// GFX renders at full viewport scale — overlays on top of masked video
+const GFX_SCALE = 1.0;
+
+// Mirrored FFT: maps i around circle symmetrically (0→half = low→high, half→count = high→low)
+function getMirroredFft(i, count, startBin, endBin) {
+  const half = count / 2;
+  const t = i < half ? i / half : (count - i) / half; // 0→1→0
+  const fftLen = freqData ? freqData.length : 1;
+  const idx = Math.floor(startBin * fftLen + t * (endBin - startBin) * fftLen);
+  return freqData ? (freqData[Math.min(idx, fftLen - 1)] / 255) : 0;
+}
+
+// Helper: hex color to rgb array
+function hexRgb(hex) {
+  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+}
+
+// Helper: lerp color
+function lerpColor(c1, c2, t) {
+  const a = hexRgb(c1), b = hexRgb(c2);
+  return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t];
+}
+
+function render() {
+  const pal = palettes[colorIndex];
+  const preset = PRESETS[activePreset] || {};
+  const gfx = preset.gfx || 'video_rings';
+  const hasVideo = preset.videoA != null;
+  animTime += 0.016;
+  
+  // ── Reset transform to clean state every frame ──────────────
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  
+  // Clear — transparent over video, black for GFX-only
+  if (hasVideo && !videoHidden) {
+    ctx.clearRect(0, 0, W, H);
+  } else {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+  }
+  
+  // Compass update done in updateVideoLayer
+  
+  if (gfx === 'omen1_full') {
+    renderOmen1(pal);
+  } else if (gfx === 'beat_circles') {
+    renderBeatCircles(pal);
+  } else if (gfx === 'dot_matrix') {
+    renderDotMatrix(pal);
+  } else {
+    renderVideoRings(pal);
+  }
+  
+  // ── Beat flash overlay (all modes) ──────────────────────────
+  if (beatFlash > 0.01) {
+    const [r, g, b] = hexRgb(pal[2]);
+    ctx.fillStyle = `rgba(${r},${g},${b},${beatFlash * 0.7})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+  
+  // ── Exposure glow (white center flash on FX4/8/16) ─────────
+  if (exposureOpacity > 0.005) {
+    const minD = Math.min(W, H);
+    const expGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, minD * 0.5);
+    expGrad.addColorStop(0, `rgba(255,255,255,${exposureOpacity * 0.8})`);
+    expGrad.addColorStop(0.4, `rgba(255,255,255,${exposureOpacity * 0.3})`);
+    expGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = expGrad;
+    ctx.fillRect(0, 0, W, H);
+  }
+  
+  // ── Canvas vignette (only for GFX-only presets) ──────────────
+  if (!hasVideo || videoHidden) {
+    const minD = Math.min(W, H);
+    const grad = ctx.createRadialGradient(CX, CY, minD * 0.35, CX, CY, Math.max(W, H) * 0.55);
+    grad.addColorStop(0, 'transparent');
+    grad.addColorStop(0.5, 'rgba(0,0,0,0.3)');
+    grad.addColorStop(0.8, 'rgba(0,0,0,0.85)');
+    grad.addColorStop(1, 'rgba(0,0,0,1.0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+  }
+  
+  // ── Strobo overlay (LAST — on top of everything incl. vignette) ──
+  if (stroboFlash) {
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect(0, 0, W, H);
+  }
+  
+  // Decay
+  beatFlash *= 0.82;
+  exposureOpacity *= 0.88;
+  pulseScale = pulseScale * 0.92 + 1.0 * 0.08;
+}
+
+// ── OMEN1: Full OmenPainter (iOS port — no video) ──────────────
+function renderOmen1(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]); // primary
+  const [rB, gB, bB] = hexRgb(pal[3]); // bright
+  const [rD, gD, bD] = hexRgb(pal[0]); // dark
+  
+  // Dark radial background
+  const bgGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, minD * 0.55);
+  bgGrad.addColorStop(0, `rgba(${rD},${gD},${bD},0.9)`);
+  bgGrad.addColorStop(0.5, `rgba(${rD},${gD},${bD},0.5)`);
+  bgGrad.addColorStop(1, 'transparent');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(compassAngle);
+  
+  // ── Mega ring (128 bars, bass, wave variation) ──────────────
+  const megaR = minD * 0.44 * 2 * pulseScale;
+  for (let i = 0; i < 128; i++) {
+    const angle = (i / 128) * Math.PI * 2 - Math.PI / 2;
+    const variation = Math.sin(angle * 7 + animTime * 2 * Math.PI) * 0.3 + 0.7;
+    const barH = smoothBass * minD * 0.25 * variation;
+    if (barH < 0.5) continue;
+    
+    const lc = lerpColor(pal[2], pal[3], smoothBass);
+    const alpha = 0.35 + smoothBass * 0.3;
+    
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * (megaR + 2), Math.sin(angle) * (megaR + 2));
+    ctx.lineTo(Math.cos(angle) * (megaR + 2 + barH), Math.sin(angle) * (megaR + 2 + barH));
+    ctx.strokeStyle = `rgba(${lc[0]|0},${lc[1]|0},${lc[2]|0},${alpha})`;
+    ctx.lineWidth = Math.max(2, Math.min(W * 0.008, 6));
+    ctx.stroke();
+  }
+  
+  // ── Outer ring (64 bars, FFT) ───────────────────────────────
+  const outerR = minD * 0.44 * pulseScale;
+  ctx.beginPath();
+  ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(${rP},${gP},${bP},0.3)`;
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  
+  for (let i = 0; i < 64; i++) {
+    const angle = (i / 64) * Math.PI * 2 - Math.PI / 2;
+    const val = getMirroredFft(i, 64, 0, 0.3);
+    const barH = val * minD * 0.18;
+    if (barH < 1) continue;
+    
+    const lc = lerpColor(pal[2], pal[3], smoothBass);
+    const alpha = 0.7 + smoothBass * 0.3;
+    
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * (outerR + 2), Math.sin(angle) * (outerR + 2));
+    ctx.lineTo(Math.cos(angle) * (outerR + 2 + barH), Math.sin(angle) * (outerR + 2 + barH));
+    ctx.strokeStyle = `rgba(${lc[0]|0},${lc[1]|0},${lc[2]|0},${alpha})`;
+    ctx.lineWidth = Math.max(3, Math.min(W * 0.009, 9));
+    ctx.stroke();
+  }
+  
+  // ── Mid ring (48 bars) ──────────────────────────────────────
+  const midR = minD * 0.36;
+  ctx.beginPath();
+  ctx.arc(0, 0, midR, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(${rP},${gP},${bP},0.2)`;
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+  
+  for (let i = 0; i < 48; i++) {
+    const angle = (i / 48) * Math.PI * 2 - Math.PI / 2;
+    const val = getMirroredFft(i, 48, 0.15, 0.45);
+    const barH = val * minD * 0.06;
+    if (barH < 0.5) continue;
+    
+    const lc = lerpColor(pal[2], pal[3], smoothMid);
+    const alpha = 0.3 + smoothMid * 0.4;
+    
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * (midR + 2), Math.sin(angle) * (midR + 2));
+    ctx.lineTo(Math.cos(angle) * (midR + 2 + barH), Math.sin(angle) * (midR + 2 + barH));
+    ctx.strokeStyle = `rgba(${lc[0]|0},${lc[1]|0},${lc[2]|0},${alpha})`;
+    ctx.lineWidth = Math.max(1, Math.min(W * 0.004, 3));
+    ctx.stroke();
+  }
+  
+  ctx.restore();
+  
+  // ── Inner ring (32 bars, gravity fade — not rotated) ────────
+  ctx.save();
+  ctx.translate(CX, CY);
+  
+  const innerR = minD * 0.28;
+  ctx.beginPath();
+  ctx.arc(0, 0, innerR, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(${rP},${gP},${bP},0.25)`;
+  ctx.lineWidth = 0.6;
+  ctx.stroke();
+  
+  for (let i = 0; i < 32; i++) {
+    const angle = (i / 32) * Math.PI * 2 - Math.PI / 2;
+    const val = getMirroredFft(i, 32, 0.5, 0.7);
+    const barH = val * minD * 0.08;
+    if (barH < 0.5) continue;
+    
+    const lc = lerpColor(pal[2], pal[3], smoothHigh);
+    const alpha = 0.5 + smoothHigh * 0.4;
+    
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * (innerR + 2), Math.sin(angle) * (innerR + 2));
+    ctx.lineTo(Math.cos(angle) * (innerR + 2 + barH), Math.sin(angle) * (innerR + 2 + barH));
+    ctx.strokeStyle = `rgba(${lc[0]|0},${lc[1]|0},${lc[2]|0},${alpha})`;
+    ctx.lineWidth = Math.max(2.5, Math.min(W * 0.007, 7));
+    ctx.stroke();
+  }
+  
+  ctx.restore();
+  
+  // ── Bass glow (iOS: blurred radial circle) ──────────────────
+  if (smoothBass > 0.01) {
+    const glowR = minD * 0.225 + smoothBass * minD * 0.25;
+    const glowGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, glowR);
+    glowGrad.addColorStop(0, `rgba(${rP},${gP},${bP},${0.45 * smoothBass})`);
+    glowGrad.addColorStop(0.5, `rgba(${rP},${gP},${bP},${0.2 * smoothBass})`);
+    glowGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(0, 0, W, H);
+    
+    // Center hot spot
+    const cGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, minD * 0.08 + smoothBass * minD * 0.04);
+    cGrad.addColorStop(0, `rgba(${rP},${gP},${bP},${0.3 * smoothBass})`);
+    cGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = cGrad;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+// ── Video Rings: Simpler overlay for video presets (OMEN2/3) ───
+function renderVideoRings(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  const [rB, gB, bB] = hexRgb(pal[3]);
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(compassAngle);
+  
+  // ── Outer ring (64 bars, bass reactive) ─────────────────────
+  const outerR = minD * 0.35 * (1 + smoothBass * 0.15) * pulseScale;
+  for (let i = 0; i < 64; i++) {
+    const angle = (i / 64) * Math.PI * 2;
+    const val = getMirroredFft(i, 64, 0, 0.3);
+    const barLen = val * outerR * 0.5 + 2;
+    const alpha = 0.15 + val * 0.6;
+    
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * outerR, Math.sin(angle) * outerR);
+    ctx.lineTo(Math.cos(angle) * (outerR + barLen), Math.sin(angle) * (outerR + barLen));
+    ctx.strokeStyle = `rgba(${rP},${gP},${bP},${alpha})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+  
+  // ── Mid ring (48 bars) ──────────────────────────────────────
+  const midR = minD * 0.22 * (1 + smoothMid * 0.1);
+  for (let i = 0; i < 48; i++) {
+    const angle = (i / 48) * Math.PI * 2 + 0.03;
+    const val = getMirroredFft(i, 48, 0.15, 0.45);
+    const barLen = val * midR * 0.35 + 1;
+    const alpha = 0.08 + val * 0.4;
+    
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * midR, Math.sin(angle) * midR);
+    ctx.lineTo(Math.cos(angle) * (midR + barLen), Math.sin(angle) * (midR + barLen));
+    ctx.strokeStyle = `rgba(${rB},${gB},${bB},${alpha})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  
+  // ── Inner ring circle ───────────────────────────────────────
+  const innerR = minD * 0.10 * (1 + smoothHigh * 0.15);
+  ctx.beginPath();
+  ctx.arc(0, 0, innerR, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(${rB},${gB},${bB},0.19)`;
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+  
+  // ── Center dot ──────────────────────────────────────────────
+  const dotR = 3 + smoothBass * 8 + beatFlash * 15;
+  ctx.beginPath();
+  ctx.arc(0, 0, dotR, 0, Math.PI * 2);
+  ctx.fillStyle = beatFlash > 0.1 ? pal[2] : `rgba(${rB},${gB},${bB},0.38)`;
+  ctx.fill();
+  
+  ctx.restore();
+}
+
+// ── Beat Circles: Segmented beat-reveal rings (iOS OMEN4 port) ──
+function renderBeatCircles(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  const bar8 = beatIndex % 8;
+  const redOpacity = (0.10 + smoothBass * 0.90);
+  
+  // Beat reveal: 8 elements, reset every 8 beats
+  // Beats 0-3 → small circle segments, beats 4-7 → medium circle segments
+  const smallActive = bar8 < 4 ? bar8 + 1 : 4;
+  const mediumActive = bar8 >= 4 ? bar8 - 3 : 0;
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(compassAngle);
+  
+  const rLarge = minD * 0.431 * pulseScale;
+  const rMedium = minD * 0.350;
+  const rSmall = minD * 0.290;
+  
+  // Bass-reactive stroke width
+  const baseStroke = 2 + smoothBass * 14;
+  
+  // Large circle — always full, bass reactive
+  drawSegmentedCircle(rLarge, 4, baseStroke, `rgba(${rP},${gP},${bP},${redOpacity})`, `rgba(${rP},${gP},${bP},0.18)`);
+  
+  // Medium circle — beat reveal
+  drawSegmentedCircle(rMedium, mediumActive, baseStroke * 4, `rgba(${rP},${gP},${bP},${redOpacity})`, `rgba(${rP},${gP},${bP},0.18)`);
+  
+  // Small circle — beat reveal
+  drawSegmentedCircle(rSmall, smallActive, baseStroke * 4, `rgba(${rP},${gP},${bP},${redOpacity})`, `rgba(${rP},${gP},${bP},0.18)`);
+  
+  ctx.restore();
+}
+
+function drawSegmentedCircle(radius, activeCount, strokeW, activeColor, ghostColor) {
+  const gapAngle = 10 / radius;
+  const segAngle = (Math.PI * 2 - 4 * gapAngle) / 4;
+  
+  for (let i = 0; i < 4; i++) {
+    const startAngle = i * (segAngle + gapAngle) - Math.PI / 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, startAngle, startAngle + segAngle);
+    ctx.strokeStyle = i < activeCount ? activeColor : ghostColor;
+    ctx.lineWidth = strokeW;
+    ctx.lineCap = 'butt';
+    ctx.stroke();
+  }
+}
+
+// ── Dot Matrix: Dotted ring columns (iOS OMEN5 port) ────────────
+function renderDotMatrix(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  const [rB, gB, bB] = hexRgb(pal[3]);
+  const bar8 = beatIndex % 8;
+  
+  // Beat boost on bar8
+  const beatBoost = (bar8 === 0) ? 1.8 : (bar8 % 4 === 0 ? 1.3 : 1.0);
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(compassAngle);
+  
+  // ── Outer dotted ring (4 rows of dots) ──────────────────────
+  const outerDotR = minD * 0.50 * pulseScale;
+  const outerCount = 100;
+  
+  for (let i = 0; i < outerCount; i++) {
+    const angle = (i / outerCount) * Math.PI * 2 - Math.PI / 2;
+    const val = Math.min(getMirroredFft(i, outerCount, 0, 0.4) * beatBoost, 1.0);
+    const baseVal = 0.08 * beatBoost;
+    
+    for (let d = 0; d < 4; d++) {
+      const r = outerDotR + d * (minD * 0.028);
+      const dotSize = minD * 0.005 * (1.0 - d * 0.15) * Math.min(beatBoost, 1.5);
+      const threshold = d * 0.20;
+      const effectiveVal = val > threshold ? val : baseVal;
+      const opacity = Math.min(Math.max(effectiveVal * (1.0 - d * 0.18), 0.04), 1.0);
+      
+      const lc = lerpColor(pal[2], pal[3], effectiveVal);
+      ctx.beginPath();
+      ctx.arc(Math.cos(angle) * r, Math.sin(angle) * r, dotSize, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${lc[0]|0},${lc[1]|0},${lc[2]|0},${opacity})`;
+      ctx.fill();
+    }
+  }
+  
+  // ── Inner dotted ring (column dots, high freq) ──────────────
+  const innerDotR = minD * 0.40;
+  const innerCount = 100;
+  
+  for (let i = 0; i < innerCount; i++) {
+    const angle = (i / innerCount) * Math.PI * 2 - Math.PI / 2;
+    const val = getMirroredFft(i, innerCount, 0.4, 0.7);
+    if (val < 0.02) continue;
+    
+    const dots = Math.min(Math.ceil(val * 6), 6);
+    for (let d = 0; d < dots; d++) {
+      const r = innerDotR + d * (minD * 0.025);
+      const dotSize = minD * 0.006 * (1.0 - d * 0.25);
+      const opacity = Math.min(Math.max(0.9 - d * 0.15, 0.1), 1.0);
+      
+      const lc = lerpColor(pal[2], pal[3], val);
+      ctx.beginPath();
+      ctx.arc(Math.cos(angle) * r, Math.sin(angle) * r, dotSize, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${lc[0]|0},${lc[1]|0},${lc[2]|0},${opacity})`;
+      ctx.fill();
+    }
+  }
+  
+  // ── Center beat dot ─────────────────────────────────────────
+  const dotR = 3 + smoothBass * 8 + beatFlash * 15;
+  ctx.beginPath();
+  ctx.arc(0, 0, dotR, 0, Math.PI * 2);
+  ctx.fillStyle = beatFlash > 0.1 ? pal[2] : `rgba(${rB},${gB},${bB},0.38)`;
+  ctx.fill();
+  
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Main Loop
+// ═══════════════════════════════════════════════════════════════
+
+let beatCount = 0;
+
+function tick() {
+  try {
+    analyseAudio();
+    
+    const beat = detectBeat();
+    if (!beatClockTimer) {
+      if (beat) {
+        beatFlash = 1.0 * fxIntensity;
+        pulseScale = 1.25 + smoothBass * 0.3;
+        beatCount++;
+      }
+    } else {
+      if (beat) autoCorrectBpm();
+    }
+    
+    updateEnergy();
+    updateSilenceDampen();
+    updateAutopilot();
+    updateVideoLayer();
+    render();
+    
+    // Update HUD
+    const bpmEl = document.getElementById('bpmDisplay');
+    if (bpmEl) bpmEl.textContent = bpm > 0 ? bpm.toFixed(1) + ' BPM' : '— BPM';
+    const eFill = document.getElementById('energyFill');
+    if (eFill) eFill.style.width = (normEnergy * 100).toFixed(0) + '%';
+    const moodEl = document.getElementById('moodDisplay');
+    if (moodEl) moodEl.textContent = mood;
+    const dbg = document.getElementById('debugDisplay');
+    if (dbg) {
+      const hr = highAvg > 0.002 ? (Math.max(...(highPeakBuffer.length ? highPeakBuffer : [0])) / highAvg).toFixed(1) : '-';
+      dbg.textContent = `pr:${_dbgPulseRatio.toFixed(2)} vr:${(volAvg>0.005?smoothVol/volAvg:1).toFixed(2)} hr:${hr} ${mood} | ${PRESETS[activePreset]?.name||'?'} ${stroboActive?'STRB':''}`;
+    }
+    
+    // Beat dots
+    const bar16 = beatIndex % 16;
+    for (let i = 0; i < 16; i++) {
+      const dot = document.getElementById('bd' + i);
+      if (!dot) continue;
+      dot.className = 'bdot';
+      if (i === bar16 && beatFlash > 0.3) {
+        dot.classList.add(i % 4 === 0 ? 'downbeat' : 'on');
+      }
+    }
+  } catch (err) {
+    console.error('tick error:', err);
+  }
+  
+  // ALWAYS schedule next frame + broadcast, even if tick errored
+  requestAnimationFrame(tick);
+  broadcastState();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI Button Handlers
+// ═══════════════════════════════════════════════════════════════
+
+function toggleBeatCut() {
+  beatCutEnabled = !beatCutEnabled;
+  beatCutSequenceIdx = 0;
+  // Reset active set to all loaded presets when enabling
+  if (beatCutEnabled) {
+    beatCutActive = new Set(PRESETS.map((_, i) => i).filter(i => presetReady[i]));
+  }
+  updatePresetGrid();
+}
+
+function setBeatCutInterval(n) {
+  beatCutInterval = n;
+  updatePresetGrid();
+}
+
+function handleColorClick(idx) {
+  if (autopilotEnabled && autoColorEnabled) {
+    // Toggle color in/out of pool
+    if (colorPool.has(idx)) {
+      if (colorPool.size > 1) colorPool.delete(idx);
+    } else {
+      colorPool.add(idx);
+    }
+  } else {
+    // Manual: instant switch
+    colorIndex = idx;
+    applyVideoColor();
+  }
+  updateColorDots();
+}
+
+function setColor(idx) {
+  colorIndex = idx;
+  applyVideoColor();
+  updateColorDots();
+}
+
+function updateColorDots() {
+  for (let i = 0; i < 5; i++) {
+    const el = document.getElementById('cd' + i);
+    if (!el) continue;
+    if (autopilotEnabled && autoColorEnabled) {
+      // Pool mode: bright = in pool, dim = excluded, ring = current
+      const inPool = colorPool.has(i);
+      const isCurrent = i === colorIndex;
+      el.className = 'cdot' + (isCurrent ? ' active' : '') + (!inPool ? ' excluded' : '');
+    } else {
+      el.className = 'cdot' + (i === colorIndex ? ' active' : '');
+    }
+  }
+}
+
+function toggleStrobo() {
+  stroboActive = !stroboActive;
+  manualStrobo = stroboActive; // manual = user explicitly toggled ON
+  document.getElementById('strbBtn').className = 'pgrid' + (stroboActive ? ' cut-on' : '');
+}
+
+let videoHidden = false;
+function toggleVideoHide() {
+  videoHidden = !videoHidden;
+  document.getElementById('videoLayer').style.opacity = videoHidden ? '0' : '1';
+  document.getElementById('vhidBtn').className = 'pgrid' + (videoHidden ? ' cut-on' : '');
+}
+
+function setVideoSpeed(mult) {
+  videoSpeedMultiplier = mult;
+  if (bpm > 0) updateVideoSpeed(bpm);
+  ['05', '10', '20'].forEach(id => {
+    const el = document.getElementById('spd' + id);
+    const val = id === '05' ? 0.5 : id === '20' ? 2.0 : 1.0;
+    el.className = 'pgrid' + (videoSpeedMultiplier === val ? ' active' : '');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Video Color Filter (iOS: ColorFilter.mode hue blend)
+// ═══════════════════════════════════════════════════════════════
+
+function applyVideoColor() {
+  const layer = document.getElementById('videoLayer');
+  if (colorIndex === 4) {
+    // Mono/white — desaturate
+    layer.style.filter = 'saturate(0)';
+  } else if (colorIndex === 0) {
+    // Red — default, no filter
+    layer.style.filter = 'none';
+  } else {
+    // Hue rotate to match palette
+    const hueMap = [0, 220, 120, 50, 0]; // red, blue, green, yellow, mono
+    layer.style.filter = `hue-rotate(${hueMap[colorIndex]}deg)`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Pinch / Wheel Zoom (iOS: _onPinchUpdate → _scaleBoost)
+// ═══════════════════════════════════════════════════════════════
+
+let pinchScale = 1.0;
+
+document.addEventListener('wheel', (e) => {
+  if (!audioCtx) return; // not started yet
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -0.05 : 0.05;
+  pinchScale = Math.min(Math.max(pinchScale + delta, 0.3), 4.0);
+}, { passive: false });
+
+// Touch pinch
+let pinchStartDist = 0;
+let pinchBaseScale = 1.0;
+
+document.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    pinchStartDist = Math.sqrt(dx * dx + dy * dy);
+    pinchBaseScale = pinchScale;
+  }
+}, { passive: true });
+
+document.addEventListener('touchmove', (e) => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    pinchScale = Math.min(Math.max(pinchBaseScale * (dist / pinchStartDist), 0.3), 4.0);
+  }
+}, { passive: true });
+
+// ═══════════════════════════════════════════════════════════════
+// Keyboard controls
+// ═══════════════════════════════════════════════════════════════
+
+let hudVisible = true;
+
+document.addEventListener('keydown', (e) => {
+  switch (e.code) {
+    case 'Space':
+      e.preventDefault();
+      handleTap();
+      break;
+    case 'KeyF':
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+      break;
+    case 'KeyH':
+      hudVisible = !hudVisible;
+      document.getElementById('hud').classList.toggle('hidden');
+      document.getElementById('controls-hint').classList.toggle('hidden');
+      break;
+    case 'KeyC':
+      colorIndex = (colorIndex + 1) % palettes.length;
+      applyVideoColor();
+      updateColorDots();
+      break;
+    case 'KeyV':
+      toggleVideoHide();
+      break;
+    case 'KeyS':
+      toggleStrobo();
+      break;
+    case 'KeyB':
+      // Toggle beat cut
+      beatCutEnabled = !beatCutEnabled;
+      beatCutSequenceIdx = 0;
+      updatePresetGrid();
+      break;
+    case 'Digit2':
+      beatCutInterval = 2;
+      updatePresetGrid();
+      break;
+    case 'Digit4':
+      beatCutInterval = 4;
+      updatePresetGrid();
+      break;
+    case 'Digit8':
+      beatCutInterval = 8;
+      updatePresetGrid();
+      break;
+    case 'Digit1': case 'Digit3':
+      // Manual preset switch: 1=OMEN2, 3=OMEN4
+      if (e.code === 'Digit1' && presetReady[0]) switchToPreset(0);
+      if (e.code === 'Digit3' && presetReady[2]) switchToPreset(2);
+      break;
+    case 'KeyQ':
+      handlePresetClick(0);
+      break;
+    case 'KeyW':
+      handlePresetClick(1);
+      break;
+    case 'KeyE':
+      handlePresetClick(2);
+      break;
+    case 'Escape':
+      document.getElementById('setup').classList.remove('hidden');
+      document.getElementById('hud').classList.add('hidden');
+      document.getElementById('controls-hint').classList.add('hidden');
+      break;
+  }
+});
+
+// Tap on mobile
+document.getElementById('canvas').addEventListener('click', () => {
+  if (audioCtx) handleTap();
+});
+
+// ═══════════════════════════════════════════════════════════════
+// BroadcastChannel — Dual Window Communication
+// ═══════════════════════════════════════════════════════════════
+
+const omenChannel = new BroadcastChannel('omen');
+let controllerConnected = false;
+
+// Listen for commands from controller
+omenChannel.onmessage = (e) => {
+  const msg = e.data;
+  if (!msg || !msg.type) return;
+  
+  // Any message from controller = connection alive
+  controllerConnected = true;
+  
+  switch (msg.type) {
+    case 'ping':
+      // Don't respond until presets are loaded
+      if (PRESETS.length === 0) break;
+      controllerConnected = true;
+      document.getElementById('hud').classList.add('hidden');
+      document.getElementById('controls-hint').classList.add('hidden');
+      omenChannel.postMessage({ type: 'pong', presets: PRESETS.map(p => p.name) });
+      break;
+    case 'tap':
+      handleTap();
+      break;
+    case 'preset':
+      handlePresetClick(msg.idx);
+      break;
+    case 'beatcut':
+      if (msg.enabled !== undefined) { beatCutEnabled = msg.enabled; beatCutSequenceIdx = 0; }
+      if (msg.interval) beatCutInterval = msg.interval;
+      if (beatCutEnabled && msg.togglePreset !== undefined) {
+        if (beatCutActive.has(msg.togglePreset)) {
+          if (beatCutActive.size > 1) beatCutActive.delete(msg.togglePreset);
+        } else {
+          beatCutActive.add(msg.togglePreset);
+        }
+      }
+      updatePresetGrid();
+      break;
+    case 'color':
+      handleColorClick(msg.idx);
+      break;
+    case 'strobo':
+      toggleStrobo();
+      break;
+    case 'videohide':
+      toggleVideoHide();
+      break;
+    case 'hudtoggle':
+      document.getElementById('hud').classList.toggle('hidden');
+      document.getElementById('controls-hint').classList.toggle('hidden');
+      break;
+    case 'speed':
+      setVideoSpeed(msg.value);
+      break;
+    case 'fx':
+      fxSliderValue = msg.value;
+      break;
+    case 'pinch':
+      pinchScale = msg.value;
+      break;
+    case 'autopilot':
+      autopilotEnabled = !autopilotEnabled;
+      if (autopilotEnabled) {
+        autoEnergyEnabled = true;
+        autoFxEnabled = true;
+        autoBeatCutEnabled = true;
+        autoStroboEnabled = true;
+        autoColorEnabled = true;
+        autoSpeedEnabled = true;
+        lastAutopilotMood = '';
+      }
+      break;
+    case 'autofeature':
+      if (msg.feature === 'energy') autoEnergyEnabled = !autoEnergyEnabled;
+      if (msg.feature === 'fx') autoFxEnabled = !autoFxEnabled;
+      if (msg.feature === 'beatcut') autoBeatCutEnabled = !autoBeatCutEnabled;
+      if (msg.feature === 'strobo') autoStroboEnabled = !autoStroboEnabled;
+      if (msg.feature === 'color') autoColorEnabled = !autoColorEnabled;
+      if (msg.feature === 'speed') autoSpeedEnabled = !autoSpeedEnabled;
+      autopilotEnabled = autoEnergyEnabled || autoFxEnabled || autoBeatCutEnabled || autoStroboEnabled || autoColorEnabled || autoSpeedEnabled;
+      break;
+  }
+};
+
+// Broadcast state to controller (every 3 frames ≈ 20Hz)
+let broadcastCounter = 0;
+let beatJustFired = false;
+let beatFiredFrames = 0;
+
+function broadcastState() {
+  if (!controllerConnected) return;
+  broadcastCounter++;
+  
+  const urgent = beatFiredFrames > 0;
+  if (!urgent && broadcastCounter % 3 !== 0) return;
+  
+  if (beatFiredFrames > 0) beatFiredFrames--;
+  
+  try {
+    omenChannel.postMessage({
+      type: 'state',
+      bpm: bpm || 0,
+      beatIndex: beatIndex || 0,
+      bar16: (beatIndex || 0) % 16,
+      beatJustFired: beatFiredFrames > 0,
+      activePreset: activePreset || 0,
+      currentAB: currentAB || 0,
+      energy: normEnergy || 0,
+      mood: mood || 'LISTENING',
+      beatCutEnabled: !!beatCutEnabled,
+      beatCutInterval: beatCutInterval || 4,
+      beatCutActive: beatCutActive ? [...beatCutActive] : [],
+      colorIndex: colorIndex || 0,
+      colorPool: [...colorPool],
+      stroboActive: !!stroboActive,
+      videoHidden: !!videoHidden,
+      videoSpeed: videoSpeed || 1,
+      videoSpeedMultiplier: videoSpeedMultiplier || 1,
+      fxIntensity: fxIntensity || 1,
+      fxSliderValue: fxSliderValue || 1,
+      smoothBass: smoothBass || 0,
+      smoothMid: smoothMid || 0,
+      smoothHigh: smoothHigh || 0,
+      presetReady: presetReady ? [...presetReady] : [],
+      pinchScale: pinchScale || 1,
+      autopilotEnabled: !!autopilotEnabled,
+      autoEnergyEnabled: !!autoEnergyEnabled,
+      autoFxEnabled: !!autoFxEnabled,
+      autoBeatCutEnabled: !!autoBeatCutEnabled,
+      autoStroboEnabled: !!autoStroboEnabled,
+      autoColorEnabled: !!autoColorEnabled,
+      autoSpeedEnabled: !!autoSpeedEnabled,
+    });
+  } catch (err) {
+    console.error('broadcast error:', err);
+  }
+}
+</script>
+</body>
+</html>

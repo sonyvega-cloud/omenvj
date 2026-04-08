@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ØMEN Control</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0a;
+    color: #fff;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    min-height: 100vh;
+    padding: 16px;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .header h1 {
+    font-size: 1.2rem;
+    letter-spacing: 0.5rem;
+    font-weight: 100;
+    color: rgba(255,255,255,0.7);
+  }
+  .header .status {
+    font-size: 0.6rem;
+    letter-spacing: 0.1rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(255,0,0,0.2);
+    color: #ff4444;
+  }
+  .header .status.connected {
+    background: rgba(0,255,0,0.1);
+    color: #44ff44;
+  }
+
+  .bpm-display {
+    font-size: 3rem;
+    font-weight: 100;
+    letter-spacing: 0.3rem;
+    color: rgba(255,255,255,0.5);
+    text-align: center;
+    margin: 12px 0;
+  }
+
+  /* Beat dots */
+  .beat-bar {
+    display: flex;
+    gap: 2px;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+  .beat-bar .gap { width: 6px; }
+  .bd {
+    width: 8px; height: 8px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.06);
+  }
+  .bd.on { background: rgba(255,255,255,0.6); }
+  .bd.down { background: #ff2200; }
+
+  /* Sections */
+  .section {
+    margin-bottom: 12px;
+  }
+  .section-label {
+    font-size: 0.55rem;
+    letter-spacing: 0.2rem;
+    color: rgba(255,255,255,0.15);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  /* Grid buttons */
+  .btn-row {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    color: rgba(255,255,255,0.4);
+    font-size: 0.75rem;
+    letter-spacing: 0.1rem;
+    cursor: pointer;
+    transition: all 0.1s;
+    min-width: 40px;
+    text-align: center;
+  }
+  .btn:active { transform: scale(0.95); }
+  .btn.active {
+    background: rgba(255,34,0,0.25);
+    border-color: rgba(255,34,0,0.5);
+    color: #ff2200;
+  }
+  .btn.bc-active {
+    background: rgba(255,34,0,0.12);
+    border-color: rgba(255,34,0,0.35);
+    color: rgba(255,34,0,0.7);
+  }
+  .btn.loaded {
+    border-color: rgba(255,255,255,0.18);
+    color: rgba(255,255,255,0.5);
+  }
+  .btn.on {
+    background: rgba(255,34,0,0.2);
+    border-color: rgba(255,34,0,0.4);
+    color: #ff2200;
+  }
+
+  /* TAP button */
+  .tap-btn {
+    width: 100%;
+    padding: 24px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    color: rgba(255,255,255,0.3);
+    font-size: 0.9rem;
+    letter-spacing: 0.4rem;
+    cursor: pointer;
+    text-align: center;
+    margin-bottom: 12px;
+    transition: all 0.05s;
+  }
+  .tap-btn:active {
+    background: rgba(255,34,0,0.15);
+    border-color: rgba(255,34,0,0.3);
+    color: #ff2200;
+    transform: scale(0.98);
+  }
+
+  /* Slider */
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .slider-row label {
+    font-size: 0.55rem;
+    letter-spacing: 0.15rem;
+    color: rgba(255,255,255,0.2);
+    min-width: 24px;
+  }
+  .slider-row input[type="range"] {
+    flex: 1;
+    height: 2px;
+    accent-color: #ff2200;
+  }
+
+  /* Color dots */
+  .cdot {
+    width: 28px; height: 28px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 2px solid transparent;
+  }
+  .cdot.active { border-color: rgba(255,255,255,0.5); }
+  .cdot.excluded { opacity: 0.2; }
+
+  /* Autopilot feature list */
+  .auto-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 4px;
+  }
+  .auto-item:active { background: rgba(255,255,255,0.04); }
+  .auto-check {
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: transparent;
+    font-size: 0.7rem;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .auto-check.on {
+    background: rgba(255,34,0,0.2);
+    border-color: rgba(255,34,0,0.5);
+    color: #ff2200;
+  }
+  .auto-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.15rem;
+    color: rgba(255,255,255,0.5);
+  }
+  .auto-desc {
+    font-size: 0.5rem;
+    color: rgba(255,255,255,0.15);
+    margin-left: auto;
+  }
+
+  /* Energy */
+  .energy-container {
+    display: flex; align-items: center; gap: 8px;
+    margin: 8px 0;
+  }
+  .energy-fill-bg {
+    flex: 1; height: 3px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .energy-fill-inner {
+    height: 100%;
+    background: #ff2200;
+    transition: width 0.2s;
+  }
+  .mood-label {
+    font-size: 0.55rem;
+    letter-spacing: 0.15rem;
+    color: rgba(255,255,255,0.25);
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>ØMEN</h1>
+  <div class="status" id="connStatus">DISCONNECTED</div>
+</div>
+
+<div class="bpm-display" id="bpmDisplay">— BPM</div>
+
+<!-- 16-beat bar -->
+<div class="beat-bar" id="beatBar"></div>
+
+<!-- TAP / SYNC -->
+<div class="tap-btn" id="tapBtn" onclick="sendTap()">TAP / SYNC</div>
+
+<!-- Energy -->
+<div class="energy-container">
+  <div class="energy-fill-bg"><div class="energy-fill-inner" id="energyFill"></div></div>
+  <div class="mood-label" id="moodLabel">—</div>
+</div>
+
+<!-- Presets -->
+<div class="section">
+  <div class="section-label">Presets</div>
+  <div class="btn-row" id="presetBtns"></div>
+</div>
+
+<!-- Beat Cut -->
+<div class="section">
+  <div class="section-label">Beat Cut</div>
+  <div class="btn-row">
+    <div class="btn" id="bcToggle" onclick="sendBeatCutToggle()">CUT</div>
+    <div class="btn" id="bci1" onclick="sendBeatCutInterval(1)">1</div>
+    <div class="btn" id="bci2" onclick="sendBeatCutInterval(2)">2</div>
+    <div class="btn" id="bci4" onclick="sendBeatCutInterval(4)">4</div>
+    <div class="btn" id="bci8" onclick="sendBeatCutInterval(8)">8</div>
+    <div style="flex:1;"></div>
+    <div class="btn" id="abLabel" style="pointer-events:none;">A</div>
+  </div>
+</div>
+
+<!-- Autopilot -->
+<div class="section">
+  <div class="btn-row" style="margin-bottom:6px;">
+    <div class="btn" id="autoBtn" onclick="sendAutopilot()" style="flex:1; text-align:center; letter-spacing:0.3rem;">AUTOPILOT</div>
+  </div>
+  <div id="autoFeatures" style="padding-left:4px;">
+    <div class="auto-item" onclick="sendAutoFeature('energy')">
+      <div class="auto-check" id="af_energy">✓</div>
+      <div class="auto-label">ENERGY</div>
+      <div class="auto-desc">Preset switch by mood</div>
+    </div>
+    <div class="auto-item" onclick="sendAutoFeature('beatcut')">
+      <div class="auto-check" id="af_beatcut">✓</div>
+      <div class="auto-label">BEAT CUT</div>
+      <div class="auto-desc">Cut interval 1/2/4/8 by energy</div>
+    </div>
+    <div class="auto-item" onclick="sendAutoFeature('fx')">
+      <div class="auto-check" id="af_fx">✓</div>
+      <div class="auto-label">FX AMOUNT</div>
+      <div class="auto-desc">FX intensity by volume</div>
+    </div>
+    <div class="auto-item" onclick="sendAutoFeature('strobo')">
+      <div class="auto-check" id="af_strobo">✓</div>
+      <div class="auto-label">STROBO</div>
+      <div class="auto-desc">Flash on cymbal/crash</div>
+    </div>
+    <div class="auto-item" onclick="sendAutoFeature('color')">
+      <div class="auto-check" id="af_color">✓</div>
+      <div class="auto-label">COLOR</div>
+      <div class="auto-desc">Palette by mood</div>
+    </div>
+    <div class="auto-item" onclick="sendAutoFeature('speed')">
+      <div class="auto-check" id="af_speed">✓</div>
+      <div class="auto-label">SPEED</div>
+      <div class="auto-desc">2× on drop/peak</div>
+    </div>
+  </div>
+</div>
+
+<!-- FX -->
+<div class="section">
+  <div class="section-label">FX</div>
+  <div class="btn-row" style="margin-bottom:8px;">
+    <div class="btn" id="strbBtn" onclick="sendStrobo()">STRB</div>
+    <div class="btn" id="vhidBtn" onclick="sendVideoHide()">VHID</div>
+    <div style="flex:1;"></div>
+    <div class="btn" id="hudBtn" onclick="sendHudToggle()">HUD</div>
+  </div>
+  <div class="slider-row">
+    <label>FX</label>
+    <input type="range" id="fxSlider" min="0" max="200" value="100" oninput="sendFx(this.value/100)">
+  </div>
+  <div class="slider-row">
+    <label>ZOOM</label>
+    <input type="range" id="zoomSlider" min="30" max="400" value="100" oninput="sendPinch(this.value/100)">
+  </div>
+</div>
+
+<!-- Speed -->
+<div class="section">
+  <div class="section-label">Video Speed</div>
+  <div class="btn-row">
+    <div class="btn" id="spd05" onclick="sendSpeed(0.5)">½×</div>
+    <div class="btn active" id="spd10" onclick="sendSpeed(1.0)">1×</div>
+    <div class="btn" id="spd20" onclick="sendSpeed(2.0)">2×</div>
+  </div>
+</div>
+
+<!-- Colors -->
+<div class="section">
+  <div class="section-label">Color</div>
+  <div class="btn-row" id="colorBtns">
+    <div class="cdot active" style="background:#FF2200;" onclick="sendColor(0)"></div>
+    <div class="cdot" style="background:#2244FF;" onclick="sendColor(1)"></div>
+    <div class="cdot" style="background:#22FF44;" onclick="sendColor(2)"></div>
+    <div class="cdot" style="background:#FFCC00;" onclick="sendColor(3)"></div>
+    <div class="cdot" style="background:#CCCCCC;" onclick="sendColor(4)"></div>
+  </div>
+</div>
+
+<script src="presets.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// ØMEN Controller — BroadcastChannel Remote
+// ═══════════════════════════════════════════════════════════════
+
+const ch = new BroadcastChannel('omen');
+let connected = false;
+let presetNames = (typeof PRESETS_DATA !== 'undefined' ? PRESETS_DATA : []).map(p => p.name);
+if (presetNames.length === 0) presetNames = ['OMEN2', 'OMEN3', 'OMEN4'];
+let state = { beatCutEnabled: false, beatCutInterval: 4, activePreset: 0, colorIndex: 0, videoSpeedMultiplier: 1.0, stroboActive: false, videoHidden: false, autopilotEnabled: false, autoEnergyEnabled: true, autoFxEnabled: true, autoBeatCutEnabled: true, autoStroboEnabled: true, autoColorEnabled: true, autoSpeedEnabled: true };
+
+// ── Init: build beat dots + preset buttons ────────────────────
+const beatBar = document.getElementById('beatBar');
+for (let i = 0; i < 16; i++) {
+  if (i > 0 && i % 4 === 0) {
+    const gap = document.createElement('div');
+    gap.className = 'gap';
+    beatBar.appendChild(gap);
+  }
+  const dot = document.createElement('div');
+  dot.className = 'bd';
+  dot.id = 'cbd' + i;
+  beatBar.appendChild(dot);
+}
+
+// Build preset buttons from presets.js
+buildPresetButtons();
+
+// ── Ping player on load ───────────────────────────────────────
+ch.postMessage({ type: 'ping' });
+setInterval(() => {
+  // Always ping as keepalive — player uses any message to confirm connection
+  ch.postMessage({ type: 'ping' });
+}, 3000);
+
+// ── Receive state from player ─────────────────────────────────
+ch.onmessage = (e) => {
+  try {
+    const msg = e.data;
+    if (!msg || !msg.type) return;
+    
+    // Any message from player = connected
+    if (!connected) {
+      connected = true;
+      document.getElementById('connStatus').textContent = 'CONNECTED';
+      document.getElementById('connStatus').classList.add('connected');
+    }
+    
+    if (msg.type === 'pong') {
+      const newPresets = msg.presets || [];
+      if (newPresets.length === 0) return;
+      if (JSON.stringify(newPresets) !== JSON.stringify(presetNames)) {
+        presetNames = newPresets;
+        buildPresetButtons();
+      }
+      return;
+    }
+    
+    if (msg.type === 'state') {
+      state = msg;
+      updateUI(msg);
+    }
+  } catch (err) {
+    console.error('controller onmessage:', err);
+  }
+};
+
+function buildPresetButtons() {
+  const container = document.getElementById('presetBtns');
+  container.innerHTML = '';
+  presetNames.forEach((name, i) => {
+    const btn = document.createElement('div');
+    btn.className = 'btn';
+    btn.id = 'cpg' + i;
+    btn.textContent = name.replace('OMEN', '');
+    btn.onclick = () => sendPreset(i);
+    container.appendChild(btn);
+  });
+}
+
+let lastBar16 = -1;
+let beatDotTimer = null;
+
+function updateUI(s) {
+  try {
+  // BPM
+  const bpmEl = document.getElementById('bpmDisplay');
+  if (bpmEl) bpmEl.textContent = s.bpm > 0 ? s.bpm.toFixed(1) + ' BPM' : '— BPM';
+  
+  // Beat dots
+  if (s.beatJustFired && s.bar16 !== lastBar16) {
+    lastBar16 = s.bar16;
+    for (let i = 0; i < 16; i++) {
+      const dot = document.getElementById('cbd' + i);
+      if (!dot) continue;
+      dot.className = 'bd';
+      if (i === s.bar16) dot.classList.add(i % 4 === 0 ? 'down' : 'on');
+    }
+    if (beatDotTimer) clearTimeout(beatDotTimer);
+    beatDotTimer = setTimeout(() => {
+      for (let i = 0; i < 16; i++) {
+        const d = document.getElementById('cbd' + i);
+        if (d) d.className = 'bd';
+      }
+    }, 120);
+  }
+  
+  // Energy + mood
+  const eFill = document.getElementById('energyFill');
+  const mLabel = document.getElementById('moodLabel');
+  if (eFill) eFill.style.width = ((s.energy || 0) * 100) + '%';
+  if (mLabel) mLabel.textContent = s.mood || '—';
+  
+  // Presets
+  presetNames.forEach((_, i) => {
+    const el = document.getElementById('cpg' + i);
+    if (!el) return;
+    el.className = 'btn';
+    if (i === s.activePreset) el.classList.add('active');
+    else if (s.beatCutEnabled && s.beatCutActive && s.beatCutActive.includes(i)) el.classList.add('bc-active');
+    else if (s.presetReady && s.presetReady[i]) el.classList.add('loaded');
+  });
+  
+  // A/B
+  const abEl = document.getElementById('abLabel');
+  if (abEl) abEl.textContent = s.currentAB === 0 ? 'A' : 'B';
+  
+  // Beat cut
+  const bcEl = document.getElementById('bcToggle');
+  if (bcEl) { bcEl.textContent = s.beatCutEnabled ? 'CUT ON' : 'CUT'; bcEl.className = 'btn' + (s.beatCutEnabled ? ' on' : ''); }
+  [1, 2, 4, 8].forEach(n => { const el = document.getElementById('bci' + n); if (el) el.className = 'btn' + (s.beatCutInterval === n ? ' active' : ''); });
+  
+  // Strobo + VHID
+  const stEl = document.getElementById('strbBtn');
+  const vhEl = document.getElementById('vhidBtn');
+  if (stEl) stEl.className = 'btn' + (s.stroboActive ? ' on' : '');
+  if (vhEl) vhEl.className = 'btn' + (s.videoHidden ? ' on' : '');
+  
+  // Autopilot
+  const autoEl = document.getElementById('autoBtn');
+  if (autoEl) autoEl.className = 'btn' + (s.autopilotEnabled ? ' on' : '');
+  const afE = document.getElementById('af_energy');
+  if (afE) { afE.className = 'auto-check' + (s.autoEnergyEnabled ? ' on' : ''); afE.textContent = s.autoEnergyEnabled ? '✓' : ''; }
+  const afF = document.getElementById('af_fx');
+  if (afF) { afF.className = 'auto-check' + (s.autoFxEnabled ? ' on' : ''); afF.textContent = s.autoFxEnabled ? '✓' : ''; }
+  const afB = document.getElementById('af_beatcut');
+  if (afB) { afB.className = 'auto-check' + (s.autoBeatCutEnabled ? ' on' : ''); afB.textContent = s.autoBeatCutEnabled ? '✓' : ''; }
+  const afS = document.getElementById('af_strobo');
+  if (afS) { afS.className = 'auto-check' + (s.autoStroboEnabled ? ' on' : ''); afS.textContent = s.autoStroboEnabled ? '✓' : ''; }
+  const afC = document.getElementById('af_color');
+  if (afC) { afC.className = 'auto-check' + (s.autoColorEnabled ? ' on' : ''); afC.textContent = s.autoColorEnabled ? '✓' : ''; }
+  const afSp = document.getElementById('af_speed');
+  if (afSp) { afSp.className = 'auto-check' + (s.autoSpeedEnabled ? ' on' : ''); afSp.textContent = s.autoSpeedEnabled ? '✓' : ''; }
+  
+  // FX slider: show realtime value, disable when autopilot controls it
+  const fxSl = document.getElementById('fxSlider');
+  if (fxSl) {
+    fxSl.value = Math.round((s.fxSliderValue || 1) * 100);
+    fxSl.disabled = s.autopilotEnabled && s.autoFxEnabled;
+    fxSl.style.opacity = (s.autopilotEnabled && s.autoFxEnabled) ? '0.4' : '1';
+  }
+  
+  // Speed
+  ['05', '10', '20'].forEach(id => { const el = document.getElementById('spd' + id); if (el) el.className = 'btn' + (s.videoSpeedMultiplier === (id === '05' ? 0.5 : id === '20' ? 2.0 : 1.0) ? ' active' : ''); });
+  
+  // Colors (with pool state)
+  const cb = document.getElementById('colorBtns');
+  if (cb) {
+    const pool = s.colorPool || [0,1,2,3,4];
+    for (let i = 0; i < cb.children.length; i++) {
+      const isCurrent = i === s.colorIndex;
+      const inPool = pool.includes(i);
+      const isAutoColor = s.autopilotEnabled && s.autoColorEnabled;
+      cb.children[i].className = 'cdot' + (isCurrent ? ' active' : '') + (isAutoColor && !inPool ? ' excluded' : '');
+    }
+  }
+  
+  } catch (err) { console.error('updateUI:', err); }
+}
+
+// ── Send commands ─────────────────────────────────────────────
+function sendTap()              { ch.postMessage({ type: 'tap' }); }
+function sendPreset(idx)        { ch.postMessage({ type: 'preset', idx }); }
+function sendBeatCutToggle()    { ch.postMessage({ type: 'beatcut', enabled: !state.beatCutEnabled }); }
+function sendBeatCutInterval(n) { ch.postMessage({ type: 'beatcut', interval: n }); }
+function sendColor(idx)         { ch.postMessage({ type: 'color', idx }); }
+function sendStrobo()           { ch.postMessage({ type: 'strobo' }); }
+function sendVideoHide()        { ch.postMessage({ type: 'videohide' }); }
+function sendHudToggle()        { ch.postMessage({ type: 'hudtoggle' }); }
+function sendAutopilot()        { ch.postMessage({ type: 'autopilot' }); }
+function sendAutoFeature(f)     { ch.postMessage({ type: 'autofeature', feature: f }); }
+function sendSpeed(val)         { ch.postMessage({ type: 'speed', value: val }); }
+function sendFx(val)            { ch.postMessage({ type: 'fx', value: val }); }
+function sendPinch(val)         { ch.postMessage({ type: 'pinch', value: val }); }
+
+// ── TAP: Space key or tap on button ───────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') { e.preventDefault(); sendTap(); }
+});
+</script>
+</body>
+</html>
