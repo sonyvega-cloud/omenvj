@@ -65,6 +65,7 @@
     width: 100vw;
     height: 100vh;
     z-index: 2;
+    pointer-events: none;
   }
 
   /* ── Setup overlay ─────────────────────────────────── */
@@ -2092,9 +2093,12 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Tap on mobile
-document.getElementById('canvas').addEventListener('click', () => {
-  if (audioCtx) handleTap();
+// Tap on mobile/desktop — click anywhere except HUD
+document.body.addEventListener('click', (e) => {
+  if (!audioCtx) return;
+  // Don't tap if clicking HUD controls
+  if (e.target.closest('#hud, #setup, #controls-hint')) return;
+  handleTap();
 });
 
 // ═══════════════════════════════════════════════════════════════
