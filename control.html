@@ -117,6 +117,9 @@
     border-color: rgba(255,34,0,0.4);
     color: #ff2200;
   }
+  .btn.excluded {
+    opacity: 0.2;
+  }
 
   /* TAP button */
   .tap-btn {
@@ -466,14 +469,22 @@ function updateUI(s) {
   if (eFill) eFill.style.width = ((s.energy || 0) * 100) + '%';
   if (mLabel) mLabel.textContent = s.mood || '—';
   
-  // Presets
+  // Presets (with pool exclusion)
+  const pool = s.presetPool || [];
   presetNames.forEach((_, i) => {
     const el = document.getElementById('cpg' + i);
     if (!el) return;
     el.className = 'btn';
-    if (i === s.activePreset) el.classList.add('active');
-    else if (s.beatCutEnabled && s.beatCutActive && s.beatCutActive.includes(i)) el.classList.add('bc-active');
-    else if (s.presetReady && s.presetReady[i]) el.classList.add('loaded');
+    const excluded = s.autopilotEnabled && !pool.includes(i);
+    if (excluded) {
+      el.classList.add('excluded');
+    } else if (i === s.activePreset) {
+      el.classList.add('active');
+    } else if (s.beatCutEnabled && s.beatCutActive && s.beatCutActive.includes(i)) {
+      el.classList.add('bc-active');
+    } else if (s.presetReady && s.presetReady[i]) {
+      el.classList.add('loaded');
+    }
   });
   
   // A/B

@@ -201,6 +201,9 @@
     border-color: rgba(255,34,0,0.4);
     color: #ff2200;
   }
+  .pgrid.excluded {
+    opacity: 0.2;
+  }
   .cdot {
     width: 16px;
     height: 16px;
@@ -411,7 +414,8 @@ let moodHoldFrames = 0;
 let prevBass = 0;
 let bassPulse = 0;
 let bassPulseAvg = 0;
-let volAvg = 0; // volume baseline (ratchet)
+let volAvg = 0;
+let bassRunningAvg = 0; // slow bass baseline for drive score // volume baseline (ratchet)
 let energyHistory = [];
 const ENERGY_HISTORY_LEN = 360; // 6 seconds at 60fps — enough for breakdown detection
 
@@ -443,6 +447,7 @@ let PRESETS = typeof PRESETS_DATA !== 'undefined' ? PRESETS_DATA : [
 
 let videoLoaded = false;
 let presetReady = new Array(PRESETS.length).fill(false);
+let presetPool = new Set(PRESETS.map((_, i) => i)); // which presets autopilot can use
 let activePreset = 0;
 let currentAB = 0;
 
@@ -572,6 +577,7 @@ async function startAudio(source) {
 
     // Reinit preset arrays (presets.json already loaded at page load)
     presetReady = new Array(PRESETS.length).fill(false);
+    presetPool = new Set(PRESETS.map((_, i) => i));
     beatCutActive = new Set(PRESETS.map((_, i) => i));
 
     // Start render loop
@@ -696,25 +702,38 @@ function updateEnergy() {
   const range = histMax - histMin;
   normEnergy = range > 0.02 ? (energy - histMin) / range : 0.5;
   
-  // ── Candidate mood — COMBINED pulse + volume ─────────────
+  // ── Bass average (slow ratchet for ratio) ────────────────────
+  if (smoothBass > bassRunningAvg) {
+    bassRunningAvg = bassRunningAvg * 0.99 + smoothBass * 0.01;
+  } else {
+    bassRunningAvg = bassRunningAvg * 0.9998 + smoothBass * 0.0002;
+  }
+  const bassRatio = bassRunningAvg > 0.003 ? smoothBass / bassRunningAvg : 1.0;
+  
+  // ── DRIVE SCORE: single number 0-3+ combining all signals ───
+  // pulseRatio: kick pulsing vs average (1.0 = normal)
+  // volRatio: current volume vs average (1.0 = normal)
+  // bassRatio: current bass vs average (1.0 = normal)
+  const driveScore = (pulseRatio * 0.4) + (volRatio * 0.3) + (bassRatio * 0.3);
+  // Normal groove ≈ 1.0, quiet interlude ≈ 0.2-0.4, peak ≈ 1.5+
+  
+  // ── Candidate mood from drive score ─────────────────────────
   let candidateMood = 'GROOVE';
   
-  // AMBIENT: real silence
-  if (smoothVol < 0.01) {
-    candidateMood = 'AMBIENT';
+  if (smoothVol < 0.008) {
+    candidateMood = 'AMBIENT';             // absolute silence
   }
-  // DROP: pulse returns hard after BUILDING
+  else if (driveScore < 0.65) {
+    candidateMood = 'AMBIENT';             // low drive = interlude/vocal/pad
+  }
+  else if (driveScore < 1.02) {
+    candidateMood = 'BUILDING';            // medium-low = breakdown/buildup
+  }
   else if (pulseRatio > 1.8 && (mood === 'BUILDING' || mood === 'AMBIENT')) {
-    candidateMood = 'DROP';
+    candidateMood = 'DROP';                // pulse spike after quiet
   }
-  // BUILDING: EITHER kick pulse gone OR volume dropped significantly
-  // This catches: breakdowns (no kick), quiet sections, filter sweeps
-  else if ((pulseRatio < 0.4 || volRatio < 0.5) && smoothVol > 0.005) {
-    candidateMood = 'BUILDING';
-  }
-  // PEAK: strong pulse + high energy
-  else if (pulseRatio > 1.2 && normEnergy > 0.7) {
-    candidateMood = 'PEAK';
+  else if (driveScore > 1.4 && normEnergy > 0.7) {
+    candidateMood = 'PEAK';                // everything loud
   }
   
   // ── Hysteresis ──────────────────────────────────────────────
@@ -725,7 +744,7 @@ function updateEnergy() {
     moodHoldFrames++;
   }
   
-  const holdRequired = candidateMood === 'AMBIENT' ? 180
+  const holdRequired = candidateMood === 'AMBIENT' ? 120   // 2s (was 3s)
                      : candidateMood === 'DROP' ? 3
                      : candidateMood === 'PEAK' ? 60
                      : candidateMood === 'BUILDING' ? 120
@@ -737,8 +756,10 @@ function updateEnergy() {
   
   // Store for debug
   _dbgPulseRatio = pulseRatio;
+  _dbgDriveScore = driveScore;
 }
 let _dbgPulseRatio = 1;
+let _dbgDriveScore = 1;
 
 // ═══════════════════════════════════════════════════════════════
 // BPM Tap (Space key)
@@ -937,7 +958,7 @@ let stroboAutoFrames = 0; // frames remaining for auto-strobo burst
 
 function getPresetsByEnergy(cat) {
   return PRESETS.map((p, i) => ({ ...p, idx: i }))
-    .filter(p => p.energy === cat && presetReady[p.idx]);
+    .filter(p => p.energy === cat && presetReady[p.idx] && presetPool.has(p.idx));
 }
 
 // Map normEnergy to beat cut interval
@@ -1220,7 +1241,7 @@ function initPresets() {
       vidB.play().catch(() => {});
     };
     
-    vidA.onerror = () => { console.warn(`${preset.videoA} not found`); };
+    vidA.onerror = () => { console.warn(`${preset.videoA} not found`); checkPresetReady(i); };
     vidB.onerror = () => { console.warn(`${preset.videoB} not found`); };
     
     vidA.load();
@@ -1325,7 +1346,14 @@ function beatCutNext() {
 function handlePresetClick(idx) {
   if (!presetReady[idx]) return;
   
-  if (beatCutEnabled) {
+  if (autopilotEnabled) {
+    // Toggle preset in/out of autopilot pool
+    if (presetPool.has(idx)) {
+      if (presetPool.size > 1) presetPool.delete(idx);
+    } else {
+      presetPool.add(idx);
+    }
+  } else if (beatCutEnabled) {
     // Toggle in/out of beat cut pool
     if (beatCutActive.has(idx)) {
       if (beatCutActive.size > 1) beatCutActive.delete(idx);
@@ -1379,7 +1407,10 @@ function updatePresetGrid() {
     const el = document.getElementById('pg' + i);
     if (!el) return;
     el.className = 'pgrid';
-    if (i === activePreset) {
+    const excluded = autopilotEnabled && !presetPool.has(i);
+    if (excluded) {
+      el.classList.add('excluded');
+    } else if (i === activePreset) {
       el.classList.add('active');
     } else if (beatCutEnabled && beatCutActive.has(i) && presetReady[i]) {
       el.classList.add('bc-active');
@@ -1863,7 +1894,7 @@ function tick() {
     const dbg = document.getElementById('debugDisplay');
     if (dbg) {
       const hr = highAvg > 0.002 ? (Math.max(...(highPeakBuffer.length ? highPeakBuffer : [0])) / highAvg).toFixed(1) : '-';
-      dbg.textContent = `pr:${_dbgPulseRatio.toFixed(2)} vr:${(volAvg>0.005?smoothVol/volAvg:1).toFixed(2)} hr:${hr} ${mood} | ${PRESETS[activePreset]?.name||'?'} ${stroboActive?'STRB':''}`;
+      dbg.textContent = `drv:${_dbgDriveScore.toFixed(2)} ${mood}${moodCandidate !== mood ? '→'+moodCandidate+'('+moodHoldFrames+')' : ''} | ${PRESETS[activePreset]?.name||'?'} ${stroboActive?'STRB':''}`;
     }
     
     // Beat dots
@@ -2229,6 +2260,7 @@ function broadcastState() {
       smoothMid: smoothMid || 0,
       smoothHigh: smoothHigh || 0,
       presetReady: presetReady ? [...presetReady] : [],
+      presetPool: [...presetPool],
       pinchScale: pinchScale || 1,
       autopilotEnabled: !!autopilotEnabled,
       autoEnergyEnabled: !!autoEnergyEnabled,
