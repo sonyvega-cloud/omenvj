@@ -430,9 +430,12 @@ let fxIntensity = 1.0;     // global FX multiplier
 let fxSliderValue = 1.0;   // user-set FX intensity (slider)
 let exposureOpacity = 0;   // white center glow on beat
 let silenceTimer = 0;      // frames since last significant audio
-let stroboActive = false;  // STRB toggle
-let manualStrobo = false;  // true when user toggled strobo manually
-let stroboFlash = false;   // current strobo frame state
+let stroboActive = false;
+let manualStrobo = false;
+let stroboFlash = 0;           // final strobo opacity 0-1
+let stroboEnvelope = 0.85;     // brightness envelope (auto fade)
+let stroboBeatToggle = false;  // flicker toggle per beat
+let stroboMaxFrames = 0;
 let videoSpeedMultiplier = 1.0; // ½×, 1×, 2×
 const SILENCE_THRESHOLD = 0.05;
 const SILENCE_DAMPEN_AFTER = 90;
@@ -955,11 +958,15 @@ function onBeatTick() {
     pulseScale = 1.05 + smoothBass * 0.1;
   }
   
-  // ── Strobo (½ beat white flash toggle) ───────────────────────
+  // ── Strobo (beat flash × envelope) ───────────────────────────
+  // stroboEnvelope = overall brightness (auto strobo fade controls this)
+  // Beat toggle creates the flicker, envelope scales it
   if (stroboActive) {
-    stroboFlash = !stroboFlash;
+    stroboBeatToggle = !stroboBeatToggle; // flicker per beat
+    stroboFlash = stroboBeatToggle ? stroboEnvelope : 0;
   } else {
-    stroboFlash = false;
+    stroboBeatToggle = false;
+    if (stroboFlash > 0.01) stroboFlash *= 0.65; else stroboFlash = 0; // quick fade
   }
   
   // Update video speed on every beat
@@ -1046,30 +1053,47 @@ function updateAutopilot() {
   // ── Sub-feature: AUTO STROBO (cymbal/crash detection) ───────
   if (autoStroboEnabled) {
     // Use RAW high (not smoothed) — crashes are transients
-    // Ratchet baseline: rises fast with sustained highs, falls very slowly
     if (high > highAvg) {
-      highAvg = highAvg * 0.999 + high * 0.001;   // rises very slow ~15s
+      highAvg = highAvg * 0.999 + high * 0.001;
     } else {
-      highAvg = highAvg * 0.9999 + high * 0.0001;  // falls ultra slow ~60s
+      highAvg = highAvg * 0.9999 + high * 0.0001;
     }
     
-    // Peak tracker: max high in last 5 frames (catches transient spikes)
+    // Peak tracker: max high in last 5 frames
     highPeakBuffer.push(high);
     if (highPeakBuffer.length > 5) highPeakBuffer.shift();
     const highPeak = Math.max(...highPeakBuffer);
     
     const highRatio = highAvg > 0.002 ? highPeak / highAvg : 1.0;
     
-    // Crash/open hat: high freq spike 1.3x+ above baseline → quick flash
+    // Crash/open hat: variable duration by intensity
+    // highRatio 1.3 = tiny flash (3 frames), 2.0+ = full burst (10 frames)
     if (highRatio > 1.3) {
-      stroboAutoFrames = 8; // ~0.13s flash
+      const intensity = Math.min((highRatio - 1.3) / 0.7, 1.0); // 0-1 mapped from ratio 1.3-2.0
+      const duration = Math.round(3 + intensity * 7); // 3-10 frames
+      if (duration > stroboAutoFrames) {
+        stroboAutoFrames = duration;
+        stroboMaxFrames = duration;
+      }
     }
     
     if (stroboAutoFrames > 0) {
       stroboAutoFrames--;
       if (!stroboActive) stroboActive = true;
+      
+      // Envelope: full brightness first 60%, fade in last 40%
+      const progress = 1.0 - (stroboAutoFrames / Math.max(stroboMaxFrames, 1));
+      if (progress < 0.6) {
+        stroboEnvelope = 0.85;
+      } else {
+        stroboEnvelope = 0.85 * (1.0 - (progress - 0.6) / 0.4);
+      }
     } else {
-      if (stroboActive && !manualStrobo) stroboActive = false;
+      if (stroboActive && !manualStrobo) {
+        stroboActive = false;
+        stroboFlash = 0;
+        stroboEnvelope = 0.85; // reset for next burst
+      }
     }
   }
   
@@ -1585,8 +1609,8 @@ function render() {
   }
   
   // ── Strobo overlay (LAST — on top of everything incl. vignette) ──
-  if (stroboFlash) {
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  if (stroboFlash > 0.01) {
+    ctx.fillStyle = `rgba(255,255,255,${stroboFlash})`;
     ctx.fillRect(0, 0, W, H);
   }
   
@@ -2036,7 +2060,8 @@ function updateColorDots() {
 
 function toggleStrobo() {
   stroboActive = !stroboActive;
-  manualStrobo = stroboActive; // manual = user explicitly toggled ON
+  manualStrobo = stroboActive;
+  stroboEnvelope = 0.85; // full brightness for manual
   document.getElementById('strbBtn').className = 'pgrid' + (stroboActive ? ' cut-on' : '');
 }
 
@@ -2249,7 +2274,7 @@ function connectCDJ() {
           }
           
           // Strobo
-          if (stroboActive) { stroboFlash = !stroboFlash; } else { stroboFlash = false; }
+          if (stroboActive) { stroboBeatToggle = !stroboBeatToggle; stroboFlash = stroboBeatToggle ? stroboEnvelope : 0; } else { if (stroboFlash > 0.01) stroboFlash *= 0.65; else stroboFlash = 0; }
           
           // Video speed sync
           if (videoLoaded) updateVideoSpeed(bpm);
