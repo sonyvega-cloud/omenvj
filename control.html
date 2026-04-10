@@ -364,8 +364,19 @@
 
 const ch = new BroadcastChannel('omen');
 let connected = false;
-let presetNames = (typeof PRESETS_DATA !== 'undefined' ? PRESETS_DATA : []).map(p => p.name);
-if (presetNames.length === 0) presetNames = ['OMEN2', 'OMEN3', 'OMEN4'];
+let presetNames = [];
+// Read from localStorage (editor) first, then presets.js fallback
+(function() {
+  const saved = localStorage.getItem('omen_presets');
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed.length > 0) { presetNames = parsed.map(p => p.name); return; }
+    } catch(e) {}
+  }
+  presetNames = (typeof PRESETS_DATA !== 'undefined' ? PRESETS_DATA : []).map(p => p.name);
+  if (presetNames.length === 0) presetNames = ['OMEN1', 'OMEN2', 'OMEN3'];
+})();
 let state = { beatCutEnabled: false, beatCutInterval: 4, activePreset: 0, colorIndex: 0, videoSpeedMultiplier: 1.0, stroboActive: false, videoHidden: false, autopilotEnabled: false, autoEnergyEnabled: true, autoFxEnabled: true, autoBeatCutEnabled: true, autoStroboEnabled: true, autoColorEnabled: true, autoSpeedEnabled: true };
 
 // ── Init: build beat dots + preset buttons ────────────────────
