@@ -1242,7 +1242,15 @@ function initPresets() {
     };
     
     vidA.onerror = () => { console.warn(`${preset.videoA} not found`); checkPresetReady(i); };
-    vidB.onerror = () => { console.warn(`${preset.videoB} not found`); };
+    vidB.onerror = () => { console.warn(`${preset.videoB} not found`); checkPresetReady(i); };
+    
+    // Timeout fallback — if video hasn't loaded in 8s, mark ready anyway (GFX works without video)
+    setTimeout(() => {
+      if (!presetReady[i]) {
+        console.warn(`${preset.name} video timeout — marking ready (GFX only)`);
+        checkPresetReady(i);
+      }
+    }, 8000);
     
     vidA.load();
     vidB.load();
