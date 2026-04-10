@@ -93,7 +93,6 @@
     font-size: 0.75rem;
     letter-spacing: 0.1rem;
     cursor: pointer;
-    transition: all 0.1s;
     min-width: 40px;
     text-align: center;
   }
@@ -417,13 +416,7 @@ ch.onmessage = (e) => {
     }
     
     if (msg.type === 'pong') {
-      const newPresets = msg.presets || [];
-      if (newPresets.length === 0) return;
-      if (newPresets.length !== presetNames.length || JSON.stringify(newPresets) !== JSON.stringify(presetNames)) {
-        console.log('[CTRL] Preset list changed:', presetNames.length, '→', newPresets.length);
-        presetNames = newPresets;
-        buildPresetButtons();
-      }
+      // Preset list from localStorage, no rebuild needed from pong
       return;
     }
     
