@@ -1867,15 +1867,18 @@ function tick() {
   try {
     analyseAudio();
     
-    const beat = detectBeat();
-    if (!beatClockTimer) {
-      if (beat) {
-        beatFlash = 1.0 * fxIntensity;
-        pulseScale = 1.25 + smoothBass * 0.3;
-        beatCount++;
+    // Beat detection — skip if CDJ bridge provides beats
+    if (!cdjConnected) {
+      const beat = detectBeat();
+      if (!beatClockTimer) {
+        if (beat) {
+          beatFlash = 1.0 * fxIntensity;
+          pulseScale = 1.25 + smoothBass * 0.3;
+          beatCount++;
+        }
+      } else {
+        if (beat) autoCorrectBpm();
       }
-    } else {
-      if (beat) autoCorrectBpm();
     }
     
     updateEnergy();
@@ -1894,7 +1897,7 @@ function tick() {
     const dbg = document.getElementById('debugDisplay');
     if (dbg) {
       const hr = highAvg > 0.002 ? (Math.max(...(highPeakBuffer.length ? highPeakBuffer : [0])) / highAvg).toFixed(1) : '-';
-      dbg.textContent = `drv:${_dbgDriveScore.toFixed(2)} ${mood}${moodCandidate !== mood ? '→'+moodCandidate+'('+moodHoldFrames+')' : ''} | ${PRESETS[activePreset]?.name||'?'} ${stroboActive?'STRB':''}`;
+      dbg.textContent = `drv:${_dbgDriveScore.toFixed(2)} ${mood}${moodCandidate !== mood ? '→'+moodCandidate+'('+moodHoldFrames+')' : ''} | ${PRESETS[activePreset]?.name||'?'} ${cdjConnected?'CDJ':''}${stroboActive?' STRB':''}`;
     }
     
     // Beat dots
@@ -2133,6 +2136,109 @@ document.body.addEventListener('click', (e) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// CDJ / ProLink Bridge (WebSocket → ws://localhost:9000)
+// ═══════════════════════════════════════════════════════════════
+
+let cdjConnected = false;
+let cdjWs = null;
+let cdjBpm = 0;
+let cdjLastBeat = 0;
+let cdjTrackTitle = '';
+
+function connectCDJ() {
+  try {
+    cdjWs = new WebSocket('ws://localhost:9000');
+    
+    cdjWs.onopen = () => {
+      cdjConnected = true;
+      console.log('[CDJ] Bridge connected');
+    };
+    
+    cdjWs.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        
+        if (msg.type === 'cdj_beat') {
+          // Perfect beat sync from CDJ — override beat clock
+          cdjBpm = msg.bpm;
+          bpm = Math.round(msg.bpm * 10) / 10;
+          
+          // Fire beat directly (no timer drift)
+          beatIndex++;
+          beatCount++;
+          beatFiredFrames = 5;
+          
+          // FX hierarchy
+          const bar4 = beatIndex % 4;
+          const bar8 = beatIndex % 8;
+          const bar16 = beatIndex % 16;
+          
+          if (bar16 === 0) {
+            beatFlash = 1.0 * fxIntensity;
+            exposureOpacity = 0.4 * fxIntensity;
+            pulseScale = 1.35 + smoothBass * 0.4;
+          } else if (bar8 === 0) {
+            beatFlash = 0.75 * fxIntensity;
+            exposureOpacity = 0.2 * fxIntensity;
+            pulseScale = 1.25 + smoothBass * 0.3;
+          } else if (bar4 === 0) {
+            beatFlash = 0.5 * fxIntensity;
+            exposureOpacity = 0.08 * fxIntensity;
+            pulseScale = 1.15 + smoothBass * 0.2;
+          } else {
+            pulseScale = 1.05 + smoothBass * 0.1;
+          }
+          
+          // Strobo
+          if (stroboActive) { stroboFlash = !stroboFlash; } else { stroboFlash = false; }
+          
+          // Video speed sync
+          if (videoLoaded) updateVideoSpeed(bpm);
+          
+          // Beat cut
+          if (beatCutEnabled && beatIndex % beatCutInterval === 0) {
+            beatCutNext();
+          }
+        }
+        
+        else if (msg.type === 'cdj_status') {
+          if (msg.isMaster || cdjBpm === 0) {
+            cdjBpm = msg.bpm;
+            bpm = Math.round(msg.bpm * 10) / 10;
+          }
+        }
+        
+        else if (msg.type === 'cdj_track') {
+          cdjTrackTitle = msg.title || '';
+          console.log(`[CDJ] Track: ${msg.artist} - ${msg.title} (${msg.bpm} BPM)`);
+        }
+        
+      } catch (err) {
+        // ignore parse errors
+      }
+    };
+    
+    cdjWs.onclose = () => {
+      cdjConnected = false;
+      console.log('[CDJ] Bridge disconnected, retrying in 3s...');
+      setTimeout(connectCDJ, 3000);
+    };
+    
+    cdjWs.onerror = () => {
+      cdjConnected = false;
+      cdjWs.close();
+    };
+    
+  } catch (err) {
+    // WebSocket not available, retry
+    setTimeout(connectCDJ, 5000);
+  }
+}
+
+// Auto-connect on page load (silent if bridge not running)
+connectCDJ();
+
+// ═══════════════════════════════════════════════════════════════
 // BroadcastChannel — Dual Window Communication
 // ═══════════════════════════════════════════════════════════════
 
@@ -2269,6 +2375,8 @@ function broadcastState() {
       autoStroboEnabled: !!autoStroboEnabled,
       autoColorEnabled: !!autoColorEnabled,
       autoSpeedEnabled: !!autoSpeedEnabled,
+      cdjConnected: !!cdjConnected,
+      cdjTrackTitle: cdjTrackTitle || '',
     });
   } catch (err) {
     console.error('broadcast error:', err);

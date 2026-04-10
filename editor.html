@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ØMEN — Preset Editor</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap');
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  :root {
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --surface2: #1c1c1c;
+    --border: #2a2a2a;
+    --text: #e0e0e0;
+    --text-dim: #666;
+    --accent: #ff2200;
+    --accent-glow: rgba(255, 34, 0, 0.15);
+    --green: #22cc44;
+    --yellow: #ffcc00;
+    --blue: #2266ff;
+  }
+  
+  body {
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0;
+  }
+  
+  /* ── Header ──────────────────────────────── */
+  .header {
+    padding: 24px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .header h1 {
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.3em;
+    color: var(--accent);
+  }
+  .header .subtitle {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+  }
+  .header-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+  }
+  
+  /* ── Buttons ─────────────────────────────── */
+  .btn {
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--text-dim); background: var(--surface2); }
+  .btn.primary { border-color: var(--accent); color: var(--accent); }
+  .btn.primary:hover { background: var(--accent-glow); }
+  .btn.danger { border-color: #661100; color: #cc4422; }
+  .btn.danger:hover { background: rgba(204, 68, 34, 0.1); }
+  .btn.success { border-color: #116622; color: var(--green); }
+  .btn.success:hover { background: rgba(34, 204, 68, 0.1); }
+  
+  /* ── Layout ──────────────────────────────── */
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px 32px;
+  }
+  
+  /* ── Pack Header ─────────────────────────── */
+  .pack-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .pack-name {
+    font-size: 13px;
+    letter-spacing: 0.2em;
+    font-weight: 500;
+  }
+  .pack-count {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  
+  /* ── Preset List ─────────────────────────── */
+  .preset-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  
+  .preset-row {
+    display: grid;
+    grid-template-columns: 40px 120px 140px 80px 200px 60px;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    transition: border-color 0.15s;
+    font-size: 11px;
+  }
+  .preset-row:hover { border-color: var(--text-dim); }
+  .preset-row.editing { border-color: var(--accent); background: var(--accent-glow); }
+  
+  .preset-idx {
+    color: var(--text-dim);
+    font-size: 10px;
+  }
+  .preset-name { font-weight: 500; }
+  
+  .preset-gfx {
+    color: var(--blue);
+    font-size: 10px;
+  }
+  
+  .preset-energy {
+    font-size: 9px;
+    padding: 2px 8px;
+    border-radius: 2px;
+    text-align: center;
+    letter-spacing: 0.1em;
+  }
+  .preset-energy.cat1 { background: rgba(34, 102, 255, 0.15); color: var(--blue); }
+  .preset-energy.cat2 { background: rgba(255, 204, 0, 0.15); color: var(--yellow); }
+  .preset-energy.cat3 { background: rgba(255, 34, 0, 0.15); color: var(--accent); }
+  
+  .preset-videos {
+    display: flex;
+    gap: 6px;
+    font-size: 9px;
+  }
+  .vid-badge {
+    padding: 2px 6px;
+    border-radius: 2px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+  }
+  .vid-badge.loaded { border-color: #116622; color: var(--green); }
+  .vid-badge.missing { border-color: #661100; color: #884422; }
+  .vid-badge.none { color: var(--text-dim); }
+  
+  .preset-actions {
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+  }
+  .icon-btn {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.15s;
+  }
+  .icon-btn:hover { border-color: var(--text); color: var(--text); }
+  .icon-btn.del:hover { border-color: #cc4422; color: #cc4422; }
+  
+  /* ── List Header ─────────────────────────── */
+  .list-header {
+    display: grid;
+    grid-template-columns: 40px 120px 140px 80px 200px 60px;
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    margin-bottom: 4px;
+  }
+  
+  /* ── Editor Panel ────────────────────────── */
+  .editor-panel {
+    margin-top: 24px;
+    padding: 20px;
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    display: none;
+  }
+  .editor-panel.open { display: block; }
+  
+  .editor-title {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+  
+  .field-grid {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 10px 16px;
+    align-items: center;
+  }
+  
+  .field-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    text-align: right;
+  }
+  
+  .field-input {
+    font-family: inherit;
+    font-size: 11px;
+    padding: 6px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    outline: none;
+    width: 100%;
+    max-width: 300px;
+  }
+  .field-input:focus { border-color: var(--accent); }
+  
+  .field-select {
+    font-family: inherit;
+    font-size: 11px;
+    padding: 6px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    outline: none;
+    cursor: pointer;
+    max-width: 300px;
+  }
+  .field-select:focus { border-color: var(--accent); }
+  
+  /* ── Upload ──────────────────────────────── */
+  .upload-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .upload-btn {
+    font-family: inherit;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    padding: 5px 12px;
+    border: 1px dashed var(--border);
+    background: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .upload-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .upload-status {
+    font-size: 9px;
+    color: var(--green);
+  }
+  .upload-status.uploading { color: var(--yellow); }
+  .upload-status.error { color: #cc4422; }
+  
+  .editor-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 8px;
+  }
+  
+  /* ── GFX Registry ────────────────────────── */
+  .gfx-section {
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+  }
+  .gfx-title {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+  .gfx-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .gfx-tag {
+    font-size: 9px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+  }
+  
+  /* ── Status bar ──────────────────────────── */
+  .status-bar {
+    margin-top: 24px;
+    padding: 10px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 9px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+  .status-dot.offline { background: #884422; }
+  
+  /* ── CDN Config ──────────────────────────── */
+  .cdn-config {
+    margin-bottom: 20px;
+    padding: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .cdn-config label {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+  }
+  .cdn-config input {
+    flex: 1;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>ØMEN</h1>
+  <span class="subtitle">PRESET EDITOR</span>
+  <div class="header-actions">
+    <button class="btn" onclick="importJSON()">IMPORT</button>
+    <button class="btn primary" onclick="exportPresetsJS()">EXPORT PRESETS.JS</button>
+    <button class="btn success" onclick="exportJSON()">EXPORT JSON</button>
+  </div>
+</div>
+
+<div class="container">
+  
+  <!-- CDN Config -->
+  <div class="cdn-config">
+    <label>CDN BASE URL</label>
+    <input class="field-input" id="cdnUrl" value="https://cdn.omenvj.com/" placeholder="https://cdn.omenvj.com/" style="max-width:none">
+    <label>UPLOAD WORKER</label>
+    <input class="field-input" id="workerUrl" value="" placeholder="https://upload.omenvj.com" style="max-width:none">
+  </div>
+  
+  <!-- Pack Header -->
+  <div class="pack-header">
+    <span class="pack-name">OMEN PACK</span>
+    <span class="pack-count" id="presetCount">0 presets</span>
+    <div style="margin-left:auto;">
+      <button class="btn primary" onclick="addPreset()">+ ADD PRESET</button>
+    </div>
+  </div>
+  
+  <!-- List Header -->
+  <div class="list-header">
+    <span>#</span>
+    <span>NAME</span>
+    <span>GFX</span>
+    <span>ENERGY</span>
+    <span>VIDEOS</span>
+    <span></span>
+  </div>
+  
+  <!-- Preset List -->
+  <div class="preset-list" id="presetList"></div>
+  
+  <!-- Editor Panel -->
+  <div class="editor-panel" id="editorPanel">
+    <div class="editor-title" id="editorTitle">EDIT PRESET</div>
+    <div class="field-grid">
+      <span class="field-label">NAME</span>
+      <input class="field-input" id="editName" placeholder="OMEN11">
+      
+      <span class="field-label">GFX</span>
+      <select class="field-select" id="editGfx">
+        <option value="omen1_full">omen1_full (radial mega ring)</option>
+        <option value="video_rings">video_rings (64+48 bars)</option>
+        <option value="beat_circles">beat_circles (segmented reveal)</option>
+        <option value="dot_matrix">dot_matrix (dotted columns)</option>
+      </select>
+      
+      <span class="field-label">ENERGY</span>
+      <select class="field-select" id="editEnergy">
+        <option value="1">CAT 1 — ambient / calm</option>
+        <option value="2">CAT 2 — building / mid</option>
+        <option value="3">CAT 3 — groove / peak</option>
+      </select>
+      
+      <span class="field-label">VIDEO A</span>
+      <div class="upload-row">
+        <input class="field-input" id="editVideoA" placeholder="omen11a.mp4" style="max-width:200px">
+        <input type="file" id="fileA" accept="video/mp4" style="display:none" onchange="handleUpload('A')">
+        <button class="upload-btn" onclick="document.getElementById('fileA').click()">UPLOAD ▲</button>
+        <span class="upload-status" id="statusA"></span>
+      </div>
+      
+      <span class="field-label">VIDEO B</span>
+      <div class="upload-row">
+        <input class="field-input" id="editVideoB" placeholder="omen11b.mp4" style="max-width:200px">
+        <input type="file" id="fileB" accept="video/mp4" style="display:none" onchange="handleUpload('B')">
+        <button class="upload-btn" onclick="document.getElementById('fileB').click()">UPLOAD ▲</button>
+        <span class="upload-status" id="statusB"></span>
+      </div>
+    </div>
+    
+    <div class="editor-actions">
+      <button class="btn primary" onclick="savePreset()">SAVE</button>
+      <button class="btn" onclick="closeEditor()">CANCEL</button>
+      <button class="btn danger" onclick="deletePreset()" id="deleteBtn">DELETE</button>
+    </div>
+  </div>
+  
+  <!-- GFX Registry -->
+  <div class="gfx-section">
+    <div class="gfx-title">GFX RENDERERS</div>
+    <div class="gfx-list" id="gfxList"></div>
+  </div>
+  
+  <!-- Status -->
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Ready</span>
+  </div>
+  
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// Preset Editor State
+// ═══════════════════════════════════════════════════════════════
+
+// GFX registry — add new renderers here
+const GFX_REGISTRY = [
+  { id: 'omen1_full', name: 'Radial Mega Ring', desc: 'Full radial with 128+64+48+32 bars, bass glow' },
+  { id: 'video_rings', name: 'Video Rings', desc: '64+48 FFT bars, 3 ring layers' },
+  { id: 'beat_circles', name: 'Beat Circles', desc: 'Segmented beat-reveal circles' },
+  { id: 'dot_matrix', name: 'Dot Matrix', desc: 'Dotted ring columns, 2 layers' },
+];
+
+// Current presets
+let presets = [];
+let editingIdx = -1; // -1 = new, 0+ = editing existing
+
+// ── Load from localStorage or defaults ────────────────────────
+function loadPresets() {
+  const saved = localStorage.getItem('omen_presets');
+  if (saved) {
+    try { presets = JSON.parse(saved); } catch(e) { presets = getDefaults(); }
+  } else {
+    presets = getDefaults();
+  }
+  renderList();
+}
+
+function getDefaults() {
+  return [
+    { name: 'OMEN1', videoA: null, videoB: null, gfx: 'omen1_full', energy: 1 },
+    { name: 'OMEN2', videoA: 'omen2a.mp4', videoB: 'omen2b.mp4', gfx: 'video_rings', energy: 3 },
+    { name: 'OMEN3', videoA: 'omen3a.mp4', videoB: 'omen3b.mp4', gfx: 'beat_circles', energy: 2 },
+    { name: 'OMEN4', videoA: 'omen4a.mp4', videoB: 'omen4b.mp4', gfx: 'dot_matrix', energy: 3 },
+    { name: 'OMEN7', videoA: 'omen7a.mp4', videoB: 'omen7b.mp4', gfx: 'video_rings', energy: 3 },
+    { name: 'OMEN8', videoA: 'omen8a.mp4', videoB: 'omen8b.mp4', gfx: 'video_rings', energy: 2 },
+    { name: 'OMEN9', videoA: 'omen9a.mp4', videoB: 'omen9b.mp4', gfx: 'video_rings', energy: 2 },
+    { name: 'OMEN10', videoA: 'omen10a.mp4', videoB: 'omen10b.mp4', gfx: 'beat_circles', energy: 3 },
+  ];
+}
+
+function saveToStorage() {
+  localStorage.setItem('omen_presets', JSON.stringify(presets));
+  setStatus('Saved to browser');
+}
+
+// ── Render List ───────────────────────────────────────────────
+function renderList() {
+  const list = document.getElementById('presetList');
+  list.innerHTML = '';
+  
+  presets.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'preset-row' + (editingIdx === i ? ' editing' : '');
+    
+    const energyClass = p.energy === 1 ? 'cat1' : p.energy === 2 ? 'cat2' : 'cat3';
+    const energyLabel = p.energy === 1 ? 'AMBIENT' : p.energy === 2 ? 'BUILDING' : 'GROOVE';
+    
+    const vidA = p.videoA ? `<span class="vid-badge loaded">${p.videoA}</span>` : '<span class="vid-badge none">no video</span>';
+    const vidB = p.videoB ? `<span class="vid-badge loaded">${p.videoB}</span>` : '';
+    
+    row.innerHTML = `
+      <span class="preset-idx">#${i + 1}</span>
+      <span class="preset-name">${p.name}</span>
+      <span class="preset-gfx">${p.gfx}</span>
+      <span class="preset-energy ${energyClass}">${energyLabel}</span>
+      <div class="preset-videos">${vidA}${vidB}</div>
+      <div class="preset-actions">
+        <button class="icon-btn" onclick="editPreset(${i})" title="Edit">✎</button>
+        <button class="icon-btn del" onclick="confirmDelete(${i})" title="Delete">×</button>
+      </div>
+    `;
+    list.appendChild(row);
+  });
+  
+  document.getElementById('presetCount').textContent = presets.length + ' presets';
+  renderGfxList();
+}
+
+// ── GFX Registry ──────────────────────────────────────────────
+function renderGfxList() {
+  const list = document.getElementById('gfxList');
+  list.innerHTML = '';
+  
+  // Collect all GFX IDs (registry + any custom in presets)
+  const allGfx = new Set(GFX_REGISTRY.map(g => g.id));
+  presets.forEach(p => { if (p.gfx) allGfx.add(p.gfx); });
+  
+  allGfx.forEach(id => {
+    const reg = GFX_REGISTRY.find(g => g.id === id);
+    const tag = document.createElement('span');
+    tag.className = 'gfx-tag';
+    tag.textContent = id;
+    if (reg) tag.title = reg.desc;
+    list.appendChild(tag);
+  });
+  
+  // Update GFX select in editor
+  const sel = document.getElementById('editGfx');
+  sel.innerHTML = '';
+  allGfx.forEach(id => {
+    const reg = GFX_REGISTRY.find(g => g.id === id);
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = reg ? `${id} (${reg.name})` : id;
+    sel.appendChild(opt);
+  });
+}
+
+// ── Editor ────────────────────────────────────────────────────
+function editPreset(idx) {
+  editingIdx = idx;
+  const p = presets[idx];
+  
+  document.getElementById('editName').value = p.name;
+  document.getElementById('editGfx').value = p.gfx;
+  document.getElementById('editEnergy').value = p.energy;
+  document.getElementById('editVideoA').value = p.videoA || '';
+  document.getElementById('editVideoB').value = p.videoB || '';
+  document.getElementById('statusA').textContent = '';
+  document.getElementById('statusB').textContent = '';
+  document.getElementById('editorTitle').textContent = 'EDIT — ' + p.name;
+  document.getElementById('deleteBtn').style.display = 'inline-block';
+  
+  document.getElementById('editorPanel').classList.add('open');
+  renderList();
+}
+
+function addPreset() {
+  editingIdx = -1;
+  
+  document.getElementById('editName').value = 'OMEN' + (presets.length + 1);
+  document.getElementById('editGfx').value = 'video_rings';
+  document.getElementById('editEnergy').value = '3';
+  document.getElementById('editVideoA').value = '';
+  document.getElementById('editVideoB').value = '';
+  document.getElementById('statusA').textContent = '';
+  document.getElementById('statusB').textContent = '';
+  document.getElementById('editorTitle').textContent = 'NEW PRESET';
+  document.getElementById('deleteBtn').style.display = 'none';
+  
+  document.getElementById('editorPanel').classList.add('open');
+}
+
+function savePreset() {
+  const name = document.getElementById('editName').value.trim();
+  const gfx = document.getElementById('editGfx').value;
+  const energy = parseInt(document.getElementById('editEnergy').value);
+  const videoA = document.getElementById('editVideoA').value.trim() || null;
+  const videoB = document.getElementById('editVideoB').value.trim() || null;
+  
+  if (!name) { alert('Name required'); return; }
+  
+  const preset = { name, videoA, videoB, gfx, energy };
+  
+  if (editingIdx >= 0) {
+    presets[editingIdx] = preset;
+  } else {
+    presets.push(preset);
+  }
+  
+  saveToStorage();
+  closeEditor();
+  renderList();
+}
+
+function closeEditor() {
+  editingIdx = -1;
+  document.getElementById('editorPanel').classList.remove('open');
+  renderList();
+}
+
+function confirmDelete(idx) {
+  if (confirm('Delete ' + presets[idx].name + '?')) {
+    presets.splice(idx, 1);
+    saveToStorage();
+    closeEditor();
+    renderList();
+  }
+}
+
+function deletePreset() {
+  if (editingIdx >= 0) confirmDelete(editingIdx);
+}
+
+// ── Upload to R2 ──────────────────────────────────────────────
+async function handleUpload(ab) {
+  const fileInput = document.getElementById('file' + ab);
+  const statusEl = document.getElementById('status' + ab);
+  const nameInput = document.getElementById('editVideo' + ab);
+  const workerUrl = document.getElementById('workerUrl').value.trim();
+  
+  if (!fileInput.files[0]) return;
+  
+  const file = fileInput.files[0];
+  const fileName = file.name.toLowerCase().replace(/[^a-z0-9._-]/g, '');
+  
+  // If no worker URL, just set the filename (manual upload to R2)
+  if (!workerUrl) {
+    nameInput.value = fileName;
+    statusEl.textContent = '← upload to R2 manually';
+    statusEl.className = 'upload-status';
+    return;
+  }
+  
+  // Upload via worker
+  statusEl.textContent = 'uploading...';
+  statusEl.className = 'upload-status uploading';
+  
+  try {
+    const formData = new FormData();
+    formData.append('file', file, fileName);
+    
+    const resp = await fetch(workerUrl + '/upload/' + fileName, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': 'video/mp4' },
+    });
+    
+    if (resp.ok) {
+      nameInput.value = fileName;
+      statusEl.textContent = '✓ uploaded';
+      statusEl.className = 'upload-status';
+    } else {
+      statusEl.textContent = 'error: ' + resp.status;
+      statusEl.className = 'upload-status error';
+    }
+  } catch (err) {
+    statusEl.textContent = 'error: ' + err.message;
+    statusEl.className = 'upload-status error';
+  }
+}
+
+// ── Export ─────────────────────────────────────────────────────
+function exportPresetsJS() {
+  const cdn = document.getElementById('cdnUrl').value.trim();
+  
+  let lines = [];
+  lines.push('// ØMEN Preset Registry — generated by Preset Editor');
+  lines.push('// energy: 1 = ambient/calm, 2 = building/mid, 3 = groove/peak');
+  
+  if (cdn) {
+    lines.push("const CDN = '" + cdn + "';");
+    lines.push('');
+    lines.push('const PRESETS_DATA = [');
+    presets.forEach((p, i) => {
+      const va = p.videoA ? 'CDN+"' + p.videoA + '"' : 'null';
+      const vb = p.videoB ? 'CDN+"' + p.videoB + '"' : 'null';
+      const comma = i < presets.length - 1 ? ',' : '';
+      lines.push('  { "name": "' + p.name + '", "videoA": ' + va + ', "videoB": ' + vb + ', "gfx": "' + p.gfx + '", "energy": ' + p.energy + ' }' + comma);
+    });
+  } else {
+    lines.push('const PRESETS_DATA = [');
+    presets.forEach((p, i) => {
+      const va = p.videoA ? '"' + p.videoA + '"' : 'null';
+      const vb = p.videoB ? '"' + p.videoB + '"' : 'null';
+      const comma = i < presets.length - 1 ? ',' : '';
+      lines.push('  { "name": "' + p.name + '", "videoA": ' + va + ', "videoB": ' + vb + ', "gfx": "' + p.gfx + '", "energy": ' + p.energy + ' }' + comma);
+    });
+  }
+  lines.push('];');
+  
+  downloadFile('presets.js', lines.join('\n'));
+  setStatus('Exported presets.js');
+}
+
+function exportJSON() {
+  const data = { presets, cdnUrl: document.getElementById('cdnUrl').value.trim() };
+  downloadFile('omen-pack.json', JSON.stringify(data, null, 2));
+  setStatus('Exported JSON');
+}
+
+function importJSON() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (data.presets) {
+          presets = data.presets;
+          if (data.cdnUrl) document.getElementById('cdnUrl').value = data.cdnUrl;
+          saveToStorage();
+          renderList();
+          setStatus('Imported ' + presets.length + ' presets');
+        }
+      } catch (err) {
+        alert('Invalid JSON: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function downloadFile(name, content) {
+  const blob = new Blob([content], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function setStatus(text) {
+  document.getElementById('statusText').textContent = text;
+  document.getElementById('statusDot').className = 'status-dot';
+}
+
+// ── Init ──────────────────────────────────────────────────────
+loadPresets();
+</script>
+
+</body>
+</html>

@@ -239,6 +239,7 @@
 <div class="header">
   <h1>ØMEN</h1>
   <div class="status" id="connStatus">DISCONNECTED</div>
+  <div class="status" id="cdjStatus" style="display:none;">CDJ</div>
 </div>
 
 <div class="bpm-display" id="bpmDisplay">— BPM</div>
@@ -444,6 +445,14 @@ function updateUI(s) {
   // BPM
   const bpmEl = document.getElementById('bpmDisplay');
   if (bpmEl) bpmEl.textContent = s.bpm > 0 ? s.bpm.toFixed(1) + ' BPM' : '— BPM';
+  
+  // CDJ status
+  const cdjEl = document.getElementById('cdjStatus');
+  if (cdjEl) {
+    cdjEl.style.display = s.cdjConnected ? 'inline-block' : 'none';
+    cdjEl.classList.toggle('connected', s.cdjConnected);
+    cdjEl.textContent = s.cdjTrackTitle ? 'CDJ: ' + s.cdjTrackTitle : 'CDJ';
+  }
   
   // Beat dots
   if (s.beatJustFired && s.bar16 !== lastBar16) {
