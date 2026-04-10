@@ -510,6 +510,40 @@ resize();
 // Audio Init
 // ═══════════════════════════════════════════════════════════════
 
+function showDevicePicker(devices) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    
+    const panel = document.createElement('div');
+    panel.style.cssText = 'background:#141414;border:1px solid #333;padding:20px;max-width:400px;width:90%;font-family:monospace;';
+    
+    const title = document.createElement('div');
+    title.textContent = 'SELECT AUDIO INPUT';
+    title.style.cssText = 'font-size:11px;letter-spacing:0.2em;color:#ff2200;margin-bottom:16px;';
+    panel.appendChild(title);
+    
+    devices.forEach(d => {
+      const btn = document.createElement('button');
+      btn.textContent = d.label || 'Audio Device ' + d.deviceId.slice(0, 8);
+      btn.style.cssText = 'display:block;width:100%;padding:10px;margin-bottom:6px;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;font-family:monospace;font-size:11px;cursor:pointer;text-align:left;';
+      btn.onmouseover = () => { btn.style.borderColor = '#ff2200'; };
+      btn.onmouseout = () => { btn.style.borderColor = '#2a2a2a'; };
+      btn.onclick = () => { overlay.remove(); resolve(d.deviceId); };
+      panel.appendChild(btn);
+    });
+    
+    const cancel = document.createElement('button');
+    cancel.textContent = 'CANCEL';
+    cancel.style.cssText = 'display:block;width:100%;padding:8px;margin-top:8px;background:none;border:1px solid #2a2a2a;color:#666;font-family:monospace;font-size:10px;cursor:pointer;letter-spacing:0.15em;';
+    cancel.onclick = () => { overlay.remove(); resolve(null); };
+    panel.appendChild(cancel);
+    
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+  });
+}
+
 async function startAudio(source) {
   try {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -535,25 +569,27 @@ async function startAudio(source) {
       sourceLabel = 'SYSTEM AUDIO';
     }
     else if (source === 'linein') {
-      // Let user pick specific audio device
+      // First get permission (labels empty without it)
+      const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      tempStream.getTracks().forEach(t => t.stop());
+      
+      // Now enumerate with labels
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices.filter(d => d.kind === 'audioinput');
       
-      // If multiple inputs, prefer non-default (likely USB interface)
-      let deviceId = undefined;
-      const usbDevice = audioInputs.find(d => 
-        d.label.toLowerCase().includes('usb') || 
-        d.label.toLowerCase().includes('interface') ||
-        d.label.toLowerCase().includes('line')
-      );
-      if (usbDevice) deviceId = usbDevice.deviceId;
-      else if (audioInputs.length > 1) deviceId = audioInputs[1].deviceId;
-
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: deviceId ? { deviceId: { exact: deviceId } } : true
-      });
-      const activeDevice = audioInputs.find(d => d.deviceId === deviceId);
-      sourceLabel = 'LINE-IN: ' + (activeDevice?.label || 'USB Audio');
+      if (audioInputs.length > 1) {
+        // Show device picker
+        const deviceId = await showDevicePicker(audioInputs);
+        if (!deviceId) { audioCtx.close(); audioCtx = null; return; }
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { exact: deviceId } }
+        });
+        const picked = audioInputs.find(d => d.deviceId === deviceId);
+        sourceLabel = 'LINE-IN: ' + (picked?.label || 'Audio Device');
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        sourceLabel = 'LINE-IN: ' + (audioInputs[0]?.label || 'Default');
+      }
     }
     else {
       // Mic fallback
