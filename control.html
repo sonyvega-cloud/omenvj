@@ -419,7 +419,8 @@ ch.onmessage = (e) => {
     if (msg.type === 'pong') {
       const newPresets = msg.presets || [];
       if (newPresets.length === 0) return;
-      if (JSON.stringify(newPresets) !== JSON.stringify(presetNames)) {
+      if (newPresets.length !== presetNames.length || JSON.stringify(newPresets) !== JSON.stringify(presetNames)) {
+        console.log('[CTRL] Preset list changed:', presetNames.length, '→', newPresets.length);
         presetNames = newPresets;
         buildPresetButtons();
       }
@@ -494,17 +495,18 @@ function updateUI(s) {
   presetNames.forEach((_, i) => {
     const el = document.getElementById('cpg' + i);
     if (!el) return;
-    el.className = 'btn';
+    let cls = 'btn';
     const excluded = s.autopilotEnabled && !pool.includes(i);
     if (excluded) {
-      el.classList.add('excluded');
+      cls += ' excluded';
     } else if (i === s.activePreset) {
-      el.classList.add('active');
+      cls += ' active';
     } else if (s.beatCutEnabled && s.beatCutActive && s.beatCutActive.includes(i)) {
-      el.classList.add('bc-active');
+      cls += ' bc-active';
     } else if (s.presetReady && s.presetReady[i]) {
-      el.classList.add('loaded');
+      cls += ' loaded';
     }
+    if (el.className !== cls) el.className = cls;
   });
   
   // A/B
