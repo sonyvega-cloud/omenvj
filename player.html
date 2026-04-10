@@ -437,13 +437,28 @@ let videoSpeedMultiplier = 1.0; // ½×, 1×, 2×
 const SILENCE_THRESHOLD = 0.05;
 const SILENCE_DAMPEN_AFTER = 90;
 
-// ── Preset Registry (like iOS kPresets) ──────────────────────────
-// ── Preset Registry (from presets.js) ─────────────────────────────
-let PRESETS = typeof PRESETS_DATA !== 'undefined' ? PRESETS_DATA : [
-  { name: 'OMEN2', videoA: 'omen2a.mp4', videoB: 'omen2b.mp4', gfx: 'video_rings' },
-  { name: 'OMEN3', videoA: 'omen3a.mp4', videoB: 'omen3b.mp4', gfx: 'beat_circles' },
-  { name: 'OMEN4', videoA: 'omen4a.mp4', videoB: 'omen4b.mp4', gfx: 'dot_matrix' },
-];
+// ── Preset Registry (localStorage from editor → presets.js fallback) ──
+let PRESETS = [];
+(function loadPresets() {
+  const saved = localStorage.getItem('omen_presets');
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed.length > 0) {
+        const cdn = typeof CDN !== 'undefined' ? CDN : '';
+        PRESETS = parsed.map(p => ({
+          ...p,
+          videoA: p.videoA && !p.videoA.startsWith('http') ? cdn + p.videoA : p.videoA,
+          videoB: p.videoB && !p.videoB.startsWith('http') ? cdn + p.videoB : p.videoB,
+        }));
+        console.log('[PRESETS] Loaded ' + PRESETS.length + ' from editor (localStorage)');
+        return;
+      }
+    } catch(e) {}
+  }
+  PRESETS = typeof PRESETS_DATA !== 'undefined' ? PRESETS_DATA : [];
+  console.log('[PRESETS] Loaded ' + PRESETS.length + ' from presets.js');
+})();
 
 let videoLoaded = false;
 let presetReady = new Array(PRESETS.length).fill(false);
