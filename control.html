@@ -239,6 +239,18 @@
   <h1>ØMEN</h1>
   <div class="status" id="connStatus">DISCONNECTED</div>
   <div class="status" id="cdjStatus" style="display:none;">CDJ</div>
+  <div class="status" id="relayStatus" style="display:none;">REMOTE</div>
+</div>
+
+<!-- PIN Connect (shown when no BroadcastChannel connection) -->
+<div id="pinConnect" style="display:none; padding:12px 16px; background:rgba(255,34,0,0.05); border-bottom:1px solid rgba(255,255,255,0.08);">
+  <div style="font-size:10px; color:rgba(255,255,255,0.4); letter-spacing:0.15em; margin-bottom:8px;">REMOTE CONNECT — enter PIN from player</div>
+  <div style="display:flex; gap:8px; align-items:center;">
+    <input id="pinInput" type="text" maxlength="4" placeholder="PIN" inputmode="numeric" pattern="[0-9]*"
+      style="font-family:inherit; font-size:18px; width:80px; text-align:center; padding:8px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.15); color:#ff2200; letter-spacing:0.3em; outline:none;">
+    <button onclick="connectWithPin()" style="font-family:inherit; font-size:10px; letter-spacing:0.15em; padding:10px 16px; background:rgba(255,34,0,0.1); border:1px solid rgba(255,34,0,0.3); color:#ff2200; cursor:pointer;">CONNECT</button>
+    <span id="pinError" style="font-size:9px; color:#cc4422;"></span>
+  </div>
 </div>
 
 <div class="bpm-display" id="bpmDisplay">— BPM</div>
@@ -362,7 +374,16 @@
 // ═══════════════════════════════════════════════════════════════
 
 const ch = new BroadcastChannel('omen');
+const RELAY_URL = 'https://omen-relay.sony-vega.workers.dev';
 let connected = false;
+let relayWs = null;
+let relayConnected = false;
+
+// Send to both BroadcastChannel and WebSocket relay
+function send(msg) {
+  ch.postMessage(msg);
+  if (relayWs && relayWs.readyState === 1) relayWs.send(JSON.stringify(msg));
+}
 let presetNames = [];
 // Read from localStorage (editor) first, then presets.js fallback
 (function() {
@@ -396,38 +417,97 @@ for (let i = 0; i < 16; i++) {
 buildPresetButtons();
 
 // ── Ping player on load ───────────────────────────────────────
-ch.postMessage({ type: 'ping' });
+send({ type: 'ping' });
 setInterval(() => {
   // Always ping as keepalive — player uses any message to confirm connection
-  ch.postMessage({ type: 'ping' });
+  send({ type: 'ping' });
 }, 3000);
 
-// ── Receive state from player ─────────────────────────────────
-ch.onmessage = (e) => {
-  try {
-    const msg = e.data;
-    if (!msg || !msg.type) return;
-    
-    // Any message from player = connected
-    if (!connected) {
-      connected = true;
-      document.getElementById('connStatus').textContent = 'CONNECTED';
-      document.getElementById('connStatus').classList.add('connected');
-    }
-    
-    if (msg.type === 'pong') {
-      // Preset list from localStorage, no rebuild needed from pong
-      return;
-    }
-    
-    if (msg.type === 'state') {
-      state = msg;
-      updateUI(msg);
-    }
-  } catch (err) {
-    console.error('controller onmessage:', err);
+// ── Handle messages from player (BC or WS) ───────────────────
+function handlePlayerMessage(msg) {
+  if (!msg || !msg.type) return;
+  
+  if (!connected && !relayConnected) {
+    connected = true;
+    document.getElementById('connStatus').textContent = 'CONNECTED';
+    document.getElementById('connStatus').classList.add('connected');
+    document.getElementById('pinConnect').style.display = 'none';
   }
+  
+  if (msg.type === 'pong') return; // presets from localStorage
+  if (msg.type === 'ws_connected' || msg.type === 'ws_peer') return; // relay meta
+  
+  if (msg.type === 'state') {
+    state = msg;
+    updateUI(msg);
+  }
+}
+
+ch.onmessage = (e) => {
+  try { handlePlayerMessage(e.data); } catch (err) { console.error('BC:', err); }
 };
+
+// ── WebSocket Relay (remote) ──────────────────────────────────
+async function connectWithPin() {
+  const pin = document.getElementById('pinInput').value.trim();
+  if (pin.length !== 4) { document.getElementById('pinError').textContent = 'Enter 4-digit PIN'; return; }
+  
+  document.getElementById('pinError').textContent = 'connecting...';
+  
+  try {
+    const resp = await fetch(RELAY_URL + '/session/join?pin=' + pin);
+    if (!resp.ok) { document.getElementById('pinError').textContent = 'Invalid PIN'; return; }
+    const data = await resp.json();
+    
+    if (data.error) { document.getElementById('pinError').textContent = data.error; return; }
+    
+    // Connect WebSocket as controller
+    const wsUrl = RELAY_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+    relayWs = new WebSocket(wsUrl + '/ws?session=' + data.sessionId + '&role=controller');
+    
+    relayWs.onopen = () => {
+      relayConnected = true;
+      document.getElementById('connStatus').textContent = 'REMOTE';
+      document.getElementById('connStatus').classList.add('connected');
+      document.getElementById('relayStatus').style.display = 'inline-block';
+      document.getElementById('relayStatus').classList.add('connected');
+      document.getElementById('pinConnect').style.display = 'none';
+      console.log('[RELAY] Connected as controller');
+      send({ type: 'ping' });
+    };
+    
+    relayWs.onmessage = (e) => {
+      try { handlePlayerMessage(JSON.parse(e.data)); } catch (err) {}
+    };
+    
+    relayWs.onclose = () => {
+      relayConnected = false;
+      document.getElementById('relayStatus').style.display = 'none';
+      if (!connected) {
+        document.getElementById('connStatus').textContent = 'DISCONNECTED';
+        document.getElementById('connStatus').classList.remove('connected');
+        document.getElementById('pinConnect').style.display = 'block';
+      }
+    };
+    
+    relayWs.onerror = () => { relayWs.close(); };
+    
+  } catch (err) {
+    document.getElementById('pinError').textContent = 'Network error';
+  }
+}
+
+// Show PIN input if no BroadcastChannel connection after 2 seconds
+setTimeout(() => {
+  if (!connected) {
+    document.getElementById('pinConnect').style.display = 'block';
+  }
+}, 2000);
+
+// Enter key on PIN input
+document.getElementById('pinInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') connectWithPin();
+});
 
 function buildPresetButtons() {
   const container = document.getElementById('presetBtns');
@@ -560,19 +640,19 @@ function updateUI(s) {
 }
 
 // ── Send commands ─────────────────────────────────────────────
-function sendTap()              { ch.postMessage({ type: 'tap' }); }
-function sendPreset(idx)        { ch.postMessage({ type: 'preset', idx }); }
-function sendBeatCutToggle()    { ch.postMessage({ type: 'beatcut', enabled: !state.beatCutEnabled }); }
-function sendBeatCutInterval(n) { ch.postMessage({ type: 'beatcut', interval: n }); }
-function sendColor(idx)         { ch.postMessage({ type: 'color', idx }); }
-function sendStrobo()           { ch.postMessage({ type: 'strobo' }); }
-function sendVideoHide()        { ch.postMessage({ type: 'videohide' }); }
-function sendHudToggle()        { ch.postMessage({ type: 'hudtoggle' }); }
-function sendAutopilot()        { ch.postMessage({ type: 'autopilot' }); }
-function sendAutoFeature(f)     { ch.postMessage({ type: 'autofeature', feature: f }); }
-function sendSpeed(val)         { ch.postMessage({ type: 'speed', value: val }); }
-function sendFx(val)            { ch.postMessage({ type: 'fx', value: val }); }
-function sendPinch(val)         { ch.postMessage({ type: 'pinch', value: val }); }
+function sendTap()              { send({ type: 'tap' }); }
+function sendPreset(idx)        { send({ type: 'preset', idx }); }
+function sendBeatCutToggle()    { send({ type: 'beatcut', enabled: !state.beatCutEnabled }); }
+function sendBeatCutInterval(n) { send({ type: 'beatcut', interval: n }); }
+function sendColor(idx)         { send({ type: 'color', idx }); }
+function sendStrobo()           { send({ type: 'strobo' }); }
+function sendVideoHide()        { send({ type: 'videohide' }); }
+function sendHudToggle()        { send({ type: 'hudtoggle' }); }
+function sendAutopilot()        { send({ type: 'autopilot' }); }
+function sendAutoFeature(f)     { send({ type: 'autofeature', feature: f }); }
+function sendSpeed(val)         { send({ type: 'speed', value: val }); }
+function sendFx(val)            { send({ type: 'fx', value: val }); }
+function sendPinch(val)         { send({ type: 'pinch', value: val }); }
 
 // ── TAP: Space key or tap on button ───────────────────────────
 document.addEventListener('keydown', (e) => {

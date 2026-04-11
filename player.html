@@ -374,6 +374,9 @@
 <div id="controls-hint" class="hidden">
   SPACE = tap/sync &nbsp;&nbsp; Q/W/E = preset &nbsp;&nbsp; B = beat cut &nbsp;&nbsp; S = strobo &nbsp;&nbsp; V = video hide &nbsp;&nbsp; 2/4/8 = interval &nbsp;&nbsp; F = fullscreen
 </div>
+<div id="pinDisplay" style="display:none; position:fixed; top:12px; right:16px; z-index:999; font-family:monospace; font-size:11px; color:rgba(255,255,255,0.4);">
+  PIN: <span id="pinCode" style="color:#ff2200; font-size:14px; letter-spacing:0.2em;">----</span>
+</div>
 
 <script src="presets.js"></script>
 <script>
@@ -2323,28 +2326,30 @@ function connectCDJ() {
 connectCDJ();
 
 // ═══════════════════════════════════════════════════════════════
-// BroadcastChannel — Dual Window Communication
+// Communication — BroadcastChannel (local) + WebSocket (remote)
 // ═══════════════════════════════════════════════════════════════
 
+const RELAY_URL = 'https://omen-relay.sony-vega.workers.dev';
 const omenChannel = new BroadcastChannel('omen');
 let controllerConnected = false;
+let relayWs = null;
+let relaySessionId = '';
+let relayPin = '';
 
-// Listen for commands from controller
-omenChannel.onmessage = (e) => {
-  const msg = e.data;
+// ── Shared command handler (from BC or WS) ────────────────────
+function handleCommand(msg) {
   if (!msg || !msg.type) return;
-  
-  // Any message from controller = connection alive
   controllerConnected = true;
   
   switch (msg.type) {
     case 'ping':
-      // Don't respond until presets are loaded
       if (PRESETS.length === 0) break;
-      controllerConnected = true;
       document.getElementById('hud').classList.add('hidden');
       document.getElementById('controls-hint').classList.add('hidden');
-      omenChannel.postMessage({ type: 'pong', presets: PRESETS.map(p => p.name) });
+      // Reply on both channels
+      const pong = { type: 'pong', presets: PRESETS.map(p => p.name) };
+      omenChannel.postMessage(pong);
+      if (relayWs && relayWs.readyState === 1) relayWs.send(JSON.stringify(pong));
       break;
     case 'tap':
       handleTap();
@@ -2408,7 +2413,67 @@ omenChannel.onmessage = (e) => {
       autopilotEnabled = autoEnergyEnabled || autoFxEnabled || autoBeatCutEnabled || autoStroboEnabled || autoColorEnabled || autoSpeedEnabled;
       break;
   }
+}
+
+// ── BroadcastChannel (same device) ────────────────────────────
+omenChannel.onmessage = (e) => {
+  try { handleCommand(e.data); } catch (err) { console.error('BC error:', err); }
 };
+
+// ── WebSocket Relay (remote mobile) ───────────────────────────
+async function initRelay() {
+  try {
+    // Create session → get PIN
+    const resp = await fetch(RELAY_URL + '/session/create', { method: 'POST' });
+    if (!resp.ok) { console.warn('[RELAY] Create failed:', resp.status); return; }
+    const data = await resp.json();
+    relayPin = data.pin;
+    relaySessionId = data.sessionId;
+    
+    // Show PIN
+    document.getElementById('pinCode').textContent = relayPin;
+    document.getElementById('pinDisplay').style.display = 'block';
+    console.log('[RELAY] Session PIN:', relayPin);
+    
+    // Connect WebSocket as player
+    connectRelay();
+  } catch (err) {
+    console.warn('[RELAY] Init failed:', err.message);
+  }
+}
+
+function connectRelay() {
+  if (!relaySessionId) return;
+  
+  try {
+    const wsUrl = RELAY_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+    relayWs = new WebSocket(wsUrl + '/ws?session=' + relaySessionId + '&role=player');
+    
+    relayWs.onopen = () => {
+      console.log('[RELAY] Connected as player');
+    };
+    
+    relayWs.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'ws_connected' || msg.type === 'ws_peer') return; // relay meta
+        handleCommand(msg);
+      } catch (err) {}
+    };
+    
+    relayWs.onclose = () => {
+      console.log('[RELAY] Disconnected, reconnecting...');
+      setTimeout(connectRelay, 3000);
+    };
+    
+    relayWs.onerror = () => { relayWs.close(); };
+  } catch (err) {
+    setTimeout(connectRelay, 5000);
+  }
+}
+
+// Start relay session on page load
+initRelay();
 
 // Broadcast state to controller (every 3 frames ≈ 20Hz)
 let broadcastCounter = 0;
@@ -2416,7 +2481,7 @@ let beatJustFired = false;
 let beatFiredFrames = 0;
 
 function broadcastState() {
-  if (!controllerConnected) return;
+  if (!controllerConnected && !(relayWs && relayWs.readyState === 1)) return;
   broadcastCounter++;
   
   const urgent = beatFiredFrames > 0;
@@ -2425,7 +2490,7 @@ function broadcastState() {
   if (beatFiredFrames > 0) beatFiredFrames--;
   
   try {
-    omenChannel.postMessage({
+    const state = {
       type: 'state',
       bpm: bpm || 0,
       beatIndex: beatIndex || 0,
@@ -2461,7 +2526,15 @@ function broadcastState() {
       autoSpeedEnabled: !!autoSpeedEnabled,
       cdjConnected: !!cdjConnected,
       cdjTrackTitle: cdjTrackTitle || '',
-    });
+    };
+    
+    // Send to local controller (BroadcastChannel)
+    omenChannel.postMessage(state);
+    
+    // Send to remote controller (WebSocket relay)
+    if (relayWs && relayWs.readyState === 1) {
+      relayWs.send(JSON.stringify(state));
+    }
   } catch (err) {
     console.error('broadcast error:', err);
   }
