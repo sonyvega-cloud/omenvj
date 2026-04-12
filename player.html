@@ -1413,6 +1413,22 @@ function updateVideoVisibility() {
 function switchToPreset(idx) {
   if (!presetReady[idx]) return;
   activePreset = idx;
+  
+  // Seek new preset's videos to current loop position
+  // So beat cut doesn't show random frame from background playback
+  const preset = PRESETS[idx];
+  if (preset && preset.videoA && abClockStart > 0 && videoSpeed > 0) {
+    const elapsed = performance.now() - abClockStart;
+    const durationMs = VIDEO_DURATION_S * 1000;
+    const posInLoop = (elapsed * videoSpeed / durationMs) % 1.0; // 0-1 within loop
+    const seekTime = posInLoop * VIDEO_DURATION_S; // seconds
+    
+    const vidA = document.getElementById(`vid${idx}a`);
+    const vidB = document.getElementById(`vid${idx}b`);
+    if (vidA && vidA.readyState >= 2) { vidA.currentTime = seekTime; vidA.playbackRate = videoSpeed; }
+    if (vidB && vidB.readyState >= 2) { vidB.currentTime = seekTime; vidB.playbackRate = videoSpeed; }
+  }
+  
   updateVideoVisibility();
   updatePresetGrid();
 }
@@ -2485,9 +2501,14 @@ function broadcastState() {
   broadcastCounter++;
   
   const urgent = beatFiredFrames > 0;
-  if (!urgent && broadcastCounter % 3 !== 0) return;
-  
   if (beatFiredFrames > 0) beatFiredFrames--;
+  
+  // BroadcastChannel: 20Hz (every 3 frames) — local, free
+  const bcTick = urgent || broadcastCounter % 3 === 0;
+  // WebSocket relay: 5Hz (every 12 frames) — remote, metered
+  const wsTick = urgent || broadcastCounter % 12 === 0;
+  
+  if (!bcTick && !wsTick) return;
   
   try {
     const state = {
@@ -2528,11 +2549,11 @@ function broadcastState() {
       cdjTrackTitle: cdjTrackTitle || '',
     };
     
-    // Send to local controller (BroadcastChannel)
-    omenChannel.postMessage(state);
+    // Send to local controller (BroadcastChannel) — 20Hz
+    if (bcTick) omenChannel.postMessage(state);
     
-    // Send to remote controller (WebSocket relay)
-    if (relayWs && relayWs.readyState === 1) {
+    // Send to remote controller (WebSocket relay) — 5Hz
+    if (wsTick && relayWs && relayWs.readyState === 1) {
       relayWs.send(JSON.stringify(state));
     }
   } catch (err) {
