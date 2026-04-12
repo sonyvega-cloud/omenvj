@@ -375,14 +375,19 @@
 
 const ch = new BroadcastChannel('omen');
 const RELAY_URL = 'https://omen-relay.sony-vega.workers.dev';
-let connected = false;
+let connected = false;      // BC connected (same PC)
 let relayWs = null;
-let relayConnected = false;
+let relayConnected = false; // WS connected (remote)
 
-// Send to both BroadcastChannel and WebSocket relay
+// Send to active channel ONLY — BC if local, WS if remote
 function send(msg) {
-  ch.postMessage(msg);
-  if (relayWs && relayWs.readyState === 1) relayWs.send(JSON.stringify(msg));
+  if (relayConnected && relayWs && relayWs.readyState === 1) {
+    // Remote mode: WS only
+    relayWs.send(JSON.stringify(msg));
+  } else {
+    // Local mode: BC only
+    ch.postMessage(msg);
+  }
 }
 let presetNames = [];
 // Read from localStorage (editor) first, then presets.js fallback
@@ -423,19 +428,29 @@ setInterval(() => {
   send({ type: 'ping' });
 }, 3000);
 
-// ── Handle messages from player (BC or WS) ───────────────────
-function handlePlayerMessage(msg) {
+// ── Handle messages from player ───────────────────────────────
+function handlePlayerMessage(msg, source) {
   if (!msg || !msg.type) return;
+  if (msg.type === 'ws_connected' || msg.type === 'ws_peer') return;
   
-  if (!connected && !relayConnected) {
+  // Track connection by source
+  if (source === 'bc' && !connected) {
     connected = true;
     document.getElementById('connStatus').textContent = 'CONNECTED';
     document.getElementById('connStatus').classList.add('connected');
     document.getElementById('pinConnect').style.display = 'none';
   }
+  if (source === 'ws' && !relayConnected) return;
   
-  if (msg.type === 'pong') return; // presets from localStorage
-  if (msg.type === 'ws_connected' || msg.type === 'ws_peer') return; // relay meta
+  // Accept preset list from pong (remote has different localStorage)
+  if (msg.type === 'pong') {
+    const newPresets = msg.presets || [];
+    if (newPresets.length > 0 && newPresets.length !== presetNames.length) {
+      presetNames = newPresets;
+      buildPresetButtons();
+    }
+    return;
+  }
   
   if (msg.type === 'state') {
     state = msg;
@@ -443,8 +458,9 @@ function handlePlayerMessage(msg) {
   }
 }
 
+// BroadcastChannel — local same-PC
 ch.onmessage = (e) => {
-  try { handlePlayerMessage(e.data); } catch (err) { console.error('BC:', err); }
+  try { handlePlayerMessage(e.data, 'bc'); } catch (err) { console.error('BC:', err); }
 };
 
 // ── WebSocket Relay (remote) ──────────────────────────────────
@@ -477,7 +493,7 @@ async function connectWithPin() {
     };
     
     relayWs.onmessage = (e) => {
-      try { handlePlayerMessage(JSON.parse(e.data)); } catch (err) {}
+      try { handlePlayerMessage(JSON.parse(e.data), 'ws'); } catch (err) {}
     };
     
     relayWs.onclose = () => {
