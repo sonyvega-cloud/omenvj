@@ -7,13 +7,17 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   
-  body {
+  html, body {
     background: #000;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    height: 100%;
+    width: 100%;
+  }
+  body {
     color: #fff;
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    overflow: hidden;
-    height: 100vh;
-    width: 100vw;
   }
 
   /* ── Video layer ─────────────────────────────────────── */
@@ -56,6 +60,16 @@
       rgba(0,0,0,0.92) 92%,
       rgba(0,0,0,1.0) 100%
     );
+  }
+
+  /* ── Edge mask — guarantees solid black edges on any aspect ratio ── */
+  #edgeMask {
+    position: fixed;
+    top: -50px; left: -50px;
+    width: calc(100vw + 100px); height: calc(100vh + 100px);
+    z-index: 3;
+    pointer-events: none;
+    box-shadow: inset 0 0 80px 40px #000;
   }
 
   /* ── Fullscreen canvas (GFX over vignette) ─────────── */
@@ -268,6 +282,7 @@
 <!-- ── Video layer (generated dynamically) ────────────── -->
 <div id="videoLayer"></div>
 <div id="videoVignette"></div>
+<div id="edgeMask"></div>
 
 <!-- ── Setup: Audio source selector ──────────────────── -->
 <div id="setup">
@@ -849,7 +864,8 @@ function updateEnergy() {
   
   // ── Watchdog: force mood rotation after MOOD_MAX_BEATS ──────
   // Prevents getting stuck in any one mood forever
-  if (moodBeatCounter >= MOOD_MAX_BEATS && autopilotEnabled) {
+  // Skip during silence — AMBIENT is correct when no audio
+  if (moodBeatCounter >= MOOD_MAX_BEATS && autopilotEnabled && smoothVol >= 0.008) {
     const prevMood = mood;
     // Force next mood in cycle
     if (mood === 'AMBIENT') mood = 'BUILDING';
@@ -1107,6 +1123,25 @@ function getAutoBeatCutInterval() {
 
 function updateAutopilot() {
   if (!autopilotEnabled) return;
+  
+  // ── SILENCE GUARD: no audio = ambient only, skip everything ──
+  if (smoothVol < 0.008) {
+    if (mood !== 'AMBIENT') {
+      mood = 'AMBIENT';
+      moodCandidate = 'AMBIENT';
+      lastAutopilotMood = '';
+      autopilotCooldown = 0;
+    }
+    // Force CAT1 preset if not already
+    const cat1 = getPresetsByEnergy(1);
+    if (cat1.length > 0 && PRESETS[activePreset]?.energy !== 1) {
+      switchToPreset(cat1[0].idx);
+    }
+    // Kill beat cut + strobo in silence
+    if (beatCutEnabled) { beatCutEnabled = false; updatePresetGrid(); }
+    if (stroboActive && !manualStrobo) { stroboActive = false; stroboFlash = 0; }
+    return; // skip all other autopilot
+  }
   
   // ── Sub-feature: FX AMOUNT (runs every frame) ───────────────
   if (autoFxEnabled) {
