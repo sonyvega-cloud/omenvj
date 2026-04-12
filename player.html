@@ -418,7 +418,17 @@ let prevBass = 0;
 let bassPulse = 0;
 let bassPulseAvg = 0;
 let volAvg = 0;
-let bassRunningAvg = 0; // slow bass baseline for drive score // volume baseline (ratchet)
+let bassRunningAvg = 0;
+let driveHistory = [];
+const DRIVE_HISTORY_LEN = 3600;  // ~60 seconds at 60fps — full track dynamic range
+let _threshAmbient = 0.65;
+let _threshBuilding = 1.02;
+let _threshPeak = 1.40;
+let moodBeatCounter = 0;
+const MOOD_MAX_BEATS = 32;
+let driveRecalcCounter = 0;
+let watchdogLockedMood = '';  // mood that watchdog forced away from
+let watchdogLockFrames = 0;   // frames remaining where locked mood is blocked
 let energyHistory = [];
 const ENERGY_HISTORY_LEN = 360; // 6 seconds at 60fps — enough for breakdown detection
 
@@ -767,30 +777,53 @@ function updateEnergy() {
   }
   const bassRatio = bassRunningAvg > 0.003 ? smoothBass / bassRunningAvg : 1.0;
   
-  // ── DRIVE SCORE: single number 0-3+ combining all signals ───
-  // pulseRatio: kick pulsing vs average (1.0 = normal)
-  // volRatio: current volume vs average (1.0 = normal)
-  // bassRatio: current bass vs average (1.0 = normal)
+  // ── DRIVE SCORE: single number combining all signals ─────────
   const driveScore = (pulseRatio * 0.4) + (volRatio * 0.3) + (bassRatio * 0.3);
-  // Normal groove ≈ 1.0, quiet interlude ≈ 0.2-0.4, peak ≈ 1.5+
   
-  // ── Candidate mood from drive score ─────────────────────────
+  // ── Drive score history for floating thresholds ─────────────
+  driveHistory.push(driveScore);
+  if (driveHistory.length > DRIVE_HISTORY_LEN) driveHistory.shift();
+  
+  // ── Floating thresholds from percentiles (recalc every 60 frames = 1s) ──
+  driveRecalcCounter++;
+  if (driveHistory.length >= 180 && driveRecalcCounter >= 60) {
+    driveRecalcCounter = 0;
+    const sorted = [...driveHistory].sort((a, b) => a - b);
+    const len = sorted.length;
+    _threshAmbient = sorted[Math.floor(len * 0.20)];   // P20
+    _threshBuilding = sorted[Math.floor(len * 0.50)];  // P50 (median)
+    _threshPeak = sorted[Math.floor(len * 0.85)];      // P85
+    
+    // Safety: minimum separation
+    if (_threshBuilding < _threshAmbient + 0.05) _threshBuilding = _threshAmbient + 0.05;
+    if (_threshPeak < _threshBuilding + 0.05) _threshPeak = _threshBuilding + 0.05;
+  }
+  const threshAmbient = _threshAmbient;
+  const threshBuilding = _threshBuilding;
+  const threshPeak = _threshPeak;
+  
+  // ── Candidate mood from floating thresholds ─────────────────
   let candidateMood = 'GROOVE';
   
   if (smoothVol < 0.008) {
-    candidateMood = 'AMBIENT';             // absolute silence
+    candidateMood = 'AMBIENT';
   }
-  else if (driveScore < 0.65) {
-    candidateMood = 'AMBIENT';             // low drive = interlude/vocal/pad
+  else if (driveScore < threshAmbient) {
+    candidateMood = 'AMBIENT';
   }
-  else if (driveScore < 1.02) {
-    candidateMood = 'BUILDING';            // medium-low = breakdown/buildup
+  else if (driveScore < threshBuilding) {
+    candidateMood = 'BUILDING';
   }
   else if (pulseRatio > 1.8 && (mood === 'BUILDING' || mood === 'AMBIENT')) {
-    candidateMood = 'DROP';                // pulse spike after quiet
+    candidateMood = 'DROP';
   }
-  else if (driveScore > 1.4 && normEnergy > 0.7) {
-    candidateMood = 'PEAK';                // everything loud
+  else if (driveScore > threshPeak && normEnergy > 0.7) {
+    candidateMood = 'PEAK';
+  }
+  
+  // Watchdog lock: can't revert to locked mood for 3 seconds
+  if (watchdogLockFrames > 0 && candidateMood === watchdogLockedMood) {
+    candidateMood = 'GROOVE'; // safe default
   }
   
   // ── Hysteresis ──────────────────────────────────────────────
@@ -801,22 +834,49 @@ function updateEnergy() {
     moodHoldFrames++;
   }
   
-  const holdRequired = candidateMood === 'AMBIENT' ? 120   // 2s (was 3s)
+  const holdRequired = candidateMood === 'AMBIENT' ? 120
                      : candidateMood === 'DROP' ? 3
                      : candidateMood === 'PEAK' ? 60
                      : candidateMood === 'BUILDING' ? 120
                      : 30;
   
   if (moodHoldFrames >= holdRequired) {
-    mood = candidateMood;
+    if (mood !== candidateMood) {
+      mood = candidateMood;
+      moodBeatCounter = 0; // reset watchdog on mood change
+    }
   }
+  
+  // ── Watchdog: force mood rotation after MOOD_MAX_BEATS ──────
+  // Prevents getting stuck in any one mood forever
+  if (moodBeatCounter >= MOOD_MAX_BEATS && autopilotEnabled) {
+    const prevMood = mood;
+    // Force next mood in cycle
+    if (mood === 'AMBIENT') mood = 'BUILDING';
+    else if (mood === 'BUILDING') mood = 'GROOVE';
+    else if (mood === 'GROOVE') mood = 'PEAK';
+    else if (mood === 'PEAK') mood = 'GROOVE';
+    else if (mood === 'DROP') mood = 'GROOVE';
+    moodBeatCounter = 0;
+    moodCandidate = mood;
+    moodHoldFrames = 999; // skip hysteresis for forced mood
+    watchdogLockedMood = prevMood; // can't go back to this
+    watchdogLockFrames = 180; // 3 seconds lock
+  }
+  
+  // Decay watchdog lock
+  if (watchdogLockFrames > 0) watchdogLockFrames--;
   
   // Store for debug
   _dbgPulseRatio = pulseRatio;
   _dbgDriveScore = driveScore;
+  _dbgThreshAmb = threshAmbient;
+  _dbgThreshBld = threshBuilding;
 }
 let _dbgPulseRatio = 1;
 let _dbgDriveScore = 1;
+let _dbgThreshAmb = 0.65;
+let _dbgThreshBld = 1.02;
 
 // ═══════════════════════════════════════════════════════════════
 // BPM Tap (Space key)
@@ -934,7 +994,8 @@ function startBeatClock(newBpm) {
 function onBeatTick() {
   beatIndex++;
   beatCount++;
-  beatFiredFrames = 5; // broadcast urgently for 5 frames
+  moodBeatCounter++; // watchdog counter
+  beatFiredFrames = 5;
   
   const bar4 = beatIndex % 4;
   const bar8 = beatIndex % 8;
@@ -1977,6 +2038,7 @@ function tick() {
           beatFlash = 1.0 * fxIntensity;
           pulseScale = 1.25 + smoothBass * 0.3;
           beatCount++;
+          moodBeatCounter++;
         }
       } else {
         if (beat) autoCorrectBpm();
@@ -1998,8 +2060,7 @@ function tick() {
     if (moodEl) moodEl.textContent = mood;
     const dbg = document.getElementById('debugDisplay');
     if (dbg) {
-      const hr = highAvg > 0.002 ? (Math.max(...(highPeakBuffer.length ? highPeakBuffer : [0])) / highAvg).toFixed(1) : '-';
-      dbg.textContent = `drv:${_dbgDriveScore.toFixed(2)} ${mood}${moodCandidate !== mood ? '→'+moodCandidate+'('+moodHoldFrames+')' : ''} | ${PRESETS[activePreset]?.name||'?'} ${cdjConnected?'CDJ':''}${stroboActive?' STRB':''}`;
+      dbg.textContent = `drv:${_dbgDriveScore.toFixed(2)} [${_dbgThreshAmb.toFixed(2)}|${_dbgThreshBld.toFixed(2)}] ${mood} b:${moodBeatCounter}/${MOOD_MAX_BEATS} | ${PRESETS[activePreset]?.name||'?'} ${cdjConnected?'CDJ':''}${stroboActive?' STRB':''}`;
     }
     
     // Beat dots
@@ -2269,6 +2330,7 @@ function connectCDJ() {
           // Fire beat directly (no timer drift)
           beatIndex++;
           beatCount++;
+          moodBeatCounter++; // watchdog counter
           beatFiredFrames = 5;
           
           // FX hierarchy
