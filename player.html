@@ -1517,9 +1517,10 @@ function updateVideoVisibility() {
     const showCam = currentPresetIsCamera && remoteCamActive && !videoHidden;
     cl.style.display = showCam ? 'block' : 'none';
     if (showCam) {
-      const videoPulse = 1.0 + (pulseScale - 1.0) * 0.25;
-      const camScale = (0.95 + smoothBass * 0.04) * pinchScale * videoPulse;
-      cl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)}) rotate(${videoCompassAngle.toFixed(4)}rad)`;
+      // Camera: no rotation (real footage), just scale with bass breathing
+      const videoPulse = 1.0 + (pulseScale - 1.0) * 0.15;
+      const camScale = (1.0 + smoothBass * 0.03) * pinchScale * videoPulse;
+      cl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)})`;
     }
   }
   
