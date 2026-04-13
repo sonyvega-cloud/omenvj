@@ -1330,10 +1330,10 @@ function updateAutopilot() {
   // Camera hold: can't switch away during hold
   if (camHoldActive) {
     if (camHoldBeats <= 0) {
-      // Hold expired → switch back to video preset
+      // Hold expired → switch to non-camera preset from active themes
       camHoldActive = false;
       const videoCandidates = PRESETS.map((p, i) => ({ ...p, idx: i }))
-        .filter(p => p.type !== 'camera' && presetReady[p.idx] && presetPool.has(p.idx));
+        .filter(p => p.type !== 'camera' && presetReady[p.idx] && presetPool.has(p.idx) && activeThemes[p.themeId || 'omen']);
       if (videoCandidates.length > 0) {
         const pick = videoCandidates[Math.floor(Math.random() * videoCandidates.length)];
         switchToPreset(pick.idx);
@@ -1786,7 +1786,12 @@ function switchToPreset(idx) {
 }
 
 function getLoadedPresets() {
-  return PRESETS.map((_, i) => i).filter(i => presetReady[i] && beatCutActive.has(i));
+  return PRESETS.map((_, i) => i).filter(i => {
+    if (!presetReady[i] || !beatCutActive.has(i)) return false;
+    const theme = PRESETS[i]?.themeId || 'omen';
+    if (!activeThemes[theme]) return false;
+    return true;
+  });
 }
 
 function beatCutNext() {
