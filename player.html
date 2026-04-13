@@ -1037,7 +1037,7 @@ function onBeatTick() {
   if (camHoldActive && camHoldBeats > 0) camHoldBeats--;
   
   // Camera injection timer (independent of mood)
-  if (activeThemes.camera && remoteCamActive && autopilotEnabled && autoEnergyEnabled && !camHoldActive) {
+  if (activeThemes.camera && autopilotEnabled && autoEnergyEnabled && !camHoldActive) {
     camInjectTimer--;
     if (camInjectTimer <= 0) {
       // Find camera presets in pool
@@ -2334,7 +2334,8 @@ function tick() {
     if (moodEl) moodEl.textContent = mood;
     const dbg = document.getElementById('debugDisplay');
     if (dbg) {
-      dbg.textContent = `${mood} | ${PRESETS[activePreset]?.name||'?'}[${PRESETS[activePreset]?.type||'vid'}] cam:${remoteCamFrameCount} p:${camPulseScale.toFixed(2)} inj:${camInjectTimer}${camHoldActive?' HOLD:'+camHoldBeats:''}${cdjConnected?' CDJ':''}${stroboActive?' STRB':''}`;
+      const tMix = (activeThemes.omen?'O':'')+(activeThemes.camera?'C':'')+(activeThemes.voyager?'V':'');
+      dbg.textContent = `${mood} | ${PRESETS[activePreset]?.name||'?'}[${PRESETS[activePreset]?.type||'vid'}] T:${tMix} inj:${camInjectTimer}${camHoldActive?' HOLD:'+camHoldBeats:''} cam:${remoteCamFrameCount}${cdjConnected?' CDJ':''}${stroboActive?' STRB':''}`;
     }
     
     // Beat dots

@@ -675,6 +675,29 @@ function updateUI(s) {
     playerCameras = s.availableCameras;
   }
   
+  // Theme mix state from player
+  if (s.activeThemes) {
+    ['omen', 'camera', 'voyager'].forEach(id => {
+      const check = document.getElementById('tm_' + id);
+      if (check) {
+        themeMix[id] = !!s.activeThemes[id];
+        check.textContent = themeMix[id] ? '✓' : '✗';
+        check.className = 'auto-check' + (themeMix[id] ? ' on' : '');
+      }
+    });
+  }
+  if (s.themeWeights) {
+    ['omen', 'camera', 'voyager'].forEach(id => {
+      const sl = document.getElementById('tw_' + id);
+      const valEl = document.getElementById('twv_' + id);
+      if (sl && s.themeWeights[id] !== undefined) {
+        themeWeights[id] = s.themeWeights[id];
+        sl.value = s.themeWeights[id];
+        if (valEl) valEl.textContent = s.themeWeights[id];
+      }
+    });
+  }
+  
   // Beat dots
   if (s.beatJustFired && s.bar16 !== lastBar16) {
     lastBar16 = s.bar16;
