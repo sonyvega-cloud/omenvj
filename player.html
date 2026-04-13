@@ -1055,11 +1055,9 @@ function onBeatTick() {
     }
   }
   
-  // Camera 2-beat pulse (fire on every 2nd beat)
-  camPulseBeat++;
-  if (camPulseBeat >= 2 && PRESETS[activePreset]?.type === 'camera') {
-    camPulseBeat = 0;
-    camPulseScale = 1.0; // trigger pulse
+  // Camera beat pulse (fire on every beat when camera active)
+  if (PRESETS[activePreset]?.type === 'camera') {
+    camPulseScale = 1.0; // trigger pulse every beat
   }
   
   const bar4 = beatIndex % 4;
@@ -1564,17 +1562,26 @@ function updateVideoVisibility() {
   
   // Remote camera layer (phone relay)
   const cl = document.getElementById('cameraLayer');
-  // Slow camera rotation: ±8° oscillation over ~8 seconds
-  const camRotDeg = Math.sin(performance.now() / 4000) * 8;
+  // Camera rotation: only during beat cut or autopilot hold, ±8° swing
+  const camIsAnimated = beatCutEnabled || camHoldActive;
+  const camRotDeg = camIsAnimated ? Math.sin(performance.now() / 4000) * 8 : 0;
+  
+  // Camera color filter
+  let camFilter = 'none';
+  if (colorIndex === 4) camFilter = 'saturate(0)';
+  else if (colorIndex !== 0) {
+    const hueMap = [0, 220, 120, 50, 0];
+    camFilter = `hue-rotate(${hueMap[colorIndex]}deg)`;
+  }
   
   if (cl) {
     const showRemoteCam = isRemoteCam && remoteCamActive && !videoHidden;
     cl.style.display = showRemoteCam ? 'block' : 'none';
     if (showRemoteCam) {
-      const bassBreathe = 1.0 + smoothBass * 0.03;
-      const pulse = 1.0 + camPulseScale * 0.06;
-      const camScale = bassBreathe * pulse * pinchScale;
+      const pulse = 1.0 + camPulseScale * 0.08;
+      const camScale = pulse * pinchScale;
       cl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)}) rotate(${camRotDeg.toFixed(2)}deg)`;
+      cl.style.filter = camFilter;
     }
   }
   
@@ -1585,10 +1592,10 @@ function updateVideoVisibility() {
     const show = isLocalCam && parseInt(pidx) === activePreset && !videoHidden;
     cam.videoEl.style.display = show ? 'block' : 'none';
     if (show) {
-      const bassBreathe = 1.0 + smoothBass * 0.03;
-      const pulse = 1.0 + camPulseScale * 0.06;
-      const camScale = bassBreathe * pulse * pinchScale;
+      const pulse = 1.0 + camPulseScale * 0.08;
+      const camScale = pulse * pinchScale;
       cam.videoEl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)}) rotate(${camRotDeg.toFixed(2)}deg)`;
+      cam.videoEl.style.filter = camFilter;
     }
   });
   
@@ -2401,26 +2408,16 @@ function setVideoSpeed(mult) {
 // ═══════════════════════════════════════════════════════════════
 
 function applyVideoColor() {
-  let filterStr = 'none';
-  if (colorIndex === 4) {
-    filterStr = 'saturate(0)';
-  } else if (colorIndex !== 0) {
-    const hueMap = [0, 220, 120, 50, 0];
-    filterStr = `hue-rotate(${hueMap[colorIndex]}deg)`;
-  }
-  
-  // Apply to video layer
   const layer = document.getElementById('videoLayer');
-  if (layer) layer.style.filter = filterStr;
-  
-  // Apply to remote camera canvas
-  const camLayer = document.getElementById('cameraLayer');
-  if (camLayer) camLayer.style.filter = filterStr;
-  
-  // Apply to all local camera videos
-  Object.values(localCams).forEach(cam => {
-    if (cam && cam.videoEl) cam.videoEl.style.filter = filterStr;
-  });
+  if (!layer) return;
+  if (colorIndex === 4) {
+    layer.style.filter = 'saturate(0)';
+  } else if (colorIndex === 0) {
+    layer.style.filter = 'none';
+  } else {
+    const hueMap = [0, 220, 120, 50, 0];
+    layer.style.filter = `hue-rotate(${hueMap[colorIndex]}deg)`;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
