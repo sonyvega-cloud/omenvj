@@ -467,6 +467,15 @@ const THEME_ORDER = ['omen', 'camera', 'voyager'];
 let state = { beatCutEnabled: false, beatCutInterval: 4, activePreset: 0, colorIndex: 0, videoSpeedMultiplier: 1.0, stroboActive: false, videoHidden: false, autopilotEnabled: false, autoEnergyEnabled: true, autoFxEnabled: true, autoBeatCutEnabled: true, autoStroboEnabled: true, autoColorEnabled: true, autoSpeedEnabled: true };
 let themeMix = { omen: true, camera: false, voyager: false };
 let themeWeights = { omen: 80, camera: 20, voyager: 0 };
+// Load saved theme mix
+try {
+  const saved = localStorage.getItem('omen_thememix');
+  if (saved) {
+    const p = JSON.parse(saved);
+    if (p.themes) themeMix = p.themes;
+    if (p.weights) themeWeights = p.weights;
+  }
+} catch(e) {}
 
 // ── Init: build beat dots + preset buttons ────────────────────
 const beatBar = document.getElementById('beatBar');
@@ -484,6 +493,19 @@ for (let i = 0; i < 16; i++) {
 
 // Build preset buttons from presets.js
 buildPresetButtons();
+
+// Init theme mix checkboxes from saved state
+['omen', 'camera', 'voyager'].forEach(id => {
+  const el = document.getElementById('tm_' + id);
+  if (el) {
+    el.textContent = themeMix[id] ? '✓' : '✗';
+    el.className = 'auto-check' + (themeMix[id] ? ' on' : '');
+  }
+  const sl = document.getElementById('tw_' + id);
+  if (sl) sl.value = themeWeights[id] || 0;
+  const valEl = document.getElementById('twv_' + id);
+  if (valEl) valEl.textContent = themeWeights[id] || 0;
+});
 
 // ── Ping player on load ───────────────────────────────────────
 send({ type: 'ping', themes: themeMix, weights: themeWeights });
@@ -834,7 +856,6 @@ function toggleThemeMix(themeId) {
 }
 
 function sendThemeMix() {
-  // Read slider values
   ['omen', 'camera', 'voyager'].forEach(id => {
     const sl = document.getElementById('tw_' + id);
     const valEl = document.getElementById('twv_' + id);
@@ -843,6 +864,9 @@ function sendThemeMix() {
       if (valEl) valEl.textContent = sl.value;
     }
   });
+  // Write to localStorage (player reads directly — no message needed)
+  localStorage.setItem('omen_thememix', JSON.stringify({ themes: themeMix, weights: themeWeights }));
+  // Also send via message as backup
   send({ type: 'thememix', themes: themeMix, weights: themeWeights });
 }
 

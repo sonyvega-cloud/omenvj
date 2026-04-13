@@ -1641,8 +1641,14 @@ function updateVideoVisibility() {
       localCam.videoEl.style.filter = camFilter;
     }
   } else {
-    // Not camera preset — hide camera layers
-    if (_clEl && _clEl.style.display !== 'none') _clEl.style.display = 'none';
+    // Not camera preset — hide camera layers + reset filters
+    if (_clEl) {
+      if (_clEl.style.display !== 'none') {
+        _clEl.style.display = 'none';
+        _clEl.style.filter = 'none';
+        applyVideoColor(); // restore video color on cam→video transition
+      }
+    }
   }
   
   // Hide inactive local cams
@@ -2396,6 +2402,19 @@ function tick() {
     
     updateEnergy();
     updateSilenceDampen();
+    
+    // Read theme mix from localStorage (controller writes it)
+    if (broadcastCounter % 30 === 0) {
+      try {
+        const tmx = localStorage.getItem('omen_thememix');
+        if (tmx) {
+          const parsed = JSON.parse(tmx);
+          if (parsed.themes) activeThemes = parsed.themes;
+          if (parsed.weights) themeWeights = parsed.weights;
+        }
+      } catch(e) {}
+    }
+    
     updateAutopilot();
     updateVideoLayer();
     render();
