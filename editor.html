@@ -3,354 +3,113 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ØMEN — Preset Editor</title>
+<title>ØMEN — Scene Editor</title>
 <script src="presets.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap');
-  
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  
   :root {
-    --bg: #0a0a0a;
-    --surface: #141414;
-    --surface2: #1c1c1c;
-    --border: #2a2a2a;
-    --text: #e0e0e0;
-    --text-dim: #666;
-    --accent: #ff2200;
-    --accent-glow: rgba(255, 34, 0, 0.15);
-    --green: #22cc44;
-    --yellow: #ffcc00;
-    --blue: #2266ff;
+    --bg: #0a0a0a; --surface: #141414; --surface2: #1c1c1c;
+    --border: #2a2a2a; --text: #e0e0e0; --text-dim: #666;
+    --accent: #ff2200; --accent-glow: rgba(255,34,0,0.15);
+    --green: #22cc44; --yellow: #ffcc00; --blue: #2266ff; --purple: #aa44ff;
   }
-  
-  body {
-    font-family: 'JetBrains Mono', monospace;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    padding: 0;
-  }
-  
-  /* ── Header ──────────────────────────────── */
-  .header {
-    padding: 24px 32px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-  .header h1 {
-    font-size: 14px;
-    font-weight: 500;
-    letter-spacing: 0.3em;
-    color: var(--accent);
-  }
-  .header .subtitle {
-    font-size: 11px;
-    color: var(--text-dim);
-    letter-spacing: 0.15em;
-  }
-  .header-actions {
-    margin-left: auto;
-    display: flex;
-    gap: 8px;
-  }
-  
-  /* ── Buttons ─────────────────────────────── */
-  .btn {
-    font-family: inherit;
-    font-size: 10px;
-    letter-spacing: 0.15em;
-    padding: 8px 16px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .btn:hover { border-color: var(--text-dim); background: var(--surface2); }
+  body { font-family: 'JetBrains Mono', monospace; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Header */
+  .header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .header h1 { font-size: 14px; font-weight: 500; letter-spacing: 0.3em; color: var(--accent); }
+  .header .sub { font-size: 11px; color: var(--text-dim); letter-spacing: 0.15em; }
+  .header-actions { margin-left: auto; display: flex; gap: 6px; }
+
+  /* Buttons */
+  .btn { font-family: inherit; font-size: 10px; letter-spacing: 0.12em; padding: 7px 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+  .btn:hover { border-color: var(--text-dim); }
   .btn.primary { border-color: var(--accent); color: var(--accent); }
   .btn.primary:hover { background: var(--accent-glow); }
   .btn.danger { border-color: #661100; color: #cc4422; }
-  .btn.danger:hover { background: rgba(204, 68, 34, 0.1); }
   .btn.success { border-color: #116622; color: var(--green); }
-  .btn.success:hover { background: rgba(34, 204, 68, 0.1); }
-  
-  /* ── Layout ──────────────────────────────── */
-  .container {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 24px 32px;
+
+  .container { max-width: 960px; margin: 0 auto; padding: 20px 24px; }
+
+  /* Theme tabs */
+  .theme-tabs { display: flex; gap: 2px; margin-bottom: 20px; }
+  .theme-tab {
+    padding: 10px 20px; font-family: inherit; font-size: 11px; letter-spacing: 0.2em;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text-dim);
+    cursor: pointer; border-bottom: 2px solid transparent;
   }
-  
-  /* ── Pack Header ─────────────────────────── */
-  .pack-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 20px;
+  .theme-tab:hover { color: var(--text); }
+  .theme-tab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--accent-glow); }
+  .theme-tab .badge { font-size: 9px; margin-left: 6px; opacity: 0.5; }
+  .theme-tab.t-omen.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .theme-tab.t-camera.active { color: var(--green); border-bottom-color: var(--green); }
+  .theme-tab.t-voyager.active { color: var(--purple); border-bottom-color: var(--purple); }
+
+  /* Theme header */
+  .theme-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .theme-name { font-size: 13px; letter-spacing: 0.2em; font-weight: 500; }
+  .theme-type { font-size: 9px; color: var(--text-dim); padding: 2px 8px; border: 1px solid var(--border); letter-spacing: 0.1em; }
+  .scene-count { font-size: 10px; color: var(--text-dim); }
+
+  /* Scene list */
+  .scene-list { display: flex; flex-direction: column; gap: 2px; }
+  .list-header {
+    display: grid; grid-template-columns: 36px 100px 130px 130px 70px 1fr 50px;
+    gap: 6px; padding: 5px 10px; font-size: 9px; color: var(--text-dim); letter-spacing: 0.12em;
   }
-  .pack-name {
-    font-size: 13px;
-    letter-spacing: 0.2em;
-    font-weight: 500;
+  .scene-row {
+    display: grid; grid-template-columns: 36px 100px 130px 130px 70px 1fr 50px;
+    align-items: center; gap: 6px; padding: 8px 10px;
+    background: var(--surface); border: 1px solid var(--border); font-size: 11px;
   }
-  .pack-count {
-    font-size: 10px;
-    color: var(--text-dim);
-  }
-  
-  /* ── Preset List ─────────────────────────── */
-  .preset-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  
-  .preset-row {
-    display: grid;
-    grid-template-columns: 40px 120px 140px 80px 200px 60px;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    transition: border-color 0.15s;
-    font-size: 11px;
-  }
-  .preset-row:hover { border-color: var(--text-dim); }
-  .preset-row.editing { border-color: var(--accent); background: var(--accent-glow); }
-  
-  .preset-idx {
-    color: var(--text-dim);
-    font-size: 10px;
-  }
-  .preset-name { font-weight: 500; }
-  
-  .preset-gfx {
-    color: var(--blue);
-    font-size: 10px;
-  }
-  
-  .preset-energy {
-    font-size: 9px;
-    padding: 2px 8px;
-    border-radius: 2px;
-    text-align: center;
-    letter-spacing: 0.1em;
-  }
-  .preset-energy.cat1 { background: rgba(34, 102, 255, 0.15); color: var(--blue); }
-  .preset-energy.cat2 { background: rgba(255, 204, 0, 0.15); color: var(--yellow); }
-  .preset-energy.cat3 { background: rgba(255, 34, 0, 0.15); color: var(--accent); }
-  
-  .preset-videos {
-    display: flex;
-    gap: 6px;
-    font-size: 9px;
-  }
-  .vid-badge {
-    padding: 2px 6px;
-    border-radius: 2px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-  }
-  .vid-badge.loaded { border-color: #116622; color: var(--green); }
-  .vid-badge.missing { border-color: #661100; color: #884422; }
-  .vid-badge.none { color: var(--text-dim); }
-  
-  .preset-actions {
-    display: flex;
-    gap: 4px;
-    justify-content: flex-end;
-  }
-  .icon-btn {
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--border);
-    background: none;
-    color: var(--text-dim);
-    cursor: pointer;
-    font-size: 11px;
-    transition: all 0.15s;
-  }
+  .scene-row:hover { border-color: var(--text-dim); }
+  .scene-row.editing { border-color: var(--accent); background: var(--accent-glow); }
+  .scene-idx { color: var(--text-dim); font-size: 10px; }
+  .scene-name { font-weight: 500; }
+  .scene-gfx { color: var(--blue); font-size: 10px; }
+  .scene-source { font-size: 9px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .energy-badge { font-size: 9px; padding: 2px 6px; border-radius: 2px; text-align: center; letter-spacing: 0.08em; }
+  .energy-badge.cat1 { background: rgba(34,102,255,0.15); color: var(--blue); }
+  .energy-badge.cat2 { background: rgba(255,204,0,0.15); color: var(--yellow); }
+  .energy-badge.cat3 { background: rgba(255,34,0,0.15); color: var(--accent); }
+  .scene-actions { display: flex; gap: 3px; justify-content: flex-end; }
+  .icon-btn { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); background: none; color: var(--text-dim); cursor: pointer; font-size: 11px; }
   .icon-btn:hover { border-color: var(--text); color: var(--text); }
   .icon-btn.del:hover { border-color: #cc4422; color: #cc4422; }
-  
-  /* ── List Header ─────────────────────────── */
-  .list-header {
-    display: grid;
-    grid-template-columns: 40px 120px 140px 80px 200px 60px;
-    gap: 8px;
-    padding: 6px 12px;
-    font-size: 9px;
-    color: var(--text-dim);
-    letter-spacing: 0.15em;
-    margin-bottom: 4px;
-  }
-  
-  /* ── Editor Panel ────────────────────────── */
-  .editor-panel {
-    margin-top: 24px;
-    padding: 20px;
-    background: var(--surface);
-    border: 1px solid var(--accent);
-    display: none;
-  }
+
+  /* Editor panel */
+  .editor-panel { margin-top: 20px; padding: 18px; background: var(--surface); border: 1px solid var(--accent); display: none; }
   .editor-panel.open { display: block; }
-  
-  .editor-title {
-    font-size: 11px;
-    letter-spacing: 0.2em;
-    color: var(--accent);
-    margin-bottom: 16px;
-  }
-  
-  .field-grid {
-    display: grid;
-    grid-template-columns: 100px 1fr;
-    gap: 10px 16px;
-    align-items: center;
-  }
-  
-  .field-label {
-    font-size: 10px;
-    color: var(--text-dim);
-    letter-spacing: 0.1em;
-    text-align: right;
-  }
-  
-  .field-input {
-    font-family: inherit;
-    font-size: 11px;
-    padding: 6px 10px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--text);
-    outline: none;
-    width: 100%;
-    max-width: 300px;
-  }
+  .editor-title { font-size: 11px; letter-spacing: 0.2em; color: var(--accent); margin-bottom: 14px; }
+  .field-grid { display: grid; grid-template-columns: 90px 1fr; gap: 8px 14px; align-items: center; }
+  .field-label { font-size: 10px; color: var(--text-dim); letter-spacing: 0.08em; text-align: right; }
+  .field-input { font-family: inherit; font-size: 11px; padding: 5px 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); outline: none; width: 100%; max-width: 280px; }
   .field-input:focus { border-color: var(--accent); }
-  
-  .field-select {
-    font-family: inherit;
-    font-size: 11px;
-    padding: 6px 10px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--text);
-    outline: none;
-    cursor: pointer;
-    max-width: 300px;
-  }
-  .field-select:focus { border-color: var(--accent); }
-  
-  /* ── Upload ──────────────────────────────── */
-  .upload-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .upload-btn {
-    font-family: inherit;
-    font-size: 9px;
-    letter-spacing: 0.1em;
-    padding: 5px 12px;
-    border: 1px dashed var(--border);
-    background: none;
-    color: var(--text-dim);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
+  .field-select { font-family: inherit; font-size: 11px; padding: 5px 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); outline: none; max-width: 280px; }
+  .upload-row { display: flex; align-items: center; gap: 6px; }
+  .upload-btn { font-family: inherit; font-size: 9px; letter-spacing: 0.08em; padding: 4px 10px; border: 1px dashed var(--border); background: none; color: var(--text-dim); cursor: pointer; }
   .upload-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .upload-status {
-    font-size: 9px;
-    color: var(--green);
-  }
+  .upload-status { font-size: 9px; color: var(--green); }
   .upload-status.uploading { color: var(--yellow); }
   .upload-status.error { color: #cc4422; }
-  
-  .editor-actions {
-    margin-top: 20px;
-    display: flex;
-    gap: 8px;
-  }
-  
-  /* ── GFX Registry ────────────────────────── */
-  .gfx-section {
-    margin-top: 32px;
-    padding-top: 24px;
-    border-top: 1px solid var(--border);
-  }
-  .gfx-title {
-    font-size: 11px;
-    letter-spacing: 0.2em;
-    color: var(--text-dim);
-    margin-bottom: 12px;
-  }
-  .gfx-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .gfx-tag {
-    font-size: 9px;
-    padding: 4px 10px;
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    letter-spacing: 0.1em;
-  }
-  
-  /* ── Status bar ──────────────────────────── */
-  .status-bar {
-    margin-top: 24px;
-    padding: 10px 12px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    font-size: 9px;
-    color: var(--text-dim);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--green);
-  }
-  .status-dot.offline { background: #884422; }
-  
-  /* ── CDN Config ──────────────────────────── */
-  .cdn-config {
-    margin-bottom: 20px;
-    padding: 12px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .cdn-config label {
-    font-size: 10px;
-    color: var(--text-dim);
-    letter-spacing: 0.1em;
-    white-space: nowrap;
-  }
-  .cdn-config input {
-    flex: 1;
-  }
+  .editor-actions { margin-top: 16px; display: flex; gap: 6px; }
+  .camera-note { font-size: 9px; color: var(--text-dim); padding: 6px 0; }
+
+  /* GFX + Status */
+  .gfx-section { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border); }
+  .gfx-title { font-size: 11px; letter-spacing: 0.2em; color: var(--text-dim); margin-bottom: 10px; }
+  .gfx-list { display: flex; flex-wrap: wrap; gap: 4px; }
+  .gfx-tag { font-size: 9px; padding: 3px 8px; border: 1px solid var(--border); color: var(--text-dim); letter-spacing: 0.08em; }
+  .status-bar { margin-top: 20px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); font-size: 9px; color: var(--text-dim); display: flex; align-items: center; gap: 10px; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 </style>
 </head>
 <body>
 
 <div class="header">
   <h1>ØMEN</h1>
-  <span class="subtitle">PRESET EDITOR</span>
+  <span class="sub">SCENE EDITOR</span>
   <div class="header-actions">
     <button class="btn" onclick="importJSON()">IMPORT</button>
     <button class="btn primary" onclick="exportPresetsJS()">EXPORT PRESETS.JS</button>
@@ -359,417 +118,463 @@
 </div>
 
 <div class="container">
-  
-  <!-- CDN Config (hardcoded) -->
   <script>
     const EDITOR_CDN = 'https://cdn.omenvj.com/';
     const EDITOR_WORKER = 'https://omen-upload.sony-vega.workers.dev';
   </script>
-  
-  <!-- Pack Header -->
-  <div class="pack-header">
-    <span class="pack-name">OMEN PACK</span>
-    <span class="pack-count" id="presetCount">0 presets</span>
-    <div style="margin-left:auto;">
-      <button class="btn primary" onclick="addPreset()">+ ADD PRESET</button>
-    </div>
-  </div>
-  
-  <!-- List Header -->
-  <div class="list-header">
-    <span>#</span>
-    <span>NAME</span>
-    <span>GFX</span>
-    <span>ENERGY</span>
-    <span>VIDEOS</span>
-    <span></span>
-  </div>
-  
-  <!-- Preset List -->
-  <div class="preset-list" id="presetList"></div>
-  
+
+  <!-- Theme Tabs -->
+  <div class="theme-tabs" id="themeTabs"></div>
+
+  <!-- Theme Content -->
+  <div id="themeContent"></div>
+
   <!-- Editor Panel -->
   <div class="editor-panel" id="editorPanel">
-    <div class="editor-title" id="editorTitle">EDIT PRESET</div>
-    <div class="field-grid">
-      <span class="field-label">NAME</span>
-      <input class="field-input" id="editName" placeholder="OMEN11">
-      
-      <span class="field-label">GFX</span>
-      <select class="field-select" id="editGfx">
-        <option value="omen1_full">omen1_full (radial mega ring)</option>
-        <option value="video_rings">video_rings (64+48 bars)</option>
-        <option value="beat_circles">beat_circles (segmented reveal)</option>
-        <option value="dot_matrix">dot_matrix (dotted columns)</option>
-      </select>
-      
-      <span class="field-label">ENERGY</span>
-      <select class="field-select" id="editEnergy">
-        <option value="1">CAT 1 — ambient / calm</option>
-        <option value="2">CAT 2 — building / mid</option>
-        <option value="3">CAT 3 — groove / peak</option>
-      </select>
-      
-      <span class="field-label">VIDEO A</span>
-      <div class="upload-row">
-        <input class="field-input" id="editVideoA" placeholder="omen11a.mp4" style="max-width:200px">
-        <input type="file" id="fileA" accept="video/mp4" style="display:none" onchange="handleUpload('A')">
-        <button class="upload-btn" onclick="document.getElementById('fileA').click()">UPLOAD ▲</button>
-        <span class="upload-status" id="statusA"></span>
-      </div>
-      
-      <span class="field-label">VIDEO B</span>
-      <div class="upload-row">
-        <input class="field-input" id="editVideoB" placeholder="omen11b.mp4" style="max-width:200px">
-        <input type="file" id="fileB" accept="video/mp4" style="display:none" onchange="handleUpload('B')">
-        <button class="upload-btn" onclick="document.getElementById('fileB').click()">UPLOAD ▲</button>
-        <span class="upload-status" id="statusB"></span>
-      </div>
-    </div>
-    
+    <div class="editor-title" id="editorTitle">NEW SCENE</div>
+    <div class="field-grid" id="editorFields"></div>
     <div class="editor-actions">
-      <button class="btn primary" onclick="savePreset()">SAVE</button>
+      <button class="btn primary" onclick="saveScene()">SAVE</button>
       <button class="btn" onclick="closeEditor()">CANCEL</button>
-      <button class="btn danger" onclick="deletePreset()" id="deleteBtn">DELETE</button>
+      <button class="btn danger" id="deleteBtn" onclick="deleteScene()" style="display:none">DELETE</button>
     </div>
   </div>
-  
+
   <!-- GFX Registry -->
   <div class="gfx-section">
     <div class="gfx-title">GFX RENDERERS</div>
     <div class="gfx-list" id="gfxList"></div>
   </div>
-  
-  <!-- Status -->
+
   <div class="status-bar">
     <div class="status-dot" id="statusDot"></div>
     <span id="statusText">Ready</span>
   </div>
-  
 </div>
 
 <script>
 // ═══════════════════════════════════════════════════════════════
-// Preset Editor State
+// Data Model: THEMES → SCENES
 // ═══════════════════════════════════════════════════════════════
 
-// GFX registry — add new renderers here
-const GFX_REGISTRY = [
-  { id: 'omen1_full', name: 'Radial Mega Ring', desc: 'Full radial with 128+64+48+32 bars, bass glow' },
-  { id: 'video_rings', name: 'Video Rings', desc: '64+48 FFT bars, 3 ring layers' },
-  { id: 'beat_circles', name: 'Beat Circles', desc: 'Segmented beat-reveal circles' },
-  { id: 'dot_matrix', name: 'Dot Matrix', desc: 'Dotted ring columns, 2 layers' },
+const THEMES = [
+  { id: 'omen',    name: 'OMEN',    type: 'video',   color: '#ff2200', desc: 'Radial video presets' },
+  { id: 'camera',  name: 'CAMERA',  type: 'camera',  color: '#22cc44', desc: 'Live camera input' },
+  { id: 'voyager', name: 'VOYAGER', type: 'video',   color: '#aa44ff', desc: 'Perspective tunnel presets' },
 ];
 
-// Current presets
-let presets = [];
-let editingIdx = -1; // -1 = new, 0+ = editing existing
+const GFX_REGISTRY = [
+  { id: 'omen1_full', name: 'Radial Mega Ring' },
+  { id: 'video_rings', name: 'Video Rings' },
+  { id: 'beat_circles', name: 'Beat Circles' },
+  { id: 'dot_matrix', name: 'Dot Matrix' },
+];
 
-// ── Load from localStorage or defaults ────────────────────────
-function loadPresets() {
-  const saved = localStorage.getItem('omen_presets');
+// scenes = flat array, each has themeId
+let scenes = [];
+let activeTheme = 'omen';
+let editingIdx = -1;
+
+// ═══════════════════════════════════════════════════════════════
+// Load / Save
+// ═══════════════════════════════════════════════════════════════
+
+function loadScenes() {
+  const saved = localStorage.getItem('omen_scenes');
   if (saved) {
-    try { presets = JSON.parse(saved); } catch(e) { presets = getDefaults(); }
-  } else {
-    presets = getDefaults();
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed.length > 0) { scenes = parsed; renderAll(); return; }
+    } catch(e) {}
   }
-  renderList();
+  // Migrate from old presets format
+  const oldPresets = localStorage.getItem('omen_presets');
+  if (oldPresets) {
+    try {
+      const parsed = JSON.parse(oldPresets);
+      if (parsed.length > 0) {
+        scenes = parsed.map(p => ({
+          ...p,
+          themeId: 'omen',
+          type: p.videoA ? 'video' : 'gfx',
+        }));
+        saveToStorage();
+        renderAll();
+        return;
+      }
+    } catch(e) {}
+  }
+  // Defaults from presets.js
+  scenes = getDefaults();
+  renderAll();
 }
 
 function getDefaults() {
-  // Read from presets.js (loaded via script tag)
   if (typeof PRESETS_DATA !== 'undefined' && PRESETS_DATA.length > 0) {
     return PRESETS_DATA.map(p => ({
       name: p.name,
       gfx: p.gfx,
       energy: p.energy,
-      // Strip CDN prefix — editor stores just filenames
+      themeId: 'omen',
+      type: p.videoA ? 'video' : 'gfx',
       videoA: p.videoA ? p.videoA.replace(EDITOR_CDN, '') : null,
       videoB: p.videoB ? p.videoB.replace(EDITOR_CDN, '') : null,
+      deviceId: null,
+      deviceLabel: null,
     }));
   }
-  // Hardcoded fallback
-  return [
-    { name: 'OMEN1', videoA: null, videoB: null, gfx: 'omen1_full', energy: 1 },
-  ];
+  return [{ name: 'OMEN1', gfx: 'omen1_full', energy: 1, themeId: 'omen', type: 'gfx', videoA: null, videoB: null, deviceId: null, deviceLabel: null }];
 }
 
 function saveToStorage() {
+  localStorage.setItem('omen_scenes', JSON.stringify(scenes));
+  // Also save flattened presets for player compatibility
+  const presets = scenes.map(s => ({
+    name: s.name,
+    gfx: s.gfx,
+    energy: s.energy,
+    videoA: s.type === 'video' ? s.videoA : null,
+    videoB: s.type === 'video' ? s.videoB : null,
+    type: s.type || 'video',
+    themeId: s.themeId || 'omen',
+    deviceId: s.deviceId || null,
+    deviceLabel: s.deviceLabel || null,
+  }));
   localStorage.setItem('omen_presets', JSON.stringify(presets));
-  setStatus('Saved to browser');
+  setStatus('Saved');
 }
 
-// ── Render List ───────────────────────────────────────────────
-function renderList() {
-  const list = document.getElementById('presetList');
-  list.innerHTML = '';
-  
-  presets.forEach((p, i) => {
-    const row = document.createElement('div');
-    row.className = 'preset-row' + (editingIdx === i ? ' editing' : '');
-    
-    const energyClass = p.energy === 1 ? 'cat1' : p.energy === 2 ? 'cat2' : 'cat3';
-    const energyLabel = p.energy === 1 ? 'AMBIENT' : p.energy === 2 ? 'BUILDING' : 'GROOVE';
-    
-    const vidA = p.videoA ? `<span class="vid-badge loaded">${p.videoA}</span>` : '<span class="vid-badge none">no video</span>';
-    const vidB = p.videoB ? `<span class="vid-badge loaded">${p.videoB}</span>` : '';
-    
-    row.innerHTML = `
-      <span class="preset-idx">#${i + 1}</span>
-      <span class="preset-name">${p.name}</span>
-      <span class="preset-gfx">${p.gfx}</span>
-      <span class="preset-energy ${energyClass}">${energyLabel}</span>
-      <div class="preset-videos">${vidA}${vidB}</div>
-      <div class="preset-actions">
-        <button class="icon-btn" onclick="editPreset(${i})" title="Edit">✎</button>
-        <button class="icon-btn del" onclick="confirmDelete(${i})" title="Delete">×</button>
-      </div>
-    `;
-    list.appendChild(row);
-  });
-  
-  document.getElementById('presetCount').textContent = presets.length + ' presets';
+// ═══════════════════════════════════════════════════════════════
+// Render
+// ═══════════════════════════════════════════════════════════════
+
+function renderAll() {
+  renderTabs();
+  renderThemeContent();
   renderGfxList();
 }
 
-// ── GFX Registry ──────────────────────────────────────────────
+function renderTabs() {
+  const el = document.getElementById('themeTabs');
+  el.innerHTML = '';
+  THEMES.forEach(t => {
+    const count = scenes.filter(s => s.themeId === t.id).length;
+    const tab = document.createElement('button');
+    tab.className = 'theme-tab t-' + t.id + (activeTheme === t.id ? ' active' : '');
+    tab.innerHTML = t.name + '<span class="badge">' + count + '</span>';
+    tab.onclick = () => { activeTheme = t.id; closeEditor(); renderAll(); };
+    el.appendChild(tab);
+  });
+}
+
+function renderThemeContent() {
+  const theme = THEMES.find(t => t.id === activeTheme);
+  const themeScenes = scenes.map((s, i) => ({ ...s, _idx: i })).filter(s => s.themeId === activeTheme);
+  const el = document.getElementById('themeContent');
+
+  // Header
+  let html = '<div class="theme-header">';
+  html += '<span class="theme-name" style="color:' + theme.color + '">' + theme.name + '</span>';
+  html += '<span class="theme-type">' + theme.type.toUpperCase() + '</span>';
+  html += '<span class="scene-count">' + themeScenes.length + ' scenes</span>';
+  html += '<div style="margin-left:auto"><button class="btn primary" onclick="addScene()">+ ADD SCENE</button></div>';
+  html += '</div>';
+
+  // Column headers
+  if (theme.type === 'camera') {
+    html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>DEVICE</span><span>ENERGY</span><span></span><span></span></div>';
+  } else {
+    html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>VIDEO A</span><span>ENERGY</span><span>VIDEO B</span><span></span></div>';
+  }
+
+  // Scenes
+  html += '<div class="scene-list">';
+  themeScenes.forEach((s, localIdx) => {
+    const eClass = s.energy === 1 ? 'cat1' : s.energy === 2 ? 'cat2' : 'cat3';
+    const eLabel = s.energy === 1 ? 'AMB' : s.energy === 2 ? 'BLD' : 'GRV';
+    const editing = editingIdx === s._idx ? ' editing' : '';
+
+    html += '<div class="scene-row' + editing + '">';
+    html += '<span class="scene-idx">#' + (localIdx + 1) + '</span>';
+    html += '<span class="scene-name">' + s.name + '</span>';
+    html += '<span class="scene-gfx">' + (s.gfx || '—') + '</span>';
+
+    if (theme.type === 'camera') {
+      html += '<span class="scene-source">' + (s.deviceLabel || 'Select camera...') + '</span>';
+    } else {
+      html += '<span class="scene-source">' + (s.videoA || 'no video') + '</span>';
+    }
+
+    html += '<span class="energy-badge ' + eClass + '">' + eLabel + '</span>';
+
+    if (theme.type !== 'camera') {
+      html += '<span class="scene-source">' + (s.videoB || '') + '</span>';
+    } else {
+      html += '<span></span>';
+    }
+
+    html += '<div class="scene-actions">';
+    html += '<button class="icon-btn" onclick="editScene(' + s._idx + ')" title="Edit">✎</button>';
+    html += '<button class="icon-btn del" onclick="confirmDelete(' + s._idx + ')" title="Delete">×</button>';
+    html += '</div></div>';
+  });
+  html += '</div>';
+
+  el.innerHTML = html;
+}
+
 function renderGfxList() {
-  const list = document.getElementById('gfxList');
-  list.innerHTML = '';
-  
-  // Collect all GFX IDs (registry + any custom in presets)
+  const el = document.getElementById('gfxList');
   const allGfx = new Set(GFX_REGISTRY.map(g => g.id));
-  presets.forEach(p => { if (p.gfx) allGfx.add(p.gfx); });
-  
+  scenes.forEach(s => { if (s.gfx) allGfx.add(s.gfx); });
+  el.innerHTML = '';
   allGfx.forEach(id => {
-    const reg = GFX_REGISTRY.find(g => g.id === id);
     const tag = document.createElement('span');
     tag.className = 'gfx-tag';
     tag.textContent = id;
-    if (reg) tag.title = reg.desc;
-    list.appendChild(tag);
+    el.appendChild(tag);
   });
-  
-  // Update GFX select in editor
-  const sel = document.getElementById('editGfx');
-  sel.innerHTML = '';
-  allGfx.forEach(id => {
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Editor
+// ═══════════════════════════════════════════════════════════════
+
+function buildEditorFields() {
+  const theme = THEMES.find(t => t.id === activeTheme);
+  const fields = document.getElementById('editorFields');
+
+  // Collect GFX options
+  const allGfx = new Set(GFX_REGISTRY.map(g => g.id));
+  scenes.forEach(s => { if (s.gfx) allGfx.add(s.gfx); });
+  const gfxOptions = [...allGfx].map(id => {
     const reg = GFX_REGISTRY.find(g => g.id === id);
-    const opt = document.createElement('option');
-    opt.value = id;
-    opt.textContent = reg ? `${id} (${reg.name})` : id;
-    sel.appendChild(opt);
-  });
+    return '<option value="' + id + '">' + id + (reg ? ' (' + reg.name + ')' : '') + '</option>';
+  }).join('');
+
+  let html = '';
+  html += '<span class="field-label">NAME</span><input class="field-input" id="editName">';
+  html += '<span class="field-label">GFX</span><select class="field-select" id="editGfx">' + gfxOptions + '</select>';
+  html += '<span class="field-label">ENERGY</span><select class="field-select" id="editEnergy">';
+  html += '<option value="1">CAT 1 — ambient</option><option value="2">CAT 2 — building</option><option value="3">CAT 3 — groove</option></select>';
+
+  if (theme.type === 'camera') {
+    html += '<span class="field-label">CAMERA</span><div><button class="btn" onclick="pickCamera()">SELECT CAMERA</button> <span id="camLabel" class="camera-note">No camera selected</span></div>';
+    html += '<input type="hidden" id="editDeviceId"><input type="hidden" id="editDeviceLabel">';
+  } else {
+    html += '<span class="field-label">VIDEO A</span><div class="upload-row">';
+    html += '<input class="field-input" id="editVideoA" style="max-width:180px">';
+    html += '<input type="file" id="fileA" accept="video/mp4" style="display:none" onchange="handleUpload(\'A\')">';
+    html += '<button class="upload-btn" onclick="document.getElementById(\'fileA\').click()">UPLOAD</button>';
+    html += '<span class="upload-status" id="statusA"></span></div>';
+
+    html += '<span class="field-label">VIDEO B</span><div class="upload-row">';
+    html += '<input class="field-input" id="editVideoB" style="max-width:180px">';
+    html += '<input type="file" id="fileB" accept="video/mp4" style="display:none" onchange="handleUpload(\'B\')">';
+    html += '<button class="upload-btn" onclick="document.getElementById(\'fileB\').click()">UPLOAD</button>';
+    html += '<span class="upload-status" id="statusB"></span></div>';
+  }
+
+  fields.innerHTML = html;
 }
 
-// ── Editor ────────────────────────────────────────────────────
-function editPreset(idx) {
-  editingIdx = idx;
-  const p = presets[idx];
-  
-  document.getElementById('editName').value = p.name;
-  document.getElementById('editGfx').value = p.gfx;
-  document.getElementById('editEnergy').value = p.energy;
-  document.getElementById('editVideoA').value = p.videoA || '';
-  document.getElementById('editVideoB').value = p.videoB || '';
-  document.getElementById('statusA').textContent = '';
-  document.getElementById('statusB').textContent = '';
-  document.getElementById('editorTitle').textContent = 'EDIT — ' + p.name;
-  document.getElementById('deleteBtn').style.display = 'inline-block';
-  
-  document.getElementById('editorPanel').classList.add('open');
-  renderList();
-}
-
-function addPreset() {
+function addScene() {
   editingIdx = -1;
-  
-  document.getElementById('editName').value = 'OMEN' + (presets.length + 1);
+  const theme = THEMES.find(t => t.id === activeTheme);
+  document.getElementById('editorTitle').textContent = 'NEW ' + theme.name + ' SCENE';
+  document.getElementById('deleteBtn').style.display = 'none';
+  buildEditorFields();
+
+  // Defaults
+  const count = scenes.filter(s => s.themeId === activeTheme).length;
+  const prefix = activeTheme === 'camera' ? 'CAM' : activeTheme === 'voyager' ? 'VOY' : 'OMEN';
+  document.getElementById('editName').value = prefix + (count + 1);
   document.getElementById('editGfx').value = 'video_rings';
   document.getElementById('editEnergy').value = '3';
-  document.getElementById('editVideoA').value = '';
-  document.getElementById('editVideoB').value = '';
-  document.getElementById('statusA').textContent = '';
-  document.getElementById('statusB').textContent = '';
-  document.getElementById('editorTitle').textContent = 'NEW PRESET';
-  document.getElementById('deleteBtn').style.display = 'none';
-  
+
   document.getElementById('editorPanel').classList.add('open');
+  renderAll();
 }
 
-function savePreset() {
-  const name = document.getElementById('editName').value.trim();
-  const gfx = document.getElementById('editGfx').value;
-  const energy = parseInt(document.getElementById('editEnergy').value);
-  const videoA = document.getElementById('editVideoA').value.trim() || null;
-  const videoB = document.getElementById('editVideoB').value.trim() || null;
-  
-  if (!name) { alert('Name required'); return; }
-  
-  const preset = { name, videoA, videoB, gfx, energy };
-  
-  if (editingIdx >= 0) {
-    presets[editingIdx] = preset;
+function editScene(idx) {
+  editingIdx = idx;
+  const s = scenes[idx];
+  const theme = THEMES.find(t => t.id === s.themeId);
+  document.getElementById('editorTitle').textContent = 'EDIT — ' + s.name;
+  document.getElementById('deleteBtn').style.display = 'inline-block';
+  buildEditorFields();
+
+  document.getElementById('editName').value = s.name;
+  document.getElementById('editGfx').value = s.gfx;
+  document.getElementById('editEnergy').value = s.energy;
+
+  if (theme.type === 'camera') {
+    document.getElementById('editDeviceId').value = s.deviceId || '';
+    document.getElementById('editDeviceLabel').value = s.deviceLabel || '';
+    document.getElementById('camLabel').textContent = s.deviceLabel || 'No camera selected';
   } else {
-    presets.push(preset);
+    document.getElementById('editVideoA').value = s.videoA || '';
+    document.getElementById('editVideoB').value = s.videoB || '';
   }
-  
+
+  document.getElementById('editorPanel').classList.add('open');
+  renderAll();
+}
+
+function saveScene() {
+  const theme = THEMES.find(t => t.id === activeTheme);
+  const name = document.getElementById('editName').value.trim();
+  if (!name) { alert('Name required'); return; }
+
+  const scene = {
+    name,
+    gfx: document.getElementById('editGfx').value,
+    energy: parseInt(document.getElementById('editEnergy').value),
+    themeId: activeTheme,
+    type: theme.type === 'camera' ? 'camera' : (document.getElementById('editVideoA')?.value ? 'video' : 'gfx'),
+    videoA: theme.type !== 'camera' ? (document.getElementById('editVideoA')?.value.trim() || null) : null,
+    videoB: theme.type !== 'camera' ? (document.getElementById('editVideoB')?.value.trim() || null) : null,
+    deviceId: theme.type === 'camera' ? (document.getElementById('editDeviceId')?.value || null) : null,
+    deviceLabel: theme.type === 'camera' ? (document.getElementById('editDeviceLabel')?.value || null) : null,
+  };
+
+  if (editingIdx >= 0) {
+    scenes[editingIdx] = scene;
+  } else {
+    scenes.push(scene);
+  }
+
   saveToStorage();
   closeEditor();
-  renderList();
+  renderAll();
 }
 
 function closeEditor() {
   editingIdx = -1;
   document.getElementById('editorPanel').classList.remove('open');
-  renderList();
+  renderAll();
 }
 
 function confirmDelete(idx) {
-  if (confirm('Delete ' + presets[idx].name + '?')) {
-    presets.splice(idx, 1);
+  if (confirm('Delete ' + scenes[idx].name + '?')) {
+    scenes.splice(idx, 1);
     saveToStorage();
     closeEditor();
-    renderList();
+    renderAll();
   }
 }
 
-function deletePreset() {
-  if (editingIdx >= 0) confirmDelete(editingIdx);
+function deleteScene() { if (editingIdx >= 0) confirmDelete(editingIdx); }
+
+// ═══════════════════════════════════════════════════════════════
+// Camera Picker
+// ═══════════════════════════════════════════════════════════════
+
+async function pickCamera() {
+  try {
+    const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    tempStream.getTracks().forEach(t => t.stop());
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter(d => d.kind === 'videoinput');
+
+    if (cameras.length === 0) { alert('No cameras found'); return; }
+
+    const pick = prompt('Available cameras:\\n' + cameras.map((c, i) => (i + 1) + '. ' + (c.label || 'Camera ' + (i + 1))).join('\\n') + '\\n\\nEnter number:');
+    const idx = parseInt(pick) - 1;
+    if (idx >= 0 && idx < cameras.length) {
+      document.getElementById('editDeviceId').value = cameras[idx].deviceId;
+      document.getElementById('editDeviceLabel').value = cameras[idx].label || 'Camera ' + (idx + 1);
+      document.getElementById('camLabel').textContent = cameras[idx].label || 'Camera ' + (idx + 1);
+    }
+  } catch (err) {
+    alert('Camera access denied: ' + err.message);
+  }
 }
 
-// ── Upload to R2 ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// Upload
+// ═══════════════════════════════════════════════════════════════
+
 async function handleUpload(ab) {
   const fileInput = document.getElementById('file' + ab);
   const statusEl = document.getElementById('status' + ab);
   const nameInput = document.getElementById('editVideo' + ab);
-  const workerUrl = EDITOR_WORKER;
-  
   if (!fileInput.files[0]) return;
-  
   const file = fileInput.files[0];
   const fileName = file.name.toLowerCase().replace(/[^a-z0-9._-]/g, '');
-  
-  // If no worker URL, just set the filename (manual upload to R2)
-  if (!workerUrl) {
-    nameInput.value = fileName;
-    statusEl.textContent = '← upload to R2 manually';
-    statusEl.className = 'upload-status';
-    return;
-  }
-  
-  // Upload via worker
-  statusEl.textContent = 'uploading...';
-  statusEl.className = 'upload-status uploading';
-  
+
+  if (!EDITOR_WORKER) { nameInput.value = fileName; statusEl.textContent = 'manual upload'; return; }
+
+  statusEl.textContent = 'uploading...'; statusEl.className = 'upload-status uploading';
   try {
-    const formData = new FormData();
-    formData.append('file', file, fileName);
-    
-    const resp = await fetch(workerUrl + '/upload/' + fileName, {
-      method: 'PUT',
-      body: file,
-      headers: { 'Content-Type': 'video/mp4' },
-    });
-    
-    if (resp.ok) {
-      nameInput.value = fileName;
-      statusEl.textContent = '✓ uploaded';
-      statusEl.className = 'upload-status';
-    } else {
-      statusEl.textContent = 'error: ' + resp.status;
-      statusEl.className = 'upload-status error';
-    }
-  } catch (err) {
-    statusEl.textContent = 'error: ' + err.message;
-    statusEl.className = 'upload-status error';
-  }
+    const resp = await fetch(EDITOR_WORKER + '/upload/' + fileName, { method: 'PUT', body: file, headers: { 'Content-Type': 'video/mp4' } });
+    if (resp.ok) { nameInput.value = fileName; statusEl.textContent = '✓ uploaded'; statusEl.className = 'upload-status'; }
+    else { statusEl.textContent = 'error: ' + resp.status; statusEl.className = 'upload-status error'; }
+  } catch (err) { statusEl.textContent = 'error'; statusEl.className = 'upload-status error'; }
 }
 
-// ── Export ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// Export / Import
+// ═══════════════════════════════════════════════════════════════
+
 function exportPresetsJS() {
-  const cdn = EDITOR_CDN;
-  
-  let lines = [];
-  lines.push('// ØMEN Preset Registry — generated by Preset Editor');
-  lines.push('// energy: 1 = ambient/calm, 2 = building/mid, 3 = groove/peak');
-  
-  if (cdn) {
-    lines.push("const CDN = '" + cdn + "';");
-    lines.push('');
-    lines.push('const PRESETS_DATA = [');
-    presets.forEach((p, i) => {
-      const va = p.videoA ? 'CDN+"' + p.videoA + '"' : 'null';
-      const vb = p.videoB ? 'CDN+"' + p.videoB + '"' : 'null';
-      const comma = i < presets.length - 1 ? ',' : '';
-      lines.push('  { "name": "' + p.name + '", "videoA": ' + va + ', "videoB": ' + vb + ', "gfx": "' + p.gfx + '", "energy": ' + p.energy + ' }' + comma);
-    });
-  } else {
-    lines.push('const PRESETS_DATA = [');
-    presets.forEach((p, i) => {
-      const va = p.videoA ? '"' + p.videoA + '"' : 'null';
-      const vb = p.videoB ? '"' + p.videoB + '"' : 'null';
-      const comma = i < presets.length - 1 ? ',' : '';
-      lines.push('  { "name": "' + p.name + '", "videoA": ' + va + ', "videoB": ' + vb + ', "gfx": "' + p.gfx + '", "energy": ' + p.energy + ' }' + comma);
-    });
-  }
+  let lines = ['// ØMEN Preset Registry — generated by Scene Editor'];
+  lines.push("const CDN = '" + EDITOR_CDN + "';");
+  lines.push('');
+  lines.push('const PRESETS_DATA = [');
+  scenes.forEach((s, i) => {
+    const va = s.type === 'video' && s.videoA ? 'CDN+"' + s.videoA + '"' : 'null';
+    const vb = s.type === 'video' && s.videoB ? 'CDN+"' + s.videoB + '"' : 'null';
+    const extra = s.type === 'camera' ? ', "type": "camera"' : '';
+    const comma = i < scenes.length - 1 ? ',' : '';
+    lines.push('  { "name": "' + s.name + '", "videoA": ' + va + ', "videoB": ' + vb + ', "gfx": "' + s.gfx + '", "energy": ' + s.energy + extra + ' }' + comma);
+  });
   lines.push('];');
-  
   downloadFile('presets.js', lines.join('\n'));
   setStatus('Exported presets.js');
 }
 
 function exportJSON() {
-  const data = { presets, cdnUrl: EDITOR_CDN };
-  downloadFile('omen-pack.json', JSON.stringify(data, null, 2));
+  downloadFile('omen-scenes.json', JSON.stringify({ themes: THEMES, scenes }, null, 2));
   setStatus('Exported JSON');
 }
 
 function importJSON() {
   const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json';
+  input.type = 'file'; input.accept = '.json';
   input.onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target.result);
-        if (data.presets) {
-          presets = data.presets;
-          // CDN hardcoded
-          saveToStorage();
-          renderList();
-          setStatus('Imported ' + presets.length + ' presets');
-        }
-      } catch (err) {
-        alert('Invalid JSON: ' + err.message);
-      }
+        if (data.scenes) { scenes = data.scenes; }
+        else if (data.presets) { scenes = data.presets.map(p => ({ ...p, themeId: p.themeId || 'omen', type: p.type || (p.videoA ? 'video' : 'gfx') })); }
+        saveToStorage(); renderAll();
+        setStatus('Imported ' + scenes.length + ' scenes');
+      } catch (err) { alert('Invalid JSON'); }
     };
     reader.readAsText(file);
   };
   input.click();
 }
 
-// ── Helpers ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════
+
 function downloadFile(name, content) {
-  const blob = new Blob([content], { type: 'text/plain' });
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  a.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
+  a.download = name; a.click();
 }
 
 function setStatus(text) {
   document.getElementById('statusText').textContent = text;
-  document.getElementById('statusDot').className = 'status-dot';
 }
 
-// ── Init ──────────────────────────────────────────────────────
-loadPresets();
+// Init
+loadScenes();
 </script>
-
 </body>
 </html>
