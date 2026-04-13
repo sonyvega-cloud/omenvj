@@ -1158,11 +1158,41 @@ function getPresetsByEnergy(cat) {
     .filter(p => {
       if (p.energy !== cat) return false;
       if (!presetReady[p.idx] || !presetPool.has(p.idx)) return false;
-      if (p.type === 'camera') return false; // camera handled by inject timer
       const theme = p.themeId || 'omen';
-      if (!activeThemes[theme]) return false; // theme disabled
+      if (!activeThemes[theme]) return false;
       return true;
     });
+}
+
+// Get all eligible presets from active themes (any energy)
+function getActiveThemePresets() {
+  return PRESETS.map((p, i) => ({ ...p, idx: i }))
+    .filter(p => {
+      if (!presetReady[p.idx] || !presetPool.has(p.idx)) return false;
+      const theme = p.themeId || 'omen';
+      if (!activeThemes[theme]) return false;
+      return true;
+    });
+}
+
+// Weighted random pick from presets based on theme weights
+function weightedPresetPick(candidates) {
+  if (candidates.length === 0) return null;
+  // Build weighted list
+  let totalWeight = 0;
+  const weighted = candidates.map(p => {
+    const theme = p.themeId || 'omen';
+    const w = themeWeights[theme] || 10;
+    totalWeight += w;
+    return { ...p, weight: w };
+  });
+  // Random pick
+  let r = Math.random() * totalWeight;
+  for (const p of weighted) {
+    r -= p.weight;
+    if (r <= 0) return p;
+  }
+  return weighted[weighted.length - 1];
 }
 
 // Map normEnergy to beat cut interval
@@ -1336,12 +1366,24 @@ function updateAutopilot() {
     candidates = getPresetsByEnergy(targetCat - 1 >= 2 ? targetCat - 1 : targetCat + 1);
   }
   if (candidates.length === 0) candidates = getPresetsByEnergy(targetCat + 1);
+  // Last resort: any preset from active themes
+  if (candidates.length === 0) candidates = getActiveThemePresets();
   if (candidates.length === 0) return;
   
+  // Weighted random pick (theme weight × avoid current preset)
   const filtered = candidates.filter(p => p.idx !== activePreset);
-  const pick = filtered.length > 0 ? filtered[Math.floor(Math.random() * filtered.length)] : candidates[0];
+  const pool = filtered.length > 0 ? filtered : candidates;
+  const pick = weightedPresetPick(pool);
+  if (!pick) return;
   
   switchToPreset(pick.idx);
+  
+  // Camera hold if picked a camera preset
+  if (PRESETS[pick.idx]?.type === 'camera') {
+    camHoldBeats = CAM_HOLD_MIN + Math.floor(Math.random() * (CAM_HOLD_MAX - CAM_HOLD_MIN + 1));
+    camHoldActive = true;
+    camPulseBeat = 0;
+  }
   
   // ── Sub-feature: AUTO COLOR (change palette on mood switch) ──
   if (autoColorEnabled) {
