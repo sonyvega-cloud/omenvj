@@ -1558,8 +1558,10 @@ function updateVideoVisibility() {
   const currentPreset = PRESETS[activePreset];
   const currentPresetHasVideo = currentPreset?.videoA != null;
   const currentPresetIsCamera = currentPreset?.type === 'camera';
-  const isRemoteCam = currentPresetIsCamera && currentPreset?.camSource === 'remote';
-  const isLocalCam = currentPresetIsCamera && currentPreset?.camSource !== 'remote';
+  // Default to 'remote' for backward compat (phone relay was first)
+  const camSource = currentPreset?.camSource || 'remote';
+  const isRemoteCam = currentPresetIsCamera && camSource === 'remote';
+  const isLocalCam = currentPresetIsCamera && camSource === 'local';
   
   // Video layer: show for video presets only
   const vl = document.getElementById('videoLayer');
@@ -1569,13 +1571,13 @@ function updateVideoVisibility() {
   const cl = document.getElementById('cameraLayer');
   const camOverlay = document.getElementById('camColorOverlay');
   
-  // Camera color overlay (real color tint, not hue-rotate)
+  // Camera color overlay (real color tint, multiply blend)
   const CAM_COLORS = [
-    'rgba(255,30,0,0.3)',    // RED
-    'rgba(30,80,255,0.3)',   // BLUE
-    'rgba(30,200,80,0.3)',   // GREEN
-    'rgba(255,200,0,0.3)',   // YELLOW
-    'rgba(128,128,128,0.0)', // MONO (no overlay, handled by filter)
+    'rgba(255,20,0,0.4)',    // RED — strong tint
+    'rgba(20,60,255,0.4)',   // BLUE
+    'rgba(20,200,60,0.4)',   // GREEN
+    'rgba(255,180,0,0.4)',   // YELLOW
+    'none',                  // MONO — no overlay, use saturate filter
   ];
   
   const anyCamActive = (isRemoteCam && remoteCamActive) || (isLocalCam && localCams[activePreset]);
@@ -1587,6 +1589,11 @@ function updateVideoVisibility() {
       if (colorIndex === 4) {
         camOverlay.style.background = 'none';
       }
+      // Overlay follows camera transform
+      const breathe = 1.0 + smoothVol * 0.12;
+      const pulse = 1.0 + camPulseScale * 0.18;
+      const overlayScale = breathe * pulse * pinchScale;
+      camOverlay.style.transform = `translate(-50%, -50%) scale(${overlayScale.toFixed(4)}) rotate(${camRotCurrent.toFixed(2)}deg)`;
     }
   }
   
@@ -2298,7 +2305,7 @@ function tick() {
     if (moodEl) moodEl.textContent = mood;
     const dbg = document.getElementById('debugDisplay');
     if (dbg) {
-      dbg.textContent = `drv:${_dbgDriveScore.toFixed(2)} ${mood} b:${moodBeatCounter}/${MOOD_MAX_BEATS} | ${PRESETS[activePreset]?.name||'?'} ${cdjConnected?'CDJ':''} cam:${remoteCamFrameCount} inj:${camInjectTimer}${camHoldActive?' HOLD:'+camHoldBeats:''}${stroboActive?' STRB':''}`;
+      dbg.textContent = `${mood} | ${PRESETS[activePreset]?.name||'?'}[${PRESETS[activePreset]?.type||'vid'}] cam:${remoteCamFrameCount} p:${camPulseScale.toFixed(2)} inj:${camInjectTimer}${camHoldActive?' HOLD:'+camHoldBeats:''}${cdjConnected?' CDJ':''}${stroboActive?' STRB':''}`;
     }
     
     // Beat dots
