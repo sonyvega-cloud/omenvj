@@ -1562,67 +1562,73 @@ const CAM_FILTERS = [
   'saturate(0)',
 ];
 
+// Cached DOM refs (set once)
+let _vlEl = null, _clEl = null, _coEl = null;
+
 function updateVideoVisibility() {
   currentAB = getCurrentAB();
   const currentPreset = PRESETS[activePreset];
   const currentPresetHasVideo = currentPreset?.videoA != null;
   const currentPresetIsCamera = currentPreset?.type === 'camera';
-  // Default to 'remote' for backward compat (phone relay was first)
-  const camSource = currentPreset?.camSource || 'remote';
-  const isRemoteCam = currentPresetIsCamera && camSource === 'remote';
-  const isLocalCam = currentPresetIsCamera && camSource === 'local';
   
-  // Video layer: show for video presets only
-  const vl = document.getElementById('videoLayer');
-  if (vl) vl.style.opacity = (currentPresetHasVideo && !currentPresetIsCamera && !videoHidden) ? '1' : '0';
+  // Cache DOM refs on first call
+  if (!_vlEl) _vlEl = document.getElementById('videoLayer');
+  if (!_clEl) _clEl = document.getElementById('cameraLayer');
+  if (!_coEl) _coEl = document.getElementById('camColorOverlay');
   
-  // Camera color: CSS filter
-  const cl = document.getElementById('cameraLayer');
-  const camFilter = CAM_FILTERS[colorIndex] || CAM_FILTERS[0];
+  // Video layer opacity
+  if (_vlEl) _vlEl.style.opacity = (currentPresetHasVideo && !currentPresetIsCamera && !videoHidden) ? '1' : '0';
   
-  // Guaranteed pulse — beat-driven + sin wave fallback
-  const t = performance.now() / 1000;
-  const sinPulse = Math.sin(t * 3) * 0.5 + 0.5;
-  const activePulse = camPulseScale > 0.05 ? camPulseScale : sinPulse * 0.3;
+  // Hide overlay div (unused)
+  if (_coEl && _coEl.style.display !== 'none') _coEl.style.display = 'none';
   
-  // Rotation: beat-flip ±8° during beatcut/hold, slow ±3° drift otherwise
-  const camAnimated = beatCutEnabled || camHoldActive;
-  const driftRot = Math.sin(t * 0.4) * 3;
-  const activeRot = camAnimated ? camRotCurrent : driftRot;
-  
-  // Hide color overlay div (using CSS filter instead)
-  const camOverlay = document.getElementById('camColorOverlay');
-  if (camOverlay) camOverlay.style.display = 'none';
-  
-  // Remote camera
-  if (cl) {
-    const showRemoteCam = isRemoteCam && remoteCamActive && !videoHidden;
-    cl.style.display = showRemoteCam ? 'block' : 'none';
-    if (showRemoteCam) {
-      const breathe = 1.0 + smoothVol * 0.15;
-      const pulse = 1.0 + activePulse * 0.22;
-      const camScale = breathe * pulse * pinchScale;
-      cl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)}) rotate(${activeRot.toFixed(2)}deg)`;
-      cl.style.filter = camFilter;
+  // ── Camera (only compute when camera preset active) ──
+  if (currentPresetIsCamera) {
+    const camSource = currentPreset?.camSource || 'remote';
+    const isRemote = camSource === 'remote';
+    const camFilter = CAM_FILTERS[colorIndex] || CAM_FILTERS[0];
+    const t = performance.now() / 1000;
+    const activePulse = camPulseScale > 0.05 ? camPulseScale : (Math.sin(t * 3) * 0.5 + 0.5) * 0.3;
+    const camAnimated = beatCutEnabled || camHoldActive;
+    const rot = camAnimated ? camRotCurrent : Math.sin(t * 0.4) * 3;
+    const breathe = 1.0 + smoothVol * 0.15;
+    const pulse = 1.0 + activePulse * 0.22;
+    const camScale = breathe * pulse * pinchScale;
+    const transformStr = `translate(-50%, -50%) scale(${camScale.toFixed(3)}) rotate(${rot.toFixed(1)}deg)`;
+    
+    // Remote camera
+    if (_clEl) {
+      const show = isRemote && remoteCamActive && !videoHidden;
+      if (show) {
+        if (_clEl.style.display !== 'block') _clEl.style.display = 'block';
+        _clEl.style.transform = transformStr;
+        _clEl.style.filter = camFilter;
+      } else {
+        if (_clEl.style.display !== 'none') _clEl.style.display = 'none';
+      }
     }
+    
+    // Local camera
+    const localCam = localCams[activePreset];
+    if (localCam && localCam.videoEl && !isRemote && !videoHidden) {
+      if (localCam.videoEl.style.display !== 'block') localCam.videoEl.style.display = 'block';
+      localCam.videoEl.style.transform = transformStr;
+      localCam.videoEl.style.filter = camFilter;
+    }
+  } else {
+    // Not camera preset — hide camera layers
+    if (_clEl && _clEl.style.display !== 'none') _clEl.style.display = 'none';
   }
   
-  // Local cameras
+  // Hide inactive local cams
   Object.keys(localCams).forEach(pidx => {
-    const cam = localCams[pidx];
-    if (!cam || !cam.videoEl) return;
-    const show = isLocalCam && parseInt(pidx) === activePreset && !videoHidden;
-    cam.videoEl.style.display = show ? 'block' : 'none';
-    if (show) {
-      const breathe = 1.0 + smoothVol * 0.15;
-      const pulse = 1.0 + activePulse * 0.22;
-      const camScale = breathe * pulse * pinchScale;
-      cam.videoEl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)}) rotate(${activeRot.toFixed(2)}deg)`;
-      cam.videoEl.style.filter = camFilter;
+    if (parseInt(pidx) !== activePreset || !currentPresetIsCamera) {
+      const cam = localCams[pidx];
+      if (cam && cam.videoEl && cam.videoEl.style.display !== 'none') cam.videoEl.style.display = 'none';
     }
   });
   
-  // Video A/B toggle
+  // ── Video A/B toggle ──
   PRESETS.forEach((preset, i) => {
     if (!preset.videoA || preset.type === 'camera') return;
     const vidA = document.getElementById(`vid${i}a`);
