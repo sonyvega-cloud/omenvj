@@ -597,6 +597,16 @@ function buildPresetButtons() {
       btn.style.borderColor = color + '30';
       btn.onclick = () => sendPreset(p.idx);
       row.appendChild(btn);
+      
+      // Local camera preset → add pick button
+      if (p.type === 'camera' && presetData[p.idx]?.camSource !== 'remote') {
+        const pickBtn = document.createElement('div');
+        pickBtn.className = 'btn';
+        pickBtn.textContent = '⚙';
+        pickBtn.style.cssText = 'min-width:24px; padding:8px 6px; font-size:12px; border-color:' + color + '30;';
+        pickBtn.onclick = (e) => { e.stopPropagation(); showCamPicker(p.idx); };
+        row.appendChild(pickBtn);
+      }
     });
     container.appendChild(row);
   });
@@ -625,6 +635,11 @@ function updateUI(s) {
     cdjEl.style.display = s.cdjConnected ? 'inline-block' : 'none';
     cdjEl.classList.toggle('connected', s.cdjConnected);
     cdjEl.textContent = s.cdjTrackTitle ? 'CDJ: ' + s.cdjTrackTitle : 'CDJ';
+  }
+  
+  // Available cameras from player
+  if (s.availableCameras && s.availableCameras.length > 0) {
+    playerCameras = s.availableCameras;
   }
   
   // Beat dots
@@ -728,6 +743,47 @@ function updateUI(s) {
 }
 
 // ── Send commands ─────────────────────────────────────────────
+// ── Camera Picker (shows player's available cameras) ──────────
+let playerCameras = []; // from player state
+
+function showCamPicker(presetIdx) {
+  if (playerCameras.length === 0) {
+    alert('Player has no cameras available. Open player first.');
+    return;
+  }
+  
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  
+  const panel = document.createElement('div');
+  panel.style.cssText = 'background:#141414;border:1px solid #333;padding:20px;max-width:320px;width:90%;font-family:monospace;';
+  
+  const title = document.createElement('div');
+  title.textContent = 'SELECT CAMERA FOR ' + (presetData[presetIdx]?.name || 'CAM');
+  title.style.cssText = 'font-size:10px;letter-spacing:0.15em;color:#22cc44;margin-bottom:14px;';
+  panel.appendChild(title);
+  
+  playerCameras.forEach(cam => {
+    const btn = document.createElement('button');
+    btn.textContent = cam.label;
+    btn.style.cssText = 'display:block;width:100%;padding:10px;margin-bottom:6px;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;font-family:monospace;font-size:11px;cursor:pointer;text-align:left;';
+    btn.onclick = () => {
+      send({ type: 'cam_select', presetIdx, deviceId: cam.deviceId });
+      overlay.remove();
+    };
+    panel.appendChild(btn);
+  });
+  
+  const cancel = document.createElement('button');
+  cancel.textContent = 'CANCEL';
+  cancel.style.cssText = 'display:block;width:100%;padding:8px;margin-top:8px;background:none;border:1px solid #2a2a2a;color:#666;font-family:monospace;font-size:10px;cursor:pointer;';
+  cancel.onclick = () => overlay.remove();
+  panel.appendChild(cancel);
+  
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+}
+
 function sendTap()              { send({ type: 'tap' }); }
 function sendPreset(idx)        { send({ type: 'preset', idx }); }
 function sendBeatCutToggle()    { send({ type: 'beatcut', enabled: !state.beatCutEnabled }); }

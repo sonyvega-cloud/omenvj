@@ -1633,39 +1633,41 @@ function updateVideoVisibility() {
 }
 
 // ── Local Camera Management ────────────────────────────────────
-async function openLocalCam(presetIdx) {
-  if (localCams[presetIdx]) return; // already open
-  if (localCamPickerOpen) return;
-  
+let availableCameras = []; // list of { deviceId, label } for controller
+
+async function enumerateLocalCameras() {
   try {
-    localCamPickerOpen = true;
-    
-    // Get permission + enumerate
     const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
     tempStream.getTracks().forEach(t => t.stop());
     const devices = await navigator.mediaDevices.enumerateDevices();
-    const cameras = devices.filter(d => d.kind === 'videoinput');
-    
-    if (cameras.length === 0) { localCamPickerOpen = false; return; }
-    
-    // Auto-pick: use deviceId from preset if available, else show picker
-    const preset = PRESETS[presetIdx];
-    let deviceId = preset?.deviceId;
-    
-    if (!deviceId && cameras.length > 1) {
-      // Show picker
-      deviceId = await showLocalCamPicker(cameras);
-      if (!deviceId) { localCamPickerOpen = false; return; }
-    } else if (!deviceId) {
-      deviceId = cameras[0].deviceId;
+    availableCameras = devices.filter(d => d.kind === 'videoinput').map(d => ({
+      deviceId: d.deviceId,
+      label: d.label || 'Camera ' + d.deviceId.slice(0, 8),
+    }));
+    console.log('[CAM] Found', availableCameras.length, 'cameras');
+  } catch (err) {
+    console.warn('[CAM] Cannot enumerate cameras:', err.message);
+  }
+}
+
+async function openLocalCam(presetIdx, deviceId) {
+  if (localCams[presetIdx]) return; // already open
+  
+  try {
+    // Use provided deviceId, or first available
+    if (!deviceId && availableCameras.length > 0) {
+      deviceId = availableCameras[0].deviceId;
     }
+    if (!deviceId) {
+      await enumerateLocalCameras();
+      if (availableCameras.length > 0) deviceId = availableCameras[0].deviceId;
+    }
+    if (!deviceId) return;
     
-    // Open camera
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { deviceId: { exact: deviceId }, width: { ideal: 720 }, height: { ideal: 720 } }
     });
     
-    // Create video element
     const videoEl = document.createElement('video');
     videoEl.srcObject = stream;
     videoEl.muted = true;
@@ -1678,46 +1680,13 @@ async function openLocalCam(presetIdx) {
     
     localCams[presetIdx] = { stream, videoEl, deviceId };
     console.log('[CAM] Local camera opened for preset', presetIdx);
-    
   } catch (err) {
     console.warn('[CAM] Local camera error:', err.message);
   }
-  localCamPickerOpen = false;
 }
 
-function showLocalCamPicker(cameras) {
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;';
-    
-    const panel = document.createElement('div');
-    panel.style.cssText = 'background:#141414;border:1px solid #333;padding:20px;max-width:400px;width:90%;font-family:monospace;';
-    
-    const title = document.createElement('div');
-    title.textContent = 'SELECT CAMERA';
-    title.style.cssText = 'font-size:11px;letter-spacing:0.2em;color:#22cc44;margin-bottom:16px;';
-    panel.appendChild(title);
-    
-    cameras.forEach(d => {
-      const btn = document.createElement('button');
-      btn.textContent = d.label || 'Camera ' + d.deviceId.slice(0, 8);
-      btn.style.cssText = 'display:block;width:100%;padding:10px;margin-bottom:6px;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;font-family:monospace;font-size:11px;cursor:pointer;text-align:left;';
-      btn.onmouseover = () => { btn.style.borderColor = '#22cc44'; };
-      btn.onmouseout = () => { btn.style.borderColor = '#2a2a2a'; };
-      btn.onclick = () => { overlay.remove(); resolve(d.deviceId); };
-      panel.appendChild(btn);
-    });
-    
-    const cancel = document.createElement('button');
-    cancel.textContent = 'CANCEL';
-    cancel.style.cssText = 'display:block;width:100%;padding:8px;margin-top:8px;background:none;border:1px solid #2a2a2a;color:#666;font-family:monospace;font-size:10px;cursor:pointer;letter-spacing:0.15em;';
-    cancel.onclick = () => { overlay.remove(); resolve(null); };
-    panel.appendChild(cancel);
-    
-    overlay.appendChild(panel);
-    document.body.appendChild(overlay);
-  });
-}
+// Enumerate on startup
+enumerateLocalCameras();
 
 function switchToPreset(idx) {
   if (!presetReady[idx]) return;
@@ -1727,7 +1696,7 @@ function switchToPreset(idx) {
   
   // Local camera preset → open camera if needed
   if (preset?.type === 'camera' && preset?.camSource !== 'remote') {
-    openLocalCam(idx);
+    openLocalCam(idx, preset?.deviceId || null);
   }
   
   // Seek video presets to current loop position
@@ -2813,6 +2782,18 @@ function handleCommand(msg) {
       };
       remoteCamImg.src = 'data:image/jpeg;base64,' + msg.data;
       break;
+    case 'cam_select':
+      // Controller selected a local camera for a preset
+      if (msg.presetIdx !== undefined && msg.deviceId) {
+        // Close existing cam for this preset
+        if (localCams[msg.presetIdx]) {
+          localCams[msg.presetIdx].stream.getTracks().forEach(t => t.stop());
+          localCams[msg.presetIdx].videoEl.remove();
+          delete localCams[msg.presetIdx];
+        }
+        openLocalCam(msg.presetIdx, msg.deviceId);
+      }
+      break;
   }
 }
 
@@ -2932,6 +2913,7 @@ function broadcastState() {
       autoSpeedEnabled: !!autoSpeedEnabled,
       cdjConnected: !!cdjConnected,
       cdjTrackTitle: cdjTrackTitle || '',
+      availableCameras: availableCameras || [],
     };
     
     // Send to local controller (BroadcastChannel) — 20Hz
