@@ -1594,8 +1594,9 @@ function updateVideoVisibility() {
     const showRemoteCam = isRemoteCam && remoteCamActive && !videoHidden;
     cl.style.display = showRemoteCam ? 'block' : 'none';
     if (showRemoteCam) {
-      const pulse = 1.0 + camPulseScale * 0.18;
-      const camScale = pulse * pinchScale;
+      const breathe = 1.0 + smoothVol * 0.12; // always breathes on volume
+      const pulse = 1.0 + camPulseScale * 0.18; // beat zoom punch
+      const camScale = breathe * pulse * pinchScale;
       cl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)}) rotate(${camRotCurrent.toFixed(2)}deg)`;
       cl.style.filter = colorIndex === 4 ? 'saturate(0)' : 'none';
     }
@@ -1608,8 +1609,9 @@ function updateVideoVisibility() {
     const show = isLocalCam && parseInt(pidx) === activePreset && !videoHidden;
     cam.videoEl.style.display = show ? 'block' : 'none';
     if (show) {
+      const breathe = 1.0 + smoothVol * 0.12;
       const pulse = 1.0 + camPulseScale * 0.18;
-      const camScale = pulse * pinchScale;
+      const camScale = breathe * pulse * pinchScale;
       cam.videoEl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)}) rotate(${camRotCurrent.toFixed(2)}deg)`;
       cam.videoEl.style.filter = colorIndex === 4 ? 'saturate(0)' : 'none';
     }
@@ -2271,6 +2273,10 @@ function tick() {
           pulseScale = 1.25 + smoothBass * 0.3;
           beatCount++;
           moodBeatCounter++;
+          // Camera pulse on raw beat too
+          if (PRESETS[activePreset]?.type === 'camera') {
+            camPulseScale = 1.0;
+          }
         }
       } else {
         if (beat) autoCorrectBpm();
