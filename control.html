@@ -215,6 +215,18 @@
     color: rgba(255,255,255,0.15);
     margin-left: auto;
   }
+  .theme-slider {
+    width: 60px; height: 3px; margin-left: auto;
+    -webkit-appearance: none; appearance: none;
+    background: rgba(255,255,255,0.1); outline: none; border-radius: 2px;
+  }
+  .theme-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 12px; height: 12px;
+    background: rgba(255,255,255,0.5); border-radius: 50%; cursor: pointer;
+  }
+  .tw-val {
+    font-size: 0.5rem; color: rgba(255,255,255,0.3); width: 22px; text-align: right;
+  }
 
   /* Energy */
   .energy-container {
@@ -328,6 +340,27 @@
       <div class="auto-check" id="af_speed">✓</div>
       <div class="auto-label">SPEED</div>
       <div class="auto-desc">2× on drop/peak</div>
+    </div>
+  </div>
+  <div style="padding:6px 4px 2px; font-size:9px; letter-spacing:0.15em; color:rgba(255,255,255,0.3); margin-top:6px; border-top:1px solid rgba(255,255,255,0.06);">THEME MIX</div>
+  <div id="themeMix" style="padding-left:4px;">
+    <div class="auto-item" onclick="toggleThemeMix('omen')">
+      <div class="auto-check on" id="tm_omen" style="color:#ff2200;">✓</div>
+      <div class="auto-label" style="color:#ff2200;">OMEN</div>
+      <input type="range" id="tw_omen" min="0" max="100" value="80" class="theme-slider" oninput="sendThemeMix()" onclick="event.stopPropagation()">
+      <span class="tw-val" id="twv_omen">80</span>
+    </div>
+    <div class="auto-item" onclick="toggleThemeMix('camera')">
+      <div class="auto-check" id="tm_camera" style="color:#22cc44;">✗</div>
+      <div class="auto-label" style="color:#22cc44;">CAMERA</div>
+      <input type="range" id="tw_camera" min="0" max="100" value="20" class="theme-slider" oninput="sendThemeMix()" onclick="event.stopPropagation()">
+      <span class="tw-val" id="twv_camera">20</span>
+    </div>
+    <div class="auto-item" onclick="toggleThemeMix('voyager')">
+      <div class="auto-check" id="tm_voyager" style="color:#aa44ff;">✗</div>
+      <div class="auto-label" style="color:#aa44ff;">VOYAGER</div>
+      <input type="range" id="tw_voyager" min="0" max="100" value="0" class="theme-slider" oninput="sendThemeMix()" onclick="event.stopPropagation()">
+      <span class="tw-val" id="twv_voyager">0</span>
     </div>
   </div>
 </div>
@@ -782,6 +815,33 @@ function showCamPicker(presetIdx) {
   
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
+}
+
+// ── Theme Mix ─────────────────────────────────────────────────
+let themeMix = { omen: true, camera: false, voyager: false };
+let themeWeights = { omen: 80, camera: 20, voyager: 0 };
+
+function toggleThemeMix(themeId) {
+  themeMix[themeId] = !themeMix[themeId];
+  const el = document.getElementById('tm_' + themeId);
+  if (el) {
+    el.textContent = themeMix[themeId] ? '✓' : '✗';
+    el.className = 'auto-check' + (themeMix[themeId] ? ' on' : '');
+  }
+  sendThemeMix();
+}
+
+function sendThemeMix() {
+  // Read slider values
+  ['omen', 'camera', 'voyager'].forEach(id => {
+    const sl = document.getElementById('tw_' + id);
+    const valEl = document.getElementById('twv_' + id);
+    if (sl) {
+      themeWeights[id] = parseInt(sl.value);
+      if (valEl) valEl.textContent = sl.value;
+    }
+  });
+  send({ type: 'thememix', themes: themeMix, weights: themeWeights });
 }
 
 function sendTap()              { send({ type: 'tap' }); }

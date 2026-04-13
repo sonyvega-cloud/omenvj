@@ -1037,7 +1037,7 @@ function onBeatTick() {
   if (camHoldActive && camHoldBeats > 0) camHoldBeats--;
   
   // Camera injection timer (independent of mood)
-  if (remoteCamActive && autopilotEnabled && autoEnergyEnabled && !camHoldActive) {
+  if (activeThemes.camera && remoteCamActive && autopilotEnabled && autoEnergyEnabled && !camHoldActive) {
     camInjectTimer--;
     if (camInjectTimer <= 0) {
       // Find camera presets in pool
@@ -1052,7 +1052,11 @@ function onBeatTick() {
         updatePresetGrid();
       }
       // Reset timer for next injection
-      camInjectTimer = CAM_INJECT_MIN + Math.floor(Math.random() * (CAM_INJECT_MAX - CAM_INJECT_MIN + 1));
+      // Interval based on weight: 80% → 8-16 beats, 20% → 48-80 beats
+      const camW = Math.max(themeWeights.camera || 20, 5);
+      const minI = Math.round(8 + (100 - camW) * 0.5);
+      const maxI = Math.round(minI * 1.8);
+      camInjectTimer = minI + Math.floor(Math.random() * (maxI - minI + 1));
     }
   }
   
@@ -1130,6 +1134,9 @@ function updateSilenceDampen() {
 // ═══════════════════════════════════════════════════════════════
 
 let autopilotEnabled = false;       // master toggle
+// Theme mix: which themes autopilot uses + weight ratios
+let activeThemes = { omen: true, camera: false, voyager: false };
+let themeWeights = { omen: 80, camera: 20, voyager: 0 };
 let autoEnergyEnabled = true;       // sub: energy-based preset switch
 let autoFxEnabled = true;           // sub: FX amount driven by volume
 let autoBeatCutEnabled = true;      // sub: beat cut interval by energy
@@ -1148,7 +1155,14 @@ let stroboAutoFrames = 0; // frames remaining for auto-strobo burst
 
 function getPresetsByEnergy(cat) {
   return PRESETS.map((p, i) => ({ ...p, idx: i }))
-    .filter(p => p.energy === cat && p.type !== 'camera' && presetReady[p.idx] && presetPool.has(p.idx));
+    .filter(p => {
+      if (p.energy !== cat) return false;
+      if (!presetReady[p.idx] || !presetPool.has(p.idx)) return false;
+      if (p.type === 'camera') return false; // camera handled by inject timer
+      const theme = p.themeId || 'omen';
+      if (!activeThemes[theme]) return false; // theme disabled
+      return true;
+    });
 }
 
 // Map normEnergy to beat cut interval
@@ -2772,6 +2786,11 @@ function handleCommand(msg) {
       if (msg.feature === 'speed') autoSpeedEnabled = !autoSpeedEnabled;
       autopilotEnabled = autoEnergyEnabled || autoFxEnabled || autoBeatCutEnabled || autoStroboEnabled || autoColorEnabled || autoSpeedEnabled;
       break;
+    case 'thememix':
+      if (msg.themes) activeThemes = msg.themes;
+      if (msg.weights) themeWeights = msg.weights;
+      console.log('[AUTOPILOT] Theme mix:', activeThemes, themeWeights);
+      break;
     case 'cam_start':
       remoteCamActive = true;
       remoteCamFrameCount = 0;
@@ -2942,6 +2961,8 @@ function broadcastState() {
       cdjConnected: !!cdjConnected,
       cdjTrackTitle: cdjTrackTitle || '',
       availableCameras: availableCameras || [],
+      activeThemes,
+      themeWeights,
     };
     
     // Send to local controller (BroadcastChannel) — 20Hz
