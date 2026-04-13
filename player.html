@@ -1553,6 +1553,15 @@ function getCurrentAB() {
   return loopIndex % 2 === 0 ? 0 : 1;
 }
 
+// Camera CSS filters (static — defined once)
+const CAM_FILTERS = [
+  'sepia(0.6) hue-rotate(-10deg) saturate(2.5)',
+  'sepia(0.6) hue-rotate(200deg) saturate(2.5)',
+  'sepia(0.6) hue-rotate(100deg) saturate(2.5)',
+  'sepia(0.6) hue-rotate(40deg) saturate(2.5)',
+  'saturate(0)',
+];
+
 function updateVideoVisibility() {
   currentAB = getCurrentAB();
   const currentPreset = PRESETS[activePreset];
@@ -1567,15 +1576,8 @@ function updateVideoVisibility() {
   const vl = document.getElementById('videoLayer');
   if (vl) vl.style.opacity = (currentPresetHasVideo && !currentPresetIsCamera && !videoHidden) ? '1' : '0';
   
-  // Camera color: CSS filter (sepia+hue for tint, saturate for mono)
+  // Camera color: CSS filter
   const cl = document.getElementById('cameraLayer');
-  const CAM_FILTERS = [
-    'sepia(0.6) hue-rotate(-10deg) saturate(2.5)',  // RED tint
-    'sepia(0.6) hue-rotate(200deg) saturate(2.5)',  // BLUE tint
-    'sepia(0.6) hue-rotate(100deg) saturate(2.5)',  // GREEN tint
-    'sepia(0.6) hue-rotate(40deg) saturate(2.5)',   // YELLOW tint
-    'saturate(0)',                                    // MONO
-  ];
   const camFilter = CAM_FILTERS[colorIndex] || CAM_FILTERS[0];
   
   // Guaranteed pulse — beat-driven + sin wave fallback
@@ -1690,8 +1692,8 @@ async function openLocalCam(presetIdx, deviceId) {
   }
 }
 
-// Enumerate on startup
-enumerateLocalCameras();
+// Enumerate on demand (not startup — getUserMedia blocks)
+// enumerateLocalCameras();
 
 function switchToPreset(idx) {
   if (!presetReady[idx]) return;
