@@ -1189,24 +1189,23 @@ function weightedPresetPick(candidates) {
 
 // Map normEnergy to beat cut interval
 function getAutoBeatCutInterval() {
-  // Base: energy → interval
   let interval;
   if (normEnergy < 0.25) interval = 8;
   else if (normEnergy < 0.50) interval = 4;
-  else if (normEnergy < 0.75) interval = 2;
-  else interval = 1;
+  else if (normEnergy < 0.75) interval = 4;
+  else interval = 2;
   
   // Mood override
   if (mood === 'AMBIENT' || mood === 'LISTENING') return 0; // beat cut OFF
-  if (mood === 'BUILDING') interval = Math.max(interval, 4); // cap at 4 during buildup
-  if (mood === 'DROP') interval = 1; // force 1 on drop
+  if (mood === 'BUILDING') interval = Math.max(interval, 4);
+  if (mood === 'DROP') interval = 2; // fast but not every beat
   
-  // Hi-hat boost: snare rolls / open hats → one step faster
-  if (smoothHigh > 0.25 && interval > 1) {
-    interval = interval === 8 ? 4 : interval === 4 ? 2 : 1;
+  // Hi-hat boost: one step faster (min 2)
+  if (smoothHigh > 0.25 && interval > 2) {
+    interval = interval === 8 ? 4 : 2;
   }
   
-  return interval;
+  return Math.max(interval, 2); // never faster than 2 beats
 }
 
 function updateAutopilot() {
@@ -1724,8 +1723,17 @@ async function openLocalCam(presetIdx, deviceId) {
 // Enumerate on demand (not startup — getUserMedia blocks)
 // enumerateLocalCameras();
 
+let lastSwitchTime = 0;
+const SWITCH_MIN_MS = 300; // minimum 300ms between switches
+
 function switchToPreset(idx) {
   if (!presetReady[idx]) return;
+  
+  // Throttle: skip if too fast (except manual clicks)
+  const now = performance.now();
+  if (now - lastSwitchTime < SWITCH_MIN_MS && beatCutEnabled) return;
+  lastSwitchTime = now;
+  
   activePreset = idx;
   
   const preset = PRESETS[idx];
