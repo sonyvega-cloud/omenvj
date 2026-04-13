@@ -282,6 +282,7 @@
 <!-- ── Video layer (generated dynamically) ────────────── -->
 <div id="videoLayer"></div>
 <canvas id="cameraLayer" style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:100vh; height:100vh; z-index:0; display:none;"></canvas>
+<div id="camColorOverlay" style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:100vh; height:100vh; z-index:0; pointer-events:none; mix-blend-mode:multiply; display:none;"></div>
 <div id="videoVignette"></div>
 <div id="edgeMask"></div>
 
@@ -1055,9 +1056,13 @@ function onBeatTick() {
     }
   }
   
-  // Camera beat pulse (fire on every beat when camera active)
+  // Camera beat pulse + rotation (fire every beat when camera active)
   if (PRESETS[activePreset]?.type === 'camera') {
-    camPulseScale = 1.0; // trigger pulse every beat
+    camPulseScale = 1.0;
+    // Flip rotation target ±8° on each beat during beat cut / autopilot
+    if (beatCutEnabled || camHoldActive) {
+      camRotTarget = camRotTarget > 0 ? -8 : 8;
+    }
   }
   
   const bar4 = beatIndex % 4;
@@ -1562,26 +1567,37 @@ function updateVideoVisibility() {
   
   // Remote camera layer (phone relay)
   const cl = document.getElementById('cameraLayer');
-  // Camera rotation: only during beat cut or autopilot hold, ±8° swing
-  const camIsAnimated = beatCutEnabled || camHoldActive;
-  const camRotDeg = camIsAnimated ? Math.sin(performance.now() / 4000) * 8 : 0;
+  const camOverlay = document.getElementById('camColorOverlay');
   
-  // Camera color filter
-  let camFilter = 'none';
-  if (colorIndex === 4) camFilter = 'saturate(0)';
-  else if (colorIndex !== 0) {
-    const hueMap = [0, 220, 120, 50, 0];
-    camFilter = `hue-rotate(${hueMap[colorIndex]}deg)`;
+  // Camera color overlay (real color tint, not hue-rotate)
+  const CAM_COLORS = [
+    'rgba(255,30,0,0.3)',    // RED
+    'rgba(30,80,255,0.3)',   // BLUE
+    'rgba(30,200,80,0.3)',   // GREEN
+    'rgba(255,200,0,0.3)',   // YELLOW
+    'rgba(128,128,128,0.0)', // MONO (no overlay, handled by filter)
+  ];
+  
+  const anyCamActive = (isRemoteCam && remoteCamActive) || (isLocalCam && localCams[activePreset]);
+  
+  if (camOverlay) {
+    camOverlay.style.display = anyCamActive && !videoHidden ? 'block' : 'none';
+    if (anyCamActive) {
+      camOverlay.style.background = CAM_COLORS[colorIndex] || CAM_COLORS[0];
+      if (colorIndex === 4) {
+        camOverlay.style.background = 'none';
+      }
+    }
   }
   
   if (cl) {
     const showRemoteCam = isRemoteCam && remoteCamActive && !videoHidden;
     cl.style.display = showRemoteCam ? 'block' : 'none';
     if (showRemoteCam) {
-      const pulse = 1.0 + camPulseScale * 0.08;
+      const pulse = 1.0 + camPulseScale * 0.18;
       const camScale = pulse * pinchScale;
-      cl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)}) rotate(${camRotDeg.toFixed(2)}deg)`;
-      cl.style.filter = camFilter;
+      cl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)}) rotate(${camRotCurrent.toFixed(2)}deg)`;
+      cl.style.filter = colorIndex === 4 ? 'saturate(0)' : 'none';
     }
   }
   
@@ -1592,10 +1608,10 @@ function updateVideoVisibility() {
     const show = isLocalCam && parseInt(pidx) === activePreset && !videoHidden;
     cam.videoEl.style.display = show ? 'block' : 'none';
     if (show) {
-      const pulse = 1.0 + camPulseScale * 0.08;
+      const pulse = 1.0 + camPulseScale * 0.18;
       const camScale = pulse * pinchScale;
-      cam.videoEl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)}) rotate(${camRotDeg.toFixed(2)}deg)`;
-      cam.videoEl.style.filter = camFilter;
+      cam.videoEl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)}) rotate(${camRotCurrent.toFixed(2)}deg)`;
+      cam.videoEl.style.filter = colorIndex === 4 ? 'saturate(0)' : 'none';
     }
   });
   
@@ -1937,7 +1953,13 @@ function render() {
   // Decay
   beatFlash *= 0.82;
   exposureOpacity *= 0.88;
-  camPulseScale *= 0.88; // camera pulse decay (~10 frames ease-out)
+  camPulseScale *= 0.85; // camera pulse decay (~8 frames)
+  // Smooth rotation toward target (ease-out)
+  camRotCurrent += (camRotTarget - camRotCurrent) * 0.06;
+  // When not animated, ease back to 0
+  if (!(beatCutEnabled || camHoldActive) && PRESETS[activePreset]?.type === 'camera') {
+    camRotTarget = 0;
+  }
   pulseScale = pulseScale * 0.92 + 1.0 * 0.08;
 }
 
@@ -2560,6 +2582,8 @@ let camHoldBeats = 0;
 let camHoldActive = false;
 let camPulseBeat = 0;
 let camPulseScale = 0;
+let camRotCurrent = 0;    // current rotation degrees (smoothed)
+let camRotTarget = 0;     // target rotation (flips ±8 on each beat)
 let camInjectTimer = 16;
 const CAM_INJECT_MIN = 32;
 const CAM_INJECT_MAX = 64;
