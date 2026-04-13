@@ -487,10 +487,8 @@ buildPresetButtons();
 
 // ── Ping player on load ───────────────────────────────────────
 send({ type: 'ping', themes: themeMix, weights: themeWeights });
-setTimeout(() => sendThemeMix(), 500); // delay: function defined below
 setInterval(() => {
   send({ type: 'ping', themes: themeMix, weights: themeWeights });
-  sendThemeMix();
 }, 3000);
 
 // ── Handle messages from player ───────────────────────────────
