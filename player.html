@@ -1034,37 +1034,10 @@ function onBeatTick() {
   beatFiredFrames = 5;
   
   // Camera hold countdown
-  if (camHoldActive && camHoldBeats > 0) camHoldBeats--;
-  
-  // Camera injection timer (independent of mood)
-  if (activeThemes.camera && autopilotEnabled && autoEnergyEnabled && !camHoldActive) {
-    camInjectTimer--;
-    if (camInjectTimer <= 0) {
-      // Find camera presets in pool
-      const camPresets = PRESETS.map((p, i) => ({ ...p, idx: i }))
-        .filter(p => p.type === 'camera' && presetReady[p.idx] && presetPool.has(p.idx));
-      if (camPresets.length > 0) {
-        const pick = camPresets[Math.floor(Math.random() * camPresets.length)];
-        camHoldBeats = CAM_HOLD_MIN + Math.floor(Math.random() * (CAM_HOLD_MAX - CAM_HOLD_MIN + 1));
-        camHoldActive = true;
-        camPulseBeat = 0;
-        switchToPreset(pick.idx);
-        updatePresetGrid();
-      }
-      // Reset timer for next injection
-      // Interval based on weight: 80% → 8-16 beats, 20% → 48-80 beats
-      const camW = Math.max(themeWeights.camera || 20, 5);
-      const minI = Math.round(8 + (100 - camW) * 0.5);
-      const maxI = Math.round(minI * 1.8);
-      camInjectTimer = minI + Math.floor(Math.random() * (maxI - minI + 1));
-    }
-  }
-  
   // Camera beat pulse + rotation (fire every beat when camera active)
   if (PRESETS[activePreset]?.type === 'camera') {
     camPulseScale = 1.0;
-    // Flip rotation target ±8° on each beat during beat cut / autopilot
-    if (beatCutEnabled || camHoldActive) {
+    if (beatCutEnabled) {
       camRotTarget = camRotTarget > 0 ? -8 : 8;
     }
   }
@@ -1111,7 +1084,7 @@ function onBeatTick() {
   }
   
   // Beat cut — switch preset on interval (skip during camera hold)
-  if (beatCutEnabled && !camHoldActive && beatIndex % beatCutInterval === 0) {
+  if (beatCutEnabled && beatIndex % beatCutInterval === 0) {
     beatCutNext();
   }
 }
@@ -1236,7 +1209,6 @@ function updateAutopilot() {
     // Kill beat cut + strobo + camera hold in silence
     if (beatCutEnabled) { beatCutEnabled = false; updatePresetGrid(); }
     if (stroboActive && !manualStrobo) { stroboActive = false; stroboFlash = 0; }
-    camHoldActive = false;
     return; // skip all other autopilot
   }
   
@@ -1294,7 +1266,7 @@ function updateAutopilot() {
   }
   
   // ── Sub-feature: BEAT CUT interval (runs every frame) ───────
-  if (autoBeatCutEnabled && !camHoldActive) {
+  if (autoBeatCutEnabled) {
     const autoInterval = getAutoBeatCutInterval();
     if (autoInterval === 0) {
       // AMBIENT → beat cut OFF
@@ -1326,23 +1298,6 @@ function updateAutopilot() {
   // ── Sub-feature: ENERGY preset switch (gated by cooldown) ───
   if (!autoEnergyEnabled) return;
   if (autopilotCooldown > 0) { autopilotCooldown--; return; }
-  
-  // Camera hold: can't switch away during hold
-  if (camHoldActive) {
-    if (camHoldBeats <= 0) {
-      // Hold expired → switch to non-camera preset from active themes
-      camHoldActive = false;
-      const videoCandidates = PRESETS.map((p, i) => ({ ...p, idx: i }))
-        .filter(p => p.type !== 'camera' && presetReady[p.idx] && presetPool.has(p.idx) && activeThemes[p.themeId || 'omen']);
-      if (videoCandidates.length > 0) {
-        const pick = videoCandidates[Math.floor(Math.random() * videoCandidates.length)];
-        switchToPreset(pick.idx);
-        autopilotCooldown = AUTOPILOT_MIN_INTERVAL;
-        updatePresetGrid();
-      }
-    }
-    return; // block normal autopilot during camera hold
-  }
   
   if (mood === lastAutopilotMood) return;
   
@@ -1377,13 +1332,6 @@ function updateAutopilot() {
   if (!pick) return;
   
   switchToPreset(pick.idx);
-  
-  // Camera hold if picked a camera preset
-  if (PRESETS[pick.idx]?.type === 'camera') {
-    camHoldBeats = CAM_HOLD_MIN + Math.floor(Math.random() * (CAM_HOLD_MAX - CAM_HOLD_MIN + 1));
-    camHoldActive = true;
-    camPulseBeat = 0;
-  }
   
   // ── Sub-feature: AUTO COLOR (change palette on mood switch) ──
   if (autoColorEnabled) {
@@ -1645,7 +1593,7 @@ function updateVideoVisibility() {
     const camFilter = CAM_FILTERS[colorIndex] || CAM_FILTERS[0];
     const t = performance.now() / 1000;
     const activePulse = camPulseScale > 0.05 ? camPulseScale : (Math.sin(t * 3) * 0.5 + 0.5) * 0.3;
-    const camAnimated = beatCutEnabled || camHoldActive;
+    const camAnimated = beatCutEnabled;
     const rot = camAnimated ? camRotCurrent : Math.sin(t * 0.4) * 3;
     const breathe = 1.0 + smoothVol * 0.15;
     const pulse = 1.0 + activePulse * 0.22;
@@ -2011,7 +1959,7 @@ function render() {
   // Smooth rotation toward target (ease-out)
   camRotCurrent += (camRotTarget - camRotCurrent) * 0.06;
   // When not animated, ease back to 0
-  if (!(beatCutEnabled || camHoldActive) && PRESETS[activePreset]?.type === 'camera') {
+  if (!(beatCutEnabled) && PRESETS[activePreset]?.type === 'camera') {
     camRotTarget = 0;
   }
   pulseScale = pulseScale * 0.92 + 1.0 * 0.08;
@@ -2382,7 +2330,7 @@ function tick() {
     const dbg = document.getElementById('debugDisplay');
     if (dbg) {
       const tMix = (activeThemes.omen?'O':'')+(activeThemes.camera?'C':'')+(activeThemes.voyager?'V':'');
-      dbg.textContent = `${mood} | ${PRESETS[activePreset]?.name||'?'}[${PRESETS[activePreset]?.type||'vid'}] T:${tMix} inj:${camInjectTimer}${camHoldActive?' HOLD:'+camHoldBeats:''} cam:${remoteCamFrameCount}${cdjConnected?' CDJ':''}${stroboActive?' STRB':''}`;
+      dbg.textContent = `${mood} | ${PRESETS[activePreset]?.name||'?'}[${PRESETS[activePreset]?.type||'vid'}] T:${tMix} cut:${beatCutInterval} cam:${remoteCamFrameCount}${cdjConnected?' CDJ':''}${stroboActive?' STRB':''}`;
     }
     
     // Beat dots
@@ -2636,18 +2584,11 @@ let remoteCamCtx = null;
 let remoteCamImg = null;
 let remoteCamFrameCount = 0;
 
-// Camera autopilot hold: min 4 beats, max 8 beats
-let camHoldBeats = 0;
-let camHoldActive = false;
+// Camera animation
 let camPulseBeat = 0;
 let camPulseScale = 0;
-let camRotCurrent = 0;    // current rotation degrees (smoothed)
-let camRotTarget = 0;     // target rotation (flips ±8 on each beat)
-let camInjectTimer = 16;
-const CAM_INJECT_MIN = 32;
-const CAM_INJECT_MAX = 64;
-const CAM_HOLD_MIN = 4;
-const CAM_HOLD_MAX = 8;
+let camRotCurrent = 0;
+let camRotTarget = 0;
 
 // Local cameras (USB webcam etc. on player PC)
 const localCams = {}; // presetIdx → { stream, videoEl }
@@ -2705,7 +2646,7 @@ function connectCDJ() {
           if (videoLoaded) updateVideoSpeed(bpm);
           
           // Beat cut (skip during camera hold)
-          if (beatCutEnabled && !camHoldActive && beatIndex % beatCutInterval === 0) {
+          if (beatCutEnabled && beatIndex % beatCutInterval === 0) {
             beatCutNext();
           }
         }
