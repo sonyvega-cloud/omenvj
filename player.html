@@ -1706,8 +1706,8 @@ function render() {
   const dpr = window.devicePixelRatio || 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   
-  // Clear — transparent over video, black for GFX-only
-  if (hasVideo && !videoHidden) {
+  // Clear — transparent over video/camera, black for GFX-only
+  if ((hasVideo || remoteCamActive) && !videoHidden) {
     ctx.clearRect(0, 0, W, H);
   } else {
     ctx.fillStyle = '#000';
@@ -1744,8 +1744,8 @@ function render() {
     ctx.fillRect(0, 0, W, H);
   }
   
-  // ── Canvas vignette (only for GFX-only presets) ──────────────
-  if (!hasVideo || videoHidden) {
+  // ── Canvas vignette (only for GFX-only presets, NOT camera) ───
+  if ((!hasVideo && !remoteCamActive) || videoHidden) {
     const minD = Math.min(W, H);
     const grad = ctx.createRadialGradient(CX, CY, minD * 0.35, CX, CY, Math.max(W, H) * 0.55);
     grad.addColorStop(0, 'transparent');
