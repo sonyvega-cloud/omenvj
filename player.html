@@ -2128,7 +2128,7 @@ function tick() {
     if (moodEl) moodEl.textContent = mood;
     const dbg = document.getElementById('debugDisplay');
     if (dbg) {
-      dbg.textContent = `drv:${_dbgDriveScore.toFixed(2)} [${_dbgThreshAmb.toFixed(2)}|${_dbgThreshBld.toFixed(2)}] ${mood} b:${moodBeatCounter}/${MOOD_MAX_BEATS} | ${PRESETS[activePreset]?.name||'?'} ${cdjConnected?'CDJ':''}${remoteCamActive?' CAM:'+remoteCamFrameCount:''}${stroboActive?' STRB':''}`;
+      dbg.textContent = `drv:${_dbgDriveScore.toFixed(2)} ${mood} b:${moodBeatCounter}/${MOOD_MAX_BEATS} | ${PRESETS[activePreset]?.name||'?'} ${cdjConnected?'CDJ':''} cam:${remoteCamFrameCount}${stroboActive?' STRB':''}`;
     }
     
     // Beat dots
@@ -2569,30 +2569,39 @@ function handleCommand(msg) {
       remoteCamActive = true;
       remoteCamFrameCount = 0;
       remoteCamCanvas = document.getElementById('cameraLayer');
-      remoteCamCtx = remoteCamCanvas.getContext('2d');
-      remoteCamCanvas.width = msg.width || 480;
-      remoteCamCanvas.height = msg.height || 480;
-      remoteCamCanvas.style.display = 'block'; // show immediately
+      if (remoteCamCanvas) {
+        remoteCamCtx = remoteCamCanvas.getContext('2d');
+        remoteCamCanvas.width = msg.width || 480;
+        remoteCamCanvas.height = msg.height || 480;
+        remoteCamCanvas.style.display = 'block';
+      }
       console.log('[CAM] Remote camera started');
       break;
     case 'cam_stop':
       remoteCamActive = false;
-      const camEl = document.getElementById('cameraLayer');
-      if (camEl) camEl.style.display = 'none';
+      remoteCamFrameCount = 0;
+      const camEl2 = document.getElementById('cameraLayer');
+      if (camEl2) camEl2.style.display = 'none';
       console.log('[CAM] Remote camera stopped');
       break;
     case 'cam_frame':
-      if (!remoteCamActive) break;
-      if (!remoteCamCtx) {
-        remoteCamCanvas = document.getElementById('cameraLayer');
-        remoteCamCtx = remoteCamCanvas.getContext('2d');
-        remoteCamCanvas.style.display = 'block';
+      // Auto-activate on first frame (in case cam_start was missed)
+      if (!remoteCamActive) {
+        remoteCamActive = true;
+        console.log('[CAM] Auto-activated from frame');
       }
+      if (!remoteCamCanvas) {
+        remoteCamCanvas = document.getElementById('cameraLayer');
+        if (!remoteCamCanvas) break;
+        remoteCamCtx = remoteCamCanvas.getContext('2d');
+        remoteCamCanvas.width = 480;
+        remoteCamCanvas.height = 480;
+      }
+      remoteCamCanvas.style.display = 'block';
       remoteCamFrameCount++;
-      // Decode base64 JPEG → draw to camera canvas
       if (!remoteCamImg) remoteCamImg = new Image();
       remoteCamImg.onload = () => {
-        remoteCamCtx.drawImage(remoteCamImg, 0, 0, remoteCamCanvas.width, remoteCamCanvas.height);
+        if (remoteCamCtx) remoteCamCtx.drawImage(remoteCamImg, 0, 0, remoteCamCanvas.width, remoteCamCanvas.height);
       };
       remoteCamImg.src = 'data:image/jpeg;base64,' + msg.data;
       break;
