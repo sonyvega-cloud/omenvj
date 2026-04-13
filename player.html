@@ -1103,8 +1103,8 @@ function onBeatTick() {
     updateVideoSpeed(bpm);
   }
   
-  // Beat cut — switch preset on interval (iOS: single clock)
-  if (beatCutEnabled && beatIndex % beatCutInterval === 0) {
+  // Beat cut — switch preset on interval (skip during camera hold)
+  if (beatCutEnabled && !camHoldActive && beatIndex % beatCutInterval === 0) {
     beatCutNext();
   }
 }
@@ -1247,7 +1247,7 @@ function updateAutopilot() {
   }
   
   // ── Sub-feature: BEAT CUT interval (runs every frame) ───────
-  if (autoBeatCutEnabled) {
+  if (autoBeatCutEnabled && !camHoldActive) {
     const autoInterval = getAutoBeatCutInterval();
     if (autoInterval === 0) {
       // AMBIENT → beat cut OFF
@@ -2183,7 +2183,7 @@ function tick() {
     if (moodEl) moodEl.textContent = mood;
     const dbg = document.getElementById('debugDisplay');
     if (dbg) {
-      dbg.textContent = `drv:${_dbgDriveScore.toFixed(2)} ${mood} b:${moodBeatCounter}/${MOOD_MAX_BEATS} | ${PRESETS[activePreset]?.name||'?'} ${cdjConnected?'CDJ':''} cam:${remoteCamFrameCount}${stroboActive?' STRB':''}`;
+      dbg.textContent = `drv:${_dbgDriveScore.toFixed(2)} ${mood} b:${moodBeatCounter}/${MOOD_MAX_BEATS} | ${PRESETS[activePreset]?.name||'?'} ${cdjConnected?'CDJ':''} cam:${remoteCamFrameCount} inj:${camInjectTimer}${camHoldActive?' HOLD:'+camHoldBeats:''}${stroboActive?' STRB':''}`;
     }
     
     // Beat dots
@@ -2501,8 +2501,8 @@ function connectCDJ() {
           // Video speed sync
           if (videoLoaded) updateVideoSpeed(bpm);
           
-          // Beat cut
-          if (beatCutEnabled && beatIndex % beatCutInterval === 0) {
+          // Beat cut (skip during camera hold)
+          if (beatCutEnabled && !camHoldActive && beatIndex % beatCutInterval === 0) {
             beatCutNext();
           }
         }
