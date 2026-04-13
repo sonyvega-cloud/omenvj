@@ -1511,10 +1511,10 @@ function updateVideoVisibility() {
   const vl = document.getElementById('videoLayer');
   if (vl) vl.style.opacity = (currentPresetHasVideo && !currentPresetIsCamera && !videoHidden) ? '1' : '0';
   
-  // Camera layer: show whenever remote cam is active
+  // Camera layer: show ONLY when active preset is camera type + cam streaming
   const cl = document.getElementById('cameraLayer');
   if (cl) {
-    const showCam = remoteCamActive && !videoHidden;
+    const showCam = currentPresetIsCamera && remoteCamActive && !videoHidden;
     cl.style.display = showCam ? 'block' : 'none';
     if (showCam) {
       const videoPulse = 1.0 + (pulseScale - 1.0) * 0.25;
@@ -1706,8 +1706,11 @@ function render() {
   const dpr = window.devicePixelRatio || 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   
+  // Is current preset camera type?
+  const isCurrentCam = remoteCamActive && PRESETS[activePreset]?.type === 'camera';
+  
   // Clear — transparent over video/camera, black for GFX-only
-  if ((hasVideo || remoteCamActive) && !videoHidden) {
+  if ((hasVideo || isCurrentCam) && !videoHidden) {
     ctx.clearRect(0, 0, W, H);
   } else {
     ctx.fillStyle = '#000';
@@ -1744,8 +1747,8 @@ function render() {
     ctx.fillRect(0, 0, W, H);
   }
   
-  // ── Canvas vignette (only for GFX-only presets, NOT camera) ───
-  if ((!hasVideo && !remoteCamActive) || videoHidden) {
+  // ── Canvas vignette (only for GFX-only presets, NOT video/camera) ───
+  if ((!hasVideo && !isCurrentCam) || videoHidden) {
     const minD = Math.min(W, H);
     const grad = ctx.createRadialGradient(CX, CY, minD * 0.35, CX, CY, Math.max(W, H) * 0.55);
     grad.addColorStop(0, 'transparent');
@@ -2573,7 +2576,6 @@ function handleCommand(msg) {
         remoteCamCtx = remoteCamCanvas.getContext('2d');
         remoteCamCanvas.width = msg.width || 480;
         remoteCamCanvas.height = msg.height || 480;
-        remoteCamCanvas.style.display = 'block';
       }
       console.log('[CAM] Remote camera started');
       break;
@@ -2597,7 +2599,6 @@ function handleCommand(msg) {
         remoteCamCanvas.width = 480;
         remoteCamCanvas.height = 480;
       }
-      remoteCamCanvas.style.display = 'block';
       remoteCamFrameCount++;
       if (!remoteCamImg) remoteCamImg = new Image();
       remoteCamImg.onload = () => {
