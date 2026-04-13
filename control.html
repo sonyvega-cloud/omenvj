@@ -485,10 +485,10 @@ buildPresetButtons();
 
 // ── Ping player on load ───────────────────────────────────────
 send({ type: 'ping' });
-sendThemeMix(); // send initial theme state
+setTimeout(() => sendThemeMix(), 500); // delay: function defined below
 setInterval(() => {
   send({ type: 'ping' });
-  sendThemeMix(); // resync theme mix periodically
+  sendThemeMix();
 }, 3000);
 
 // ── Handle messages from player ───────────────────────────────
