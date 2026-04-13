@@ -1774,7 +1774,18 @@ function updateVideoLayer() {
   compassTarget += smoothBass * 0.003 - smoothMid * 0.001;
   compassAngle += (compassTarget - compassAngle) * 0.015;
   
-  if (!hasVideo || !videoLoaded) return; // GFX-only, skip video transforms
+  const isCamera = currentPreset && currentPreset.type === 'camera';
+  
+  if (!hasVideo && !isCamera || !videoLoaded && !isCamera) {
+    // GFX-only (not camera) — skip video transforms
+    return;
+  }
+  
+  if (isCamera) {
+    // Camera preset — skip video transforms, just update visibility
+    updateVideoVisibility();
+    return;
+  }
   
   // Video: 100vh square via CSS. Scale just fills mask + margin for rotation/bass.
   // Mask = 72% closest-side → radius 36vh. Video at 0.95 → half = 47.5vh > 36vh ✓
