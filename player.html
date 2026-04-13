@@ -1568,6 +1568,7 @@ function updateVideoVisibility() {
   if (vl) vl.style.opacity = (currentPresetHasVideo && !currentPresetIsCamera && !videoHidden) ? '1' : '0';
   
   // Camera color: CSS filter (sepia+hue for tint, saturate for mono)
+  const cl = document.getElementById('cameraLayer');
   const CAM_FILTERS = [
     'sepia(0.6) hue-rotate(-10deg) saturate(2.5)',  // RED tint
     'sepia(0.6) hue-rotate(200deg) saturate(2.5)',  // BLUE tint
