@@ -1732,7 +1732,14 @@ const SWITCH_MIN_MS = 300; // minimum 300ms between switches
 function switchToPreset(idx) {
   if (!presetReady[idx]) return;
   
-  // Throttle: skip if too fast (except manual clicks)
+  // HARD BLOCK: if autopilot/beatcut ON and theme disabled → REFUSE
+  if (autopilotEnabled || beatCutEnabled) {
+    const p = PRESETS[idx];
+    const theme = p?.themeId || (p?.type === 'camera' ? 'camera' : 'omen');
+    if (!activeThemes[theme]) return;
+  }
+  
+  // Throttle beat cut (not manual clicks)
   const now = performance.now();
   if (now - lastSwitchTime < SWITCH_MIN_MS && beatCutEnabled) return;
   lastSwitchTime = now;
