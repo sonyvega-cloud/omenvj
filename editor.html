@@ -237,6 +237,7 @@ function saveToStorage() {
     videoB: s.type === 'video' ? s.videoB : null,
     type: s.type || 'video',
     themeId: s.themeId || 'omen',
+    camSource: s.camSource || null,
     deviceId: s.deviceId || null,
     deviceLabel: s.deviceLabel || null,
   }));
@@ -359,8 +360,11 @@ function buildEditorFields() {
   html += '<option value="1">CAT 1 — ambient</option><option value="2">CAT 2 — building</option><option value="3">CAT 3 — groove</option></select>';
 
   if (theme.type === 'camera') {
-    html += '<span class="field-label">CAMERA</span><div><button class="btn" onclick="pickCamera()">SELECT CAMERA</button> <span id="camLabel" class="camera-note">No camera selected</span></div>';
-    html += '<input type="hidden" id="editDeviceId"><input type="hidden" id="editDeviceLabel">';
+    html += '<span class="field-label">SOURCE</span><select class="field-select" id="editCamSource" onchange="onCamSourceChange()">';
+    html += '<option value="remote">REMOTE (phone via relay)</option>';
+    html += '<option value="local">LOCAL (webcam on player PC)</option></select>';
+    html += '<span class="field-label">DEVICE</span><div id="camDeviceRow"><button class="btn" onclick="pickCamera()" id="pickCamBtn">SELECT CAMERA</button> <span id="camLabel" class="camera-note">Auto-pick on player</span></div>';
+    html += '<input type="hidden" id="editDeviceId"><input type="hidden" id="editDeviceLabel"><input type="hidden" id="editCamSource2">';
   } else {
     html += '<span class="field-label">VIDEO A</span><div class="upload-row">';
     html += '<input class="field-input" id="editVideoA" style="max-width:180px">';
@@ -409,9 +413,11 @@ function editScene(idx) {
   document.getElementById('editEnergy').value = s.energy;
 
   if (theme.type === 'camera') {
+    document.getElementById('editCamSource').value = s.camSource || 'remote';
     document.getElementById('editDeviceId').value = s.deviceId || '';
     document.getElementById('editDeviceLabel').value = s.deviceLabel || '';
-    document.getElementById('camLabel').textContent = s.deviceLabel || 'No camera selected';
+    document.getElementById('camLabel').textContent = s.deviceLabel || 'Auto-pick on player';
+    onCamSourceChange();
   } else {
     document.getElementById('editVideoA').value = s.videoA || '';
     document.getElementById('editVideoB').value = s.videoB || '';
@@ -434,6 +440,7 @@ function saveScene() {
     type: theme.type === 'camera' ? 'camera' : (document.getElementById('editVideoA')?.value ? 'video' : 'gfx'),
     videoA: theme.type !== 'camera' ? (document.getElementById('editVideoA')?.value.trim() || null) : null,
     videoB: theme.type !== 'camera' ? (document.getElementById('editVideoB')?.value.trim() || null) : null,
+    camSource: theme.type === 'camera' ? (document.getElementById('editCamSource')?.value || 'remote') : null,
     deviceId: theme.type === 'camera' ? (document.getElementById('editDeviceId')?.value || null) : null,
     deviceLabel: theme.type === 'camera' ? (document.getElementById('editDeviceLabel')?.value || null) : null,
   };
@@ -469,6 +476,17 @@ function deleteScene() { if (editingIdx >= 0) confirmDelete(editingIdx); }
 // ═══════════════════════════════════════════════════════════════
 // Camera Picker
 // ═══════════════════════════════════════════════════════════════
+
+function onCamSourceChange() {
+  const src = document.getElementById('editCamSource').value;
+  const devRow = document.getElementById('camDeviceRow');
+  const pickBtn = document.getElementById('pickCamBtn');
+  if (src === 'remote') {
+    devRow.style.display = 'none';
+  } else {
+    devRow.style.display = 'block';
+  }
+}
 
 async function pickCamera() {
   try {

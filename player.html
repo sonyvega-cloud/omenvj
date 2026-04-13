@@ -1555,27 +1555,43 @@ function updateVideoVisibility() {
   const currentPreset = PRESETS[activePreset];
   const currentPresetHasVideo = currentPreset?.videoA != null;
   const currentPresetIsCamera = currentPreset?.type === 'camera';
+  const isRemoteCam = currentPresetIsCamera && currentPreset?.camSource === 'remote';
+  const isLocalCam = currentPresetIsCamera && currentPreset?.camSource !== 'remote';
   
-  // Video layer: show for video presets
+  // Video layer: show for video presets only
   const vl = document.getElementById('videoLayer');
   if (vl) vl.style.opacity = (currentPresetHasVideo && !currentPresetIsCamera && !videoHidden) ? '1' : '0';
   
-  // Camera layer: show ONLY when active preset is camera type + cam streaming
+  // Remote camera layer (phone relay)
   const cl = document.getElementById('cameraLayer');
   if (cl) {
-    const showCam = currentPresetIsCamera && remoteCamActive && !videoHidden;
-    cl.style.display = showCam ? 'block' : 'none';
-    if (showCam) {
-      // Camera: no rotation (real footage), scale with bass + 2-beat pulse
+    const showRemoteCam = isRemoteCam && remoteCamActive && !videoHidden;
+    cl.style.display = showRemoteCam ? 'block' : 'none';
+    if (showRemoteCam) {
       const bassBreathe = 1.0 + smoothBass * 0.03;
-      const pulse = 1.0 + camPulseScale * 0.06; // 2-beat zoom pulse
+      const pulse = 1.0 + camPulseScale * 0.06;
       const camScale = bassBreathe * pulse * pinchScale;
       cl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)})`;
     }
   }
   
+  // Local cameras: show/hide all
+  Object.keys(localCams).forEach(pidx => {
+    const cam = localCams[pidx];
+    if (!cam || !cam.videoEl) return;
+    const show = isLocalCam && parseInt(pidx) === activePreset && !videoHidden;
+    cam.videoEl.style.display = show ? 'block' : 'none';
+    if (show) {
+      const bassBreathe = 1.0 + smoothBass * 0.03;
+      const pulse = 1.0 + camPulseScale * 0.06;
+      const camScale = bassBreathe * pulse * pinchScale;
+      cam.videoEl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)})`;
+    }
+  });
+  
+  // Video A/B toggle
   PRESETS.forEach((preset, i) => {
-    if (!preset.videoA) return;
+    if (!preset.videoA || preset.type === 'camera') return;
     const vidA = document.getElementById(`vid${i}a`);
     const vidB = document.getElementById(`vid${i}b`);
     if (!vidA || !vidB) return;
@@ -1590,18 +1606,110 @@ function updateVideoVisibility() {
   });
 }
 
+// ── Local Camera Management ────────────────────────────────────
+async function openLocalCam(presetIdx) {
+  if (localCams[presetIdx]) return; // already open
+  if (localCamPickerOpen) return;
+  
+  try {
+    localCamPickerOpen = true;
+    
+    // Get permission + enumerate
+    const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    tempStream.getTracks().forEach(t => t.stop());
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter(d => d.kind === 'videoinput');
+    
+    if (cameras.length === 0) { localCamPickerOpen = false; return; }
+    
+    // Auto-pick: use deviceId from preset if available, else show picker
+    const preset = PRESETS[presetIdx];
+    let deviceId = preset?.deviceId;
+    
+    if (!deviceId && cameras.length > 1) {
+      // Show picker
+      deviceId = await showLocalCamPicker(cameras);
+      if (!deviceId) { localCamPickerOpen = false; return; }
+    } else if (!deviceId) {
+      deviceId = cameras[0].deviceId;
+    }
+    
+    // Open camera
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { deviceId: { exact: deviceId }, width: { ideal: 720 }, height: { ideal: 720 } }
+    });
+    
+    // Create video element
+    const videoEl = document.createElement('video');
+    videoEl.srcObject = stream;
+    videoEl.muted = true;
+    videoEl.playsInline = true;
+    videoEl.setAttribute('playsinline', '');
+    videoEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:100vh; height:100vh; object-fit:cover; z-index:0; display:none;';
+    videoEl.id = 'localCam' + presetIdx;
+    document.body.insertBefore(videoEl, document.getElementById('videoVignette'));
+    await videoEl.play();
+    
+    localCams[presetIdx] = { stream, videoEl, deviceId };
+    console.log('[CAM] Local camera opened for preset', presetIdx);
+    
+  } catch (err) {
+    console.warn('[CAM] Local camera error:', err.message);
+  }
+  localCamPickerOpen = false;
+}
+
+function showLocalCamPicker(cameras) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    
+    const panel = document.createElement('div');
+    panel.style.cssText = 'background:#141414;border:1px solid #333;padding:20px;max-width:400px;width:90%;font-family:monospace;';
+    
+    const title = document.createElement('div');
+    title.textContent = 'SELECT CAMERA';
+    title.style.cssText = 'font-size:11px;letter-spacing:0.2em;color:#22cc44;margin-bottom:16px;';
+    panel.appendChild(title);
+    
+    cameras.forEach(d => {
+      const btn = document.createElement('button');
+      btn.textContent = d.label || 'Camera ' + d.deviceId.slice(0, 8);
+      btn.style.cssText = 'display:block;width:100%;padding:10px;margin-bottom:6px;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;font-family:monospace;font-size:11px;cursor:pointer;text-align:left;';
+      btn.onmouseover = () => { btn.style.borderColor = '#22cc44'; };
+      btn.onmouseout = () => { btn.style.borderColor = '#2a2a2a'; };
+      btn.onclick = () => { overlay.remove(); resolve(d.deviceId); };
+      panel.appendChild(btn);
+    });
+    
+    const cancel = document.createElement('button');
+    cancel.textContent = 'CANCEL';
+    cancel.style.cssText = 'display:block;width:100%;padding:8px;margin-top:8px;background:none;border:1px solid #2a2a2a;color:#666;font-family:monospace;font-size:10px;cursor:pointer;letter-spacing:0.15em;';
+    cancel.onclick = () => { overlay.remove(); resolve(null); };
+    panel.appendChild(cancel);
+    
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+  });
+}
+
 function switchToPreset(idx) {
   if (!presetReady[idx]) return;
   activePreset = idx;
   
-  // Seek new preset's videos to current loop position
-  // So beat cut doesn't show random frame from background playback
   const preset = PRESETS[idx];
-  if (preset && preset.videoA && abClockStart > 0 && videoSpeed > 0) {
+  
+  // Local camera preset → open camera if needed
+  if (preset?.type === 'camera' && preset?.camSource !== 'remote') {
+    openLocalCam(idx);
+  }
+  
+  // Seek video presets to current loop position
+  if (preset && preset.videoA && preset.type !== 'camera' && abClockStart > 0 && videoSpeed > 0) {
     const elapsed = performance.now() - abClockStart;
     const durationMs = VIDEO_DURATION_S * 1000;
-    const posInLoop = (elapsed * videoSpeed / durationMs) % 1.0; // 0-1 within loop
-    const seekTime = posInLoop * VIDEO_DURATION_S; // seconds
+    const posInLoop = (elapsed * videoSpeed / durationMs) % 1.0;
+    const seekTime = posInLoop * VIDEO_DURATION_S;
     
     const vidA = document.getElementById(`vid${idx}a`);
     const vidB = document.getElementById(`vid${idx}b`);
@@ -1758,7 +1866,7 @@ function render() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   
   // Is current preset camera type?
-  const isCurrentCam = remoteCamActive && PRESETS[activePreset]?.type === 'camera';
+  const isCurrentCam = PRESETS[activePreset]?.type === 'camera' && (remoteCamActive || localCams[activePreset]);
   
   // Clear — transparent over video/camera, black for GFX-only
   if ((hasVideo || isCurrentCam) && !videoHidden) {
@@ -2444,11 +2552,15 @@ let camHoldBeats = 0;
 let camHoldActive = false;
 let camPulseBeat = 0;
 let camPulseScale = 0;
-let camInjectTimer = 16;              // start after 16 beats (~8s warmup)
-const CAM_INJECT_MIN = 32;        // minimum beats between camera injections
-const CAM_INJECT_MAX = 64;        // maximum beats between camera injections
+let camInjectTimer = 16;
+const CAM_INJECT_MIN = 32;
+const CAM_INJECT_MAX = 64;
 const CAM_HOLD_MIN = 4;
 const CAM_HOLD_MAX = 8;
+
+// Local cameras (USB webcam etc. on player PC)
+const localCams = {}; // presetIdx → { stream, videoEl }
+let localCamPickerOpen = false;
 
 function connectCDJ() {
   try {
