@@ -485,9 +485,10 @@ buildPresetButtons();
 
 // ── Ping player on load ───────────────────────────────────────
 send({ type: 'ping' });
+sendThemeMix(); // send initial theme state
 setInterval(() => {
-  // Always ping as keepalive — player uses any message to confirm connection
   send({ type: 'ping' });
+  sendThemeMix(); // resync theme mix periodically
 }, 3000);
 
 // ── Handle messages from player ───────────────────────────────
@@ -675,28 +676,8 @@ function updateUI(s) {
     playerCameras = s.availableCameras;
   }
   
-  // Theme mix state from player
-  if (s.activeThemes) {
-    ['omen', 'camera', 'voyager'].forEach(id => {
-      const check = document.getElementById('tm_' + id);
-      if (check) {
-        themeMix[id] = !!s.activeThemes[id];
-        check.textContent = themeMix[id] ? '✓' : '✗';
-        check.className = 'auto-check' + (themeMix[id] ? ' on' : '');
-      }
-    });
-  }
-  if (s.themeWeights) {
-    ['omen', 'camera', 'voyager'].forEach(id => {
-      const sl = document.getElementById('tw_' + id);
-      const valEl = document.getElementById('twv_' + id);
-      if (sl && s.themeWeights[id] !== undefined) {
-        themeWeights[id] = s.themeWeights[id];
-        sl.value = s.themeWeights[id];
-        if (valEl) valEl.textContent = s.themeWeights[id];
-      }
-    });
-  }
+  // Theme mix: controller is source of truth, don't overwrite from player
+  // Only sync on first connect (when we don't have local state yet)
   
   // Beat dots
   if (s.beatJustFired && s.bar16 !== lastBar16) {
