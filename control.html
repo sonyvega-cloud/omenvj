@@ -471,14 +471,18 @@ function handlePlayerMessage(msg, source) {
   }
   if (source === 'ws' && !relayConnected) return;
   
-  // Accept preset list from pong (remote has different localStorage)
+  // Accept preset list from pong
   if (msg.type === 'pong') {
     const newPresets = msg.presets || [];
     const newScenes = msg.scenes || [];
-    if (newPresets.length > 0 && newPresets.length !== presetNames.length) {
-      presetNames = newPresets;
-      if (newScenes.length > 0) presetData = newScenes;
-      buildPresetButtons();
+    if (newPresets.length > 0) {
+      const changed = JSON.stringify(newPresets) !== JSON.stringify(presetNames);
+      const hasNewScenes = newScenes.length > 0;
+      if (changed || (relayConnected && hasNewScenes)) {
+        presetNames = newPresets;
+        if (hasNewScenes) presetData = newScenes;
+        buildPresetButtons();
+      }
     }
     return;
   }

@@ -472,6 +472,24 @@ const SILENCE_DAMPEN_AFTER = 90;
 // ── Preset Registry (localStorage from editor → presets.js fallback) ──
 let PRESETS = [];
 (function loadPresets() {
+  // Try omen_scenes first (new editor format)
+  const scenes = localStorage.getItem('omen_scenes');
+  if (scenes) {
+    try {
+      const parsed = JSON.parse(scenes);
+      if (parsed.length > 0) {
+        const cdn = typeof CDN !== 'undefined' ? CDN : '';
+        PRESETS = parsed.map(p => ({
+          ...p,
+          videoA: p.type === 'video' && p.videoA && !p.videoA.startsWith('http') ? cdn + p.videoA : (p.type === 'video' ? p.videoA : null),
+          videoB: p.type === 'video' && p.videoB && !p.videoB.startsWith('http') ? cdn + p.videoB : (p.type === 'video' ? p.videoB : null),
+        }));
+        console.log('[PRESETS] Loaded ' + PRESETS.length + ' from scenes (localStorage)');
+        return;
+      }
+    } catch(e) {}
+  }
+  // Fallback: omen_presets
   const saved = localStorage.getItem('omen_presets');
   if (saved) {
     try {
@@ -483,7 +501,7 @@ let PRESETS = [];
           videoA: p.videoA && !p.videoA.startsWith('http') ? cdn + p.videoA : p.videoA,
           videoB: p.videoB && !p.videoB.startsWith('http') ? cdn + p.videoB : p.videoB,
         }));
-        console.log('[PRESETS] Loaded ' + PRESETS.length + ' from editor (localStorage)');
+        console.log('[PRESETS] Loaded ' + PRESETS.length + ' from presets (localStorage)');
         return;
       }
     } catch(e) {}
