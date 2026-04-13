@@ -1149,23 +1149,42 @@ function getActiveThemePresets() {
 }
 
 // Weighted random pick from presets based on theme weights
+// Two-step: pick THEME by weight, then preset within theme
 function weightedPresetPick(candidates) {
   if (candidates.length === 0) return null;
-  // Build weighted list
-  let totalWeight = 0;
-  const weighted = candidates.map(p => {
-    const theme = p.themeId || 'omen';
-    const w = themeWeights[theme] || 10;
-    totalWeight += w;
-    return { ...p, weight: w };
+  
+  // Group by theme
+  const groups = {};
+  candidates.forEach(p => {
+    const theme = p.themeId || (p.type === 'camera' ? 'camera' : 'omen');
+    if (!groups[theme]) groups[theme] = [];
+    groups[theme].push(p);
   });
-  // Random pick
-  let r = Math.random() * totalWeight;
-  for (const p of weighted) {
-    r -= p.weight;
-    if (r <= 0) return p;
+  
+  const themeIds = Object.keys(groups);
+  if (themeIds.length === 0) return null;
+  if (themeIds.length === 1) {
+    const presets = groups[themeIds[0]];
+    return presets[Math.floor(Math.random() * presets.length)];
   }
-  return weighted[weighted.length - 1];
+  
+  // Weighted random: pick theme
+  let totalWeight = 0;
+  const weighted = themeIds.map(id => {
+    const w = themeWeights[id] || 10;
+    totalWeight += w;
+    return { id, w, presets: groups[id] };
+  });
+  
+  let r = Math.random() * totalWeight;
+  let picked = weighted[0];
+  for (const t of weighted) {
+    r -= t.w;
+    if (r <= 0) { picked = t; break; }
+  }
+  
+  // Random preset within picked theme
+  return picked.presets[Math.floor(Math.random() * picked.presets.length)];
 }
 
 // Map normEnergy to beat cut interval
@@ -1736,17 +1755,60 @@ function switchToPreset(idx) {
 function getLoadedPresets() {
   return PRESETS.map((_, i) => i).filter(i => {
     if (!presetReady[i] || !beatCutActive.has(i)) return false;
-    const theme = PRESETS[i]?.themeId || 'omen';
+    const theme = PRESETS[i]?.themeId || (PRESETS[i]?.type === 'camera' ? 'camera' : 'omen');
     if (!activeThemes[theme]) return false;
     return true;
   });
 }
 
+// Two-step selection: pick THEME by weight, then random preset within theme
+function pickByThemeWeight(candidates) {
+  if (candidates.length === 0) return null;
+  
+  // Group by theme
+  const groups = {};
+  candidates.forEach(idx => {
+    const p = typeof idx === 'number' ? PRESETS[idx] : idx;
+    const i = typeof idx === 'number' ? idx : idx.idx;
+    const theme = p?.themeId || (p?.type === 'camera' ? 'camera' : 'omen');
+    if (!groups[theme]) groups[theme] = [];
+    groups[theme].push(i);
+  });
+  
+  // Weighted random pick of theme
+  const themeIds = Object.keys(groups);
+  if (themeIds.length === 0) return null;
+  if (themeIds.length === 1) {
+    const presets = groups[themeIds[0]];
+    return presets[Math.floor(Math.random() * presets.length)];
+  }
+  
+  let totalWeight = 0;
+  const weighted = themeIds.map(id => {
+    const w = themeWeights[id] || 10;
+    totalWeight += w;
+    return { id, w, presets: groups[id] };
+  });
+  
+  let r = Math.random() * totalWeight;
+  let picked = weighted[0];
+  for (const t of weighted) {
+    r -= t.w;
+    if (r <= 0) { picked = t; break; }
+  }
+  
+  // Random preset within picked theme
+  return picked.presets[Math.floor(Math.random() * picked.presets.length)];
+}
+
 function beatCutNext() {
   const loaded = getLoadedPresets();
   if (loaded.length < 2) return;
-  beatCutSequenceIdx = (beatCutSequenceIdx + 1) % loaded.length;
-  switchToPreset(loaded[beatCutSequenceIdx]);
+  
+  // Pick by theme weight, avoid current preset
+  const others = loaded.filter(i => i !== activePreset);
+  const pick = others.length > 0 ? pickByThemeWeight(others) : pickByThemeWeight(loaded);
+  if (pick !== null) switchToPreset(pick);
 }
 
 // iOS-style: beat cut ON = toggle in/out of pool, OFF = instant switch
