@@ -1294,11 +1294,14 @@ function updateAutopilot() {
       if (!beatCutEnabled || beatCutInterval !== autoInterval) {
         beatCutEnabled = true;
         beatCutInterval = autoInterval;
-        // Activate all loaded presets in current category
-        const cat = mood === 'BUILDING' ? 2 : 3;
-        const candidates = getPresetsByEnergy(cat);
-        if (candidates.length >= 2) {
-          beatCutActive = new Set(candidates.map(p => p.idx));
+        // Pool = ALL ready presets from ALL active themes
+        const allActive = PRESETS.map((p, i) => i).filter(i => {
+          if (!presetReady[i]) return false;
+          const theme = PRESETS[i]?.themeId || (PRESETS[i]?.type === 'camera' ? 'camera' : 'omen');
+          return activeThemes[theme];
+        });
+        if (allActive.length >= 2) {
+          beatCutActive = new Set(allActive);
         }
         updatePresetGrid();
       }
