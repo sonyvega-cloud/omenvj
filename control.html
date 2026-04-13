@@ -465,6 +465,8 @@ const THEME_ORDER = ['omen', 'camera', 'voyager'];
   if (presetNames.length === 0) { presetNames = ['OMEN1']; presetData = [{ name: 'OMEN1', themeId: 'omen' }]; }
 })();
 let state = { beatCutEnabled: false, beatCutInterval: 4, activePreset: 0, colorIndex: 0, videoSpeedMultiplier: 1.0, stroboActive: false, videoHidden: false, autopilotEnabled: false, autoEnergyEnabled: true, autoFxEnabled: true, autoBeatCutEnabled: true, autoStroboEnabled: true, autoColorEnabled: true, autoSpeedEnabled: true };
+let themeMix = { omen: true, camera: false, voyager: false };
+let themeWeights = { omen: 80, camera: 20, voyager: 0 };
 
 // ── Init: build beat dots + preset buttons ────────────────────
 const beatBar = document.getElementById('beatBar');
@@ -822,8 +824,6 @@ function showCamPicker(presetIdx) {
 }
 
 // ── Theme Mix ─────────────────────────────────────────────────
-let themeMix = { omen: true, camera: false, voyager: false };
-let themeWeights = { omen: 80, camera: 20, voyager: 0 };
 
 function toggleThemeMix(themeId) {
   themeMix[themeId] = !themeMix[themeId];
