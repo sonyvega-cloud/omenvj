@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="ØMEN">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/logo.png">
 <title>ØMEN Control</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -270,7 +276,7 @@
 <!-- Presets -->
 <div class="section">
   <div class="section-label">Presets</div>
-  <div class="btn-row" id="presetBtns"></div>
+  <div id="presetBtns"></div>
 </div>
 
 <!-- Beat Cut -->
@@ -332,6 +338,7 @@
   <div class="btn-row" style="margin-bottom:8px;">
     <div class="btn" id="strbBtn" onclick="sendStrobo()">STRB</div>
     <div class="btn" id="vhidBtn" onclick="sendVideoHide()">VHID</div>
+    <div class="btn" id="camBtn" onclick="toggleCamera()" style="margin-left:auto">CAM</div>
     <div style="flex:1;"></div>
     <div class="btn" id="hudBtn" onclick="sendHudToggle()">HUD</div>
   </div>
@@ -390,17 +397,39 @@ function send(msg) {
   }
 }
 let presetNames = [];
+let presetData = []; // full scene data with themeId
+const THEME_COLORS = { omen: '#ff2200', camera: '#22cc44', voyager: '#aa44ff' };
+const THEME_ORDER = ['omen', 'camera', 'voyager'];
+
 // Read from localStorage (editor) first, then presets.js fallback
 (function() {
+  // Try omen_scenes first (new editor format)
+  const scenes = localStorage.getItem('omen_scenes');
+  if (scenes) {
+    try {
+      const parsed = JSON.parse(scenes);
+      if (parsed.length > 0) {
+        presetData = parsed;
+        presetNames = parsed.map(p => p.name);
+        return;
+      }
+    } catch(e) {}
+  }
+  // Fallback: omen_presets
   const saved = localStorage.getItem('omen_presets');
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
-      if (parsed.length > 0) { presetNames = parsed.map(p => p.name); return; }
+      if (parsed.length > 0) {
+        presetData = parsed;
+        presetNames = parsed.map(p => p.name);
+        return;
+      }
     } catch(e) {}
   }
   presetNames = (typeof PRESETS_DATA !== 'undefined' ? PRESETS_DATA : []).map(p => p.name);
-  if (presetNames.length === 0) presetNames = ['OMEN1', 'OMEN2', 'OMEN3'];
+  presetData = (typeof PRESETS_DATA !== 'undefined' ? PRESETS_DATA : []);
+  if (presetNames.length === 0) { presetNames = ['OMEN1']; presetData = [{ name: 'OMEN1', themeId: 'omen' }]; }
 })();
 let state = { beatCutEnabled: false, beatCutInterval: 4, activePreset: 0, colorIndex: 0, videoSpeedMultiplier: 1.0, stroboActive: false, videoHidden: false, autopilotEnabled: false, autoEnergyEnabled: true, autoFxEnabled: true, autoBeatCutEnabled: true, autoStroboEnabled: true, autoColorEnabled: true, autoSpeedEnabled: true };
 
@@ -445,8 +474,10 @@ function handlePlayerMessage(msg, source) {
   // Accept preset list from pong (remote has different localStorage)
   if (msg.type === 'pong') {
     const newPresets = msg.presets || [];
+    const newScenes = msg.scenes || [];
     if (newPresets.length > 0 && newPresets.length !== presetNames.length) {
       presetNames = newPresets;
+      if (newScenes.length > 0) presetData = newScenes;
       buildPresetButtons();
     }
     return;
@@ -528,13 +559,50 @@ document.getElementById('pinInput').addEventListener('keydown', (e) => {
 function buildPresetButtons() {
   const container = document.getElementById('presetBtns');
   container.innerHTML = '';
-  presetNames.forEach((name, i) => {
-    const btn = document.createElement('div');
-    btn.className = 'btn';
-    btn.id = 'cpg' + i;
-    btn.textContent = name.replace('OMEN', '');
-    btn.onclick = () => sendPreset(i);
-    container.appendChild(btn);
+  
+  // Group presets by theme
+  const groups = {};
+  presetData.forEach((p, i) => {
+    const theme = p.themeId || 'omen';
+    if (!groups[theme]) groups[theme] = [];
+    groups[theme].push({ name: p.name || presetNames[i], idx: i, type: p.type });
+  });
+  
+  // Render each theme as a row (in order)
+  THEME_ORDER.forEach(themeId => {
+    const presets = groups[themeId];
+    if (!presets || presets.length === 0) return;
+    
+    const color = THEME_COLORS[themeId] || '#666';
+    
+    // Theme label
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:9px; letter-spacing:0.15em; color:' + color + '; opacity:0.6; margin:8px 0 3px 0;';
+    label.textContent = themeId.toUpperCase();
+    container.appendChild(label);
+    
+    // Button row
+    const row = document.createElement('div');
+    row.className = 'btn-row';
+    presets.forEach(p => {
+      const btn = document.createElement('div');
+      btn.className = 'btn';
+      btn.id = 'cpg' + p.idx;
+      btn.textContent = p.name.replace(/^OMEN|^CAM|^VOY/i, '');
+      if (!btn.textContent) btn.textContent = p.name;
+      btn.style.borderColor = color + '30';
+      btn.onclick = () => sendPreset(p.idx);
+      row.appendChild(btn);
+    });
+    container.appendChild(row);
+  });
+  
+  // Any ungrouped
+  const grouped = new Set(Object.keys(groups));
+  presetData.forEach((p, i) => {
+    if (!p.themeId && !grouped.has('omen')) {
+      // fallback already handled
+    }
   });
 }
 
@@ -674,6 +742,101 @@ function sendPinch(val)         { send({ type: 'pinch', value: val }); }
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space') { e.preventDefault(); sendTap(); }
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Phone Camera → Stream frames to player
+// ═══════════════════════════════════════════════════════════════
+
+let camStream = null;
+let camVideo = null;
+let camCanvas = null;
+let camCtx = null;
+let camInterval = null;
+let camActive = false;
+const CAM_SIZE = 480;  // px (square, downscaled for bandwidth)
+const CAM_FPS = 10;
+const CAM_QUALITY = 0.5; // jpeg quality
+
+async function toggleCamera() {
+  if (camActive) {
+    stopCamera();
+  } else {
+    await startCamera();
+  }
+}
+
+async function startCamera() {
+  try {
+    // Prefer rear camera on phone
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: CAM_SIZE }, height: { ideal: CAM_SIZE } }
+    });
+    
+    // Hidden video element for capture
+    camVideo = document.createElement('video');
+    camVideo.srcObject = camStream;
+    camVideo.setAttribute('playsinline', '');
+    camVideo.muted = true;
+    await camVideo.play();
+    
+    // Canvas for frame capture
+    camCanvas = document.createElement('canvas');
+    camCanvas.width = CAM_SIZE;
+    camCanvas.height = CAM_SIZE;
+    camCtx = camCanvas.getContext('2d');
+    
+    // Start sending frames
+    camInterval = setInterval(sendCameraFrame, 1000 / CAM_FPS);
+    camActive = true;
+    
+    document.getElementById('camBtn').classList.add('on');
+    
+    // Tell player camera started
+    send({ type: 'cam_start', width: CAM_SIZE, height: CAM_SIZE });
+    console.log('[CAM] Started');
+    
+  } catch (err) {
+    alert('Camera error: ' + err.message);
+  }
+}
+
+function stopCamera() {
+  if (camInterval) clearInterval(camInterval);
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+  camStream = null;
+  camVideo = null;
+  camInterval = null;
+  camActive = false;
+  
+  document.getElementById('camBtn').classList.remove('on');
+  send({ type: 'cam_stop' });
+  console.log('[CAM] Stopped');
+}
+
+function sendCameraFrame() {
+  if (!camVideo || !camCtx || !camActive) return;
+  if (!relayWs || relayWs.readyState !== 1) return; // only via WS relay
+  
+  // Draw video to canvas (square crop from center)
+  const vw = camVideo.videoWidth;
+  const vh = camVideo.videoHeight;
+  const size = Math.min(vw, vh);
+  const sx = (vw - size) / 2;
+  const sy = (vh - size) / 2;
+  camCtx.drawImage(camVideo, sx, sy, size, size, 0, 0, CAM_SIZE, CAM_SIZE);
+  
+  // Send as JPEG base64
+  const dataUrl = camCanvas.toDataURL('image/jpeg', CAM_QUALITY);
+  
+  // Send only the base64 part (strip header)
+  const base64 = dataUrl.split(',')[1];
+  relayWs.send(JSON.stringify({ type: 'cam_frame', data: base64 }));
+}
+
+// PWA Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
 </script>
 </body>
 </html>

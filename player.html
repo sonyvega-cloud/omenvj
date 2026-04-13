@@ -281,6 +281,7 @@
 
 <!-- ── Video layer (generated dynamically) ────────────── -->
 <div id="videoLayer"></div>
+<canvas id="cameraLayer" style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:100vh; height:100vh; z-index:0; display:none;"></canvas>
 <div id="videoVignette"></div>
 <div id="edgeMask"></div>
 
@@ -1389,8 +1390,8 @@ function initPresets() {
   
   // ── Load videos ─────────────────────────────────────────────
   PRESETS.forEach((preset, i) => {
-    // GFX-only preset → mark ready immediately
-    if (!preset.videoA) {
+    // GFX-only or camera preset → mark ready immediately
+    if (!preset.videoA || preset.type === 'camera') {
       presetReady[i] = true;
       return;
     }
@@ -1484,14 +1485,29 @@ function getCurrentAB() {
 
 function updateVideoVisibility() {
   currentAB = getCurrentAB();
-  const currentPresetHasVideo = PRESETS[activePreset]?.videoA != null;
+  const currentPreset = PRESETS[activePreset];
+  const currentPresetHasVideo = currentPreset?.videoA != null;
+  const currentPresetIsCamera = currentPreset?.type === 'camera';
   
-  // Hide/show entire video layer based on current preset
+  // Video layer: show for video presets
   const vl = document.getElementById('videoLayer');
-  if (vl) vl.style.opacity = (currentPresetHasVideo && !videoHidden) ? '1' : '0';
+  if (vl) vl.style.opacity = (currentPresetHasVideo && !currentPresetIsCamera && !videoHidden) ? '1' : '0';
+  
+  // Camera layer: show for camera presets when remote cam is active
+  const cl = document.getElementById('cameraLayer');
+  if (cl) {
+    const showCam = currentPresetIsCamera && remoteCamActive && !videoHidden;
+    cl.style.display = showCam ? 'block' : 'none';
+    // Apply same transform as video (scale, rotation)
+    if (showCam) {
+      const videoPulse = 1.0 + (pulseScale - 1.0) * 0.25;
+      const camScale = (0.95 + smoothBass * 0.04) * pinchScale * videoPulse;
+      cl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)}) rotate(${videoCompassAngle.toFixed(4)}rad)`;
+    }
+  }
   
   PRESETS.forEach((preset, i) => {
-    if (!preset.videoA) return; // GFX-only, no video elements
+    if (!preset.videoA) return;
     const vidA = document.getElementById(`vid${i}a`);
     const vidB = document.getElementById(`vid${i}b`);
     if (!vidA || !vidB) return;
@@ -2344,6 +2360,12 @@ let cdjBpm = 0;
 let cdjLastBeat = 0;
 let cdjTrackTitle = '';
 
+// Remote camera from mobile controller
+let remoteCamActive = false;
+let remoteCamCanvas = null;
+let remoteCamCtx = null;
+let remoteCamImg = null;
+
 function connectCDJ() {
   try {
     cdjWs = new WebSocket('ws://localhost:9000');
@@ -2460,7 +2482,7 @@ function handleCommand(msg) {
       document.getElementById('hud').classList.add('hidden');
       document.getElementById('controls-hint').classList.add('hidden');
       // Reply on both channels
-      const pong = { type: 'pong', presets: PRESETS.map(p => p.name) };
+      const pong = { type: 'pong', presets: PRESETS.map(p => p.name), scenes: PRESETS.map(p => ({ name: p.name, themeId: p.themeId || 'omen', type: p.type || 'video' })) };
       omenChannel.postMessage(pong);
       if (relayWs && relayWs.readyState === 1) relayWs.send(JSON.stringify(pong));
       break;
@@ -2524,6 +2546,29 @@ function handleCommand(msg) {
       if (msg.feature === 'color') autoColorEnabled = !autoColorEnabled;
       if (msg.feature === 'speed') autoSpeedEnabled = !autoSpeedEnabled;
       autopilotEnabled = autoEnergyEnabled || autoFxEnabled || autoBeatCutEnabled || autoStroboEnabled || autoColorEnabled || autoSpeedEnabled;
+      break;
+    case 'cam_start':
+      remoteCamActive = true;
+      remoteCamCanvas = document.getElementById('cameraLayer');
+      remoteCamCtx = remoteCamCanvas.getContext('2d');
+      remoteCamCanvas.width = msg.width || 480;
+      remoteCamCanvas.height = msg.height || 480;
+      console.log('[CAM] Remote camera started');
+      break;
+    case 'cam_stop':
+      remoteCamActive = false;
+      const camEl = document.getElementById('cameraLayer');
+      if (camEl) camEl.style.display = 'none';
+      console.log('[CAM] Remote camera stopped');
+      break;
+    case 'cam_frame':
+      if (!remoteCamActive || !remoteCamCtx) break;
+      // Decode base64 JPEG → draw to camera canvas
+      if (!remoteCamImg) remoteCamImg = new Image();
+      remoteCamImg.onload = () => {
+        remoteCamCtx.drawImage(remoteCamImg, 0, 0);
+      };
+      remoteCamImg.src = 'data:image/jpeg;base64,' + msg.data;
       break;
   }
 }
