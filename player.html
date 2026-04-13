@@ -2834,11 +2834,26 @@ function handleCommand(msg) {
       if (msg.feature === 'speed') autoSpeedEnabled = !autoSpeedEnabled;
       autopilotEnabled = autoEnergyEnabled || autoFxEnabled || autoBeatCutEnabled || autoStroboEnabled || autoColorEnabled || autoSpeedEnabled;
       break;
-    case 'thememix':
+    case 'thememix': {
       if (msg.themes) activeThemes = msg.themes;
       if (msg.weights) themeWeights = msg.weights;
+      // If current preset's theme just got disabled → switch immediately
+      const curTheme = PRESETS[activePreset]?.themeId || 'omen';
+      if (!activeThemes[curTheme]) {
+        const allowed = getActiveThemePresets();
+        if (allowed.length > 0) {
+          const pick = weightedPresetPick(allowed.filter(p => p.idx !== activePreset)) || allowed[0];
+          if (pick) switchToPreset(pick.idx);
+        }
+      }
+      // Also kill beat cut if active presets now invalid
+      if (beatCutEnabled) {
+        const valid = getLoadedPresets();
+        if (valid.length < 2) { beatCutEnabled = false; updatePresetGrid(); }
+      }
       console.log('[AUTOPILOT] Theme mix:', activeThemes, themeWeights);
       break;
+    }
     case 'cam_start':
       remoteCamActive = true;
       remoteCamFrameCount = 0;
