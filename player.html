@@ -1032,6 +1032,16 @@ function onBeatTick() {
   moodBeatCounter++; // watchdog counter
   beatFiredFrames = 5;
   
+  // Camera hold countdown
+  if (camHoldActive && camHoldBeats > 0) camHoldBeats--;
+  
+  // Camera 2-beat pulse (fire on every 2nd beat)
+  camPulseBeat++;
+  if (camPulseBeat >= 2 && PRESETS[activePreset]?.type === 'camera') {
+    camPulseBeat = 0;
+    camPulseScale = 1.0; // trigger pulse
+  }
+  
   const bar4 = beatIndex % 4;
   const bar8 = beatIndex % 8;
   const bar16 = beatIndex % 16;
@@ -1248,6 +1258,22 @@ function updateAutopilot() {
   // ── Sub-feature: ENERGY preset switch (gated by cooldown) ───
   if (!autoEnergyEnabled) return;
   if (autopilotCooldown > 0) { autopilotCooldown--; return; }
+  
+  // Camera hold: can't switch away during hold period
+  if (camHoldActive && camHoldBeats > 0) return;
+  if (camHoldActive && camHoldBeats <= 0) {
+    // Camera hold expired — force switch to non-camera preset
+    camHoldActive = false;
+    const nonCam = getPresetsByEnergy(3).filter(p => PRESETS[p.idx]?.type !== 'camera');
+    if (nonCam.length > 0) {
+      const pick = nonCam[Math.floor(Math.random() * nonCam.length)];
+      switchToPreset(pick.idx);
+      autopilotCooldown = AUTOPILOT_MIN_INTERVAL;
+      updatePresetGrid();
+    }
+    return;
+  }
+  
   if (mood === lastAutopilotMood) return;
   
   lastAutopilotMood = mood;
@@ -1276,6 +1302,13 @@ function updateAutopilot() {
   const pick = filtered.length > 0 ? filtered[Math.floor(Math.random() * filtered.length)] : candidates[0];
   
   switchToPreset(pick.idx);
+  
+  // Camera hold: if switched to camera preset, hold 4-8 beats
+  if (PRESETS[pick.idx]?.type === 'camera') {
+    camHoldBeats = 4 + Math.floor(Math.random() * 5); // 4-8 beats
+    camHoldActive = true;
+    camPulseBeat = 0;
+  }
   
   // ── Sub-feature: AUTO COLOR (change palette on mood switch) ──
   if (autoColorEnabled) {
@@ -1517,9 +1550,10 @@ function updateVideoVisibility() {
     const showCam = currentPresetIsCamera && remoteCamActive && !videoHidden;
     cl.style.display = showCam ? 'block' : 'none';
     if (showCam) {
-      // Camera: no rotation (real footage), just scale with bass breathing
-      const videoPulse = 1.0 + (pulseScale - 1.0) * 0.15;
-      const camScale = (1.0 + smoothBass * 0.03) * pinchScale * videoPulse;
+      // Camera: no rotation (real footage), scale with bass + 2-beat pulse
+      const bassBreathe = 1.0 + smoothBass * 0.03;
+      const pulse = 1.0 + camPulseScale * 0.06; // 2-beat zoom pulse
+      const camScale = bassBreathe * pulse * pinchScale;
       cl.style.transform = `translate(-50%, -50%) scale(${camScale.toFixed(4)})`;
     }
   }
@@ -1769,6 +1803,7 @@ function render() {
   // Decay
   beatFlash *= 0.82;
   exposureOpacity *= 0.88;
+  camPulseScale *= 0.88; // camera pulse decay (~10 frames ease-out)
   pulseScale = pulseScale * 0.92 + 1.0 * 0.08;
 }
 
@@ -2387,6 +2422,12 @@ let remoteCamCanvas = null;
 let remoteCamCtx = null;
 let remoteCamImg = null;
 let remoteCamFrameCount = 0;
+
+// Camera autopilot hold: min 4 beats, max 8 beats
+let camHoldBeats = 0;       // beats remaining in camera hold
+let camHoldActive = false;   // currently in camera hold
+let camPulseBeat = 0;        // beat counter for 2-beat pulse
+let camPulseScale = 0;       // current pulse intensity (decays)
 
 function connectCDJ() {
   try {
