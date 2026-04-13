@@ -2705,15 +2705,36 @@ function handleCommand(msg) {
   controllerConnected = true;
   
   switch (msg.type) {
-    case 'ping':
+    case 'ping': {
       if (PRESETS.length === 0) break;
       document.getElementById('hud').classList.add('hidden');
       document.getElementById('controls-hint').classList.add('hidden');
+      
+      // Read theme mix from controller (sent with every ping)
+      if (msg.themes) {
+        const oldThemes = JSON.stringify(activeThemes);
+        activeThemes = msg.themes;
+        if (msg.weights) themeWeights = msg.weights;
+        
+        // Theme changed → check if current preset is now disabled
+        if (JSON.stringify(activeThemes) !== oldThemes) {
+          const curTheme = PRESETS[activePreset]?.themeId || 'omen';
+          if (!activeThemes[curTheme]) {
+            const allowed = getActiveThemePresets();
+            if (allowed.length > 0) {
+              const pick = weightedPresetPick(allowed.filter(p => p.idx !== activePreset)) || allowed[0];
+              if (pick) switchToPreset(pick.idx);
+            }
+          }
+        }
+      }
+      
       // Reply on both channels
       const pong = { type: 'pong', presets: PRESETS.map(p => p.name), scenes: PRESETS.map(p => ({ name: p.name, themeId: p.themeId || 'omen', type: p.type || 'video' })) };
       omenChannel.postMessage(pong);
       if (relayWs && relayWs.readyState === 1) relayWs.send(JSON.stringify(pong));
       break;
+    }
     case 'tap':
       handleTap();
       break;

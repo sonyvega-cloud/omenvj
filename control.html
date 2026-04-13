@@ -484,10 +484,10 @@ for (let i = 0; i < 16; i++) {
 buildPresetButtons();
 
 // ── Ping player on load ───────────────────────────────────────
-send({ type: 'ping' });
+send({ type: 'ping', themes: themeMix, weights: themeWeights });
 setTimeout(() => sendThemeMix(), 500); // delay: function defined below
 setInterval(() => {
-  send({ type: 'ping' });
+  send({ type: 'ping', themes: themeMix, weights: themeWeights });
   sendThemeMix();
 }, 3000);
 
@@ -558,7 +558,7 @@ async function connectWithPin() {
       document.getElementById('relayStatus').classList.add('connected');
       document.getElementById('pinConnect').style.display = 'none';
       console.log('[RELAY] Connected as controller');
-      send({ type: 'ping' });
+      send({ type: 'ping', themes: themeMix, weights: themeWeights });
     };
     
     relayWs.onmessage = (e) => {
