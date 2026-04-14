@@ -1034,11 +1034,18 @@ function onBeatTick() {
   beatFiredFrames = 5;
   
   // Camera hold countdown
-  // Camera beat pulse + rotation (fire every beat when camera active)
+  // Camera beat pulse + rotation (mood-dependent range)
   if (PRESETS[activePreset]?.type === 'camera') {
     camPulseScale = 1.0;
+    // Rotation range by mood: PEAK ±8°, GROOVE ±5°, BUILDING ±3°, AMBIENT ±1°
+    let camRotRange = 1;
+    if (mood === 'PEAK' || mood === 'DROP') camRotRange = 8;
+    else if (mood === 'GROOVE') camRotRange = 5;
+    else if (mood === 'BUILDING') camRotRange = 3;
+    else camRotRange = 1;
+    
     if (beatCutEnabled) {
-      camRotTarget = camRotTarget > 0 ? -8 : 8;
+      camRotTarget = camRotTarget > 0 ? -camRotRange : camRotRange;
     }
   }
   
@@ -1632,7 +1639,13 @@ function updateVideoVisibility() {
     const camFilter = CAM_FILTERS[colorIndex] || CAM_FILTERS[0];
     const t = performance.now() / 1000;
     const activePulse = camPulseScale > 0.05 ? camPulseScale : (Math.sin(t * 3) * 0.5 + 0.5) * 0.3;
-    const rot = beatCutEnabled ? camRotCurrent : Math.sin(t * 0.4) * 3;
+    // Rotation: mood-dependent range
+    let driftRange = 1;
+    if (mood === 'PEAK' || mood === 'DROP') driftRange = 5;
+    else if (mood === 'GROOVE') driftRange = 3;
+    else if (mood === 'BUILDING') driftRange = 2;
+    else driftRange = 1;
+    const rot = beatCutEnabled ? camRotCurrent : Math.sin(t * 0.4) * driftRange;
     const breathe = 1.0 + smoothVol * 0.15;
     const pulse = 1.0 + activePulse * 0.22;
     const camScale = breathe * pulse * pinchScale;
@@ -1839,12 +1852,7 @@ function pickByThemeWeight(candidates) {
   return picked.presets[Math.floor(Math.random() * picked.presets.length)];
 }
 
-let camCooldownBeats = 0; // beats to wait after camera before next cut
-
 function beatCutNext() {
-  // Camera cooldown: skip beat cut for remaining beats
-  if (camCooldownBeats > 0) { camCooldownBeats--; return; }
-  
   const loaded = getLoadedPresets();
   if (loaded.length < 2) return;
   
@@ -1872,10 +1880,8 @@ function beatCutNext() {
   const pick = others.length > 0 ? pickByThemeWeight(others) : null;
   if (pick === null) return;
   
-  // If switching TO camera, set cooldown (stay on camera longer)
-  if (PRESETS[pick]?.type === 'camera') {
-    camCooldownBeats = 6; // hold camera for 6 extra beats
-  }
+  // If switching TO camera from non-camera, no extra cooldown needed
+  // Nuclear visibility fix ensures only one source shows
   
   switchToPreset(pick);
 }
@@ -1887,14 +1893,17 @@ function handlePresetClick(idx) {
   if (autopilotEnabled) {
     // Toggle preset in/out of autopilot pool
     if (presetPool.has(idx)) {
-      if (presetPool.size > 1) presetPool.delete(idx);
+      const remaining = [...presetPool].filter(i => i !== idx);
+      if (remaining.length >= 1) presetPool.delete(idx);
     } else {
       presetPool.add(idx);
     }
   } else if (beatCutEnabled) {
     // Toggle in/out of beat cut pool
     if (beatCutActive.has(idx)) {
-      if (beatCutActive.size > 1) beatCutActive.delete(idx);
+      // Allow removal if at least 1 OTHER preset remains
+      const remaining = [...beatCutActive].filter(i => i !== idx);
+      if (remaining.length >= 1) beatCutActive.delete(idx);
     } else {
       beatCutActive.add(idx);
     }
@@ -2086,11 +2095,11 @@ function render() {
   // Decay
   beatFlash *= 0.82;
   exposureOpacity *= 0.88;
-  camPulseScale *= 0.85; // camera pulse decay (~8 frames)
-  // Smooth rotation toward target (ease-out)
-  camRotCurrent += (camRotTarget - camRotCurrent) * 0.06;
-  // When not animated, ease back to 0
-  if (!(beatCutEnabled) && PRESETS[activePreset]?.type === 'camera') {
+  camPulseScale *= 0.85;
+  // Smooth rotation toward target
+  camRotCurrent += (camRotTarget - camRotCurrent) * 0.08;
+  // When not beat cutting, ease rotation to 0
+  if (!beatCutEnabled && PRESETS[activePreset]?.type === 'camera') {
     camRotTarget = 0;
   }
   pulseScale = pulseScale * 0.92 + 1.0 * 0.08;
