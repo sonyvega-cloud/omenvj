@@ -467,6 +467,7 @@ const THEME_ORDER = ['omen', 'camera', 'voyager'];
 let state = { beatCutEnabled: false, beatCutInterval: 4, activePreset: 0, colorIndex: 0, videoSpeedMultiplier: 1.0, stroboActive: false, videoHidden: false, autopilotEnabled: false, autoEnergyEnabled: true, autoFxEnabled: true, autoBeatCutEnabled: true, autoStroboEnabled: true, autoColorEnabled: true, autoSpeedEnabled: true };
 let themeMix = { omen: true, camera: false, voyager: false };
 let themeWeights = { omen: 80, camera: 20, voyager: 0 };
+let themeMixDirty = false; // true for 2s after user toggle
 
 // ── Init: build beat dots + preset buttons ────────────────────
 const beatBar = document.getElementById('beatBar');
@@ -689,8 +690,8 @@ function updateUI(s) {
     playerCameras = s.availableCameras;
   }
   
-  // Theme mix: sync from player (player is source of truth)
-  if (s.activeThemes) {
+  // Theme mix: sync from player (but not if user just changed locally)
+  if (s.activeThemes && !themeMixDirty) {
     themeMix = s.activeThemes;
     ['omen', 'camera', 'voyager'].forEach(id => {
       const el = document.getElementById('tm_' + id);
@@ -700,7 +701,7 @@ function updateUI(s) {
       }
     });
   }
-  if (s.themeWeights) {
+  if (s.themeWeights && !themeMixDirty) {
     themeWeights = s.themeWeights;
     ['omen', 'camera', 'voyager'].forEach(id => {
       const sl = document.getElementById('tw_' + id);
@@ -861,8 +862,13 @@ function toggleThemeMix(themeId) {
     el.textContent = themeMix[themeId] ? '✓' : '✗';
     el.className = 'auto-check' + (themeMix[themeId] ? ' on' : '');
   }
+  // Dirty flag: don't let player state overwrite for 2s
+  themeMixDirty = true;
+  clearTimeout(themeMixDirtyTimer);
+  themeMixDirtyTimer = setTimeout(() => { themeMixDirty = false; }, 2000);
   sendThemeMix();
 }
+let themeMixDirtyTimer = null;
 
 function sendThemeMix() {
   ['omen', 'camera', 'voyager'].forEach(id => {
@@ -873,7 +879,11 @@ function sendThemeMix() {
       if (valEl) valEl.textContent = sl.value;
     }
   });
-  // Send to player (player is source of truth)
+  // Dirty flag for slider changes too
+  themeMixDirty = true;
+  clearTimeout(themeMixDirtyTimer);
+  themeMixDirtyTimer = setTimeout(() => { themeMixDirty = false; }, 2000);
+  // Send to player
   send({ type: 'thememix', themes: themeMix, weights: themeWeights });
 }
 
@@ -911,6 +921,7 @@ const CAM_FPS = 10;
 const CAM_QUALITY = 0.5; // jpeg quality
 
 async function toggleCamera() {
+  console.log('[CAM] toggleCamera called, camActive:', camActive);
   if (camActive) {
     stopCamera();
   } else {
@@ -968,7 +979,6 @@ function stopCamera() {
 
 function sendCameraFrame() {
   if (!camVideo || !camCtx || !camActive) return;
-  if (!relayWs || relayWs.readyState !== 1) return; // only via WS relay
   
   // Draw video to canvas (square crop from center)
   const vw = camVideo.videoWidth;
@@ -980,10 +990,15 @@ function sendCameraFrame() {
   
   // Send as JPEG base64
   const dataUrl = camCanvas.toDataURL('image/jpeg', CAM_QUALITY);
-  
-  // Send only the base64 part (strip header)
   const base64 = dataUrl.split(',')[1];
-  relayWs.send(JSON.stringify({ type: 'cam_frame', data: base64 }));
+  const msg = JSON.stringify({ type: 'cam_frame', data: base64 });
+  
+  // Send via active channel (WS for remote, BC for local)
+  if (relayConnected && relayWs && relayWs.readyState === 1) {
+    relayWs.send(msg);
+  } else {
+    ch.postMessage({ type: 'cam_frame', data: base64 });
+  }
 }
 
 // PWA Service Worker
