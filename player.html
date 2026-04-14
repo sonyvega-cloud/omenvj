@@ -1849,14 +1849,34 @@ function pickByThemeWeight(candidates) {
   return picked.presets[Math.floor(Math.random() * picked.presets.length)];
 }
 
+let camCooldownBeats = 0; // beats to wait after camera before next cut
+
 function beatCutNext() {
+  // Camera cooldown: skip beat cut for remaining beats
+  if (camCooldownBeats > 0) { camCooldownBeats--; return; }
+  
   const loaded = getLoadedPresets();
   if (loaded.length < 2) return;
   
-  // Pick by theme weight, avoid current preset
-  const others = loaded.filter(i => i !== activePreset);
-  const pick = others.length > 0 ? pickByThemeWeight(others) : pickByThemeWeight(loaded);
-  if (pick !== null) switchToPreset(pick);
+  const currentIsCamera = PRESETS[activePreset]?.type === 'camera';
+  
+  // Filter: avoid current preset + no camera→camera
+  let others = loaded.filter(i => i !== activePreset);
+  if (currentIsCamera) {
+    // After camera, prefer non-camera
+    const nonCam = others.filter(i => PRESETS[i]?.type !== 'camera');
+    if (nonCam.length > 0) others = nonCam;
+  }
+  
+  const pick = others.length > 0 ? pickByThemeWeight(others) : null;
+  if (pick === null) return;
+  
+  // If switching TO camera, set cooldown (stay on camera longer)
+  if (PRESETS[pick]?.type === 'camera') {
+    camCooldownBeats = 6; // hold camera for 6 extra beats
+  }
+  
+  switchToPreset(pick);
 }
 
 // iOS-style: beat cut ON = toggle in/out of pool, OFF = instant switch
