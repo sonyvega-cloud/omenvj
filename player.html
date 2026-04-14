@@ -1110,6 +1110,7 @@ let autopilotEnabled = false;       // master toggle
 // Theme mix: which themes autopilot uses + weight ratios
 let activeThemes = { omen: true, camera: false, voyager: false };
 let themeWeights = { omen: 80, camera: 20, voyager: 0 };
+let _themeCheckCounter = 0;
 let autoEnergyEnabled = true;       // sub: energy-based preset switch
 let autoFxEnabled = true;           // sub: FX amount driven by volume
 let autoBeatCutEnabled = true;      // sub: beat cut interval by energy
@@ -1126,13 +1127,19 @@ let highAvg = 0;          // running high-freq average (ratchet)
 let highPeakBuffer = [];  // last 5 frames raw high values
 let stroboAutoFrames = 0; // frames remaining for auto-strobo burst
 
+// Helper: get theme for any preset (handles missing themeId)
+function getPresetTheme(p) {
+  if (p?.themeId) return p.themeId;
+  if (p?.type === 'camera') return 'camera';
+  return 'omen';
+}
+
 function getPresetsByEnergy(cat) {
   return PRESETS.map((p, i) => ({ ...p, idx: i }))
     .filter(p => {
       if (p.energy !== cat) return false;
       if (!presetReady[p.idx] || !presetPool.has(p.idx)) return false;
-      const theme = p.themeId || 'omen';
-      if (!activeThemes[theme]) return false;
+      if (!activeThemes[getPresetTheme(p)]) return false;
       return true;
     });
 }
@@ -1142,8 +1149,7 @@ function getActiveThemePresets() {
   return PRESETS.map((p, i) => ({ ...p, idx: i }))
     .filter(p => {
       if (!presetReady[p.idx] || !presetPool.has(p.idx)) return false;
-      const theme = p.themeId || 'omen';
-      if (!activeThemes[theme]) return false;
+      if (!activeThemes[getPresetTheme(p)]) return false;
       return true;
     });
 }
@@ -1156,7 +1162,7 @@ function weightedPresetPick(candidates) {
   // Group by theme
   const groups = {};
   candidates.forEach(p => {
-    const theme = p.themeId || (p.type === 'camera' ? 'camera' : 'omen');
+    const theme = getPresetTheme(p);
     if (!groups[theme]) groups[theme] = [];
     groups[theme].push(p);
   });
@@ -1297,7 +1303,7 @@ function updateAutopilot() {
         // Pool = ALL ready presets from ALL active themes
         const allActive = PRESETS.map((p, i) => i).filter(i => {
           if (!presetReady[i]) return false;
-          const theme = PRESETS[i]?.themeId || (PRESETS[i]?.type === 'camera' ? 'camera' : 'omen');
+          const theme = getPresetTheme(PRESETS[i]);
           return activeThemes[theme];
         });
         if (allActive.length >= 2) {
@@ -1738,12 +1744,10 @@ const SWITCH_MIN_MS = 300; // minimum 300ms between switches
 function switchToPreset(idx) {
   if (!presetReady[idx]) return;
   
-  // HARD BLOCK: if autopilot/beatcut ON and theme disabled → REFUSE
-  if (autopilotEnabled || beatCutEnabled) {
-    const p = PRESETS[idx];
-    const theme = p?.themeId || (p?.type === 'camera' ? 'camera' : 'omen');
-    if (!activeThemes[theme]) return;
-  }
+  // ABSOLUTE BLOCK: disabled theme = NEVER switch. No exceptions.
+  const p = PRESETS[idx];
+  const theme = getPresetTheme(p);
+  if (!activeThemes[theme]) return;
   
   // Throttle beat cut (not manual clicks)
   const now = performance.now();
@@ -1779,7 +1783,7 @@ function switchToPreset(idx) {
 function getLoadedPresets() {
   return PRESETS.map((_, i) => i).filter(i => {
     if (!presetReady[i] || !beatCutActive.has(i)) return false;
-    const theme = PRESETS[i]?.themeId || (PRESETS[i]?.type === 'camera' ? 'camera' : 'omen');
+    const theme = getPresetTheme(PRESETS[i]);
     if (!activeThemes[theme]) return false;
     return true;
   });
@@ -1794,7 +1798,7 @@ function pickByThemeWeight(candidates) {
   candidates.forEach(idx => {
     const p = typeof idx === 'number' ? PRESETS[idx] : idx;
     const i = typeof idx === 'number' ? idx : idx.idx;
-    const theme = p?.themeId || (p?.type === 'camera' ? 'camera' : 'omen');
+    const theme = getPresetTheme(p);
     if (!groups[theme]) groups[theme] = [];
     groups[theme].push(i);
   });
@@ -2417,6 +2421,24 @@ function tick() {
     }
     
     updateAutopilot();
+    
+    // THEME ENFORCEMENT: check every ~0.5s — disabled theme NEVER on screen
+    _themeCheckCounter++;
+    if (_themeCheckCounter >= 30) {
+      _themeCheckCounter = 0;
+      const _p = PRESETS[activePreset];
+      const _t = getPresetTheme(_p);
+      if (!activeThemes[_t]) {
+        const _allowed = getActiveThemePresets();
+        if (_allowed.length > 0) {
+          const _pick = _allowed[Math.floor(Math.random() * _allowed.length)];
+          activePreset = _pick.idx;
+          updateVideoVisibility();
+          updatePresetGrid();
+        }
+      }
+    }
+    
     updateVideoLayer();
     render();
     
@@ -2817,15 +2839,19 @@ function handleCommand(msg) {
         activeThemes = msg.themes;
         if (msg.weights) themeWeights = msg.weights;
         
-        // Theme changed + autopilot ON → check if current preset is disabled
-        if (autopilotEnabled && JSON.stringify(activeThemes) !== oldThemes) {
+        // Theme changed → ALWAYS check if current preset is disabled
+        if (JSON.stringify(activeThemes) !== oldThemes) {
           const p = PRESETS[activePreset];
-          const curTheme = p?.themeId || (p?.type === 'camera' ? 'camera' : 'omen');
+          const curTheme = getPresetTheme(p);
           if (!activeThemes[curTheme]) {
             const allowed = getActiveThemePresets();
             if (allowed.length > 0) {
               const pick = weightedPresetPick(allowed.filter(x => x.idx !== activePreset)) || allowed[0];
-              if (pick) switchToPreset(pick.idx);
+              if (pick) {
+                activePreset = pick.idx;
+                updateVideoVisibility();
+                updatePresetGrid();
+              }
             }
           }
         }
@@ -2901,15 +2927,17 @@ function handleCommand(msg) {
     case 'thememix': {
       if (msg.themes) activeThemes = msg.themes;
       if (msg.weights) themeWeights = msg.weights;
-      // Force switch ONLY when autopilot is ON
-      if (autopilotEnabled) {
-        const p = PRESETS[activePreset];
-        const curTheme = p?.themeId || (p?.type === 'camera' ? 'camera' : 'omen');
-        if (!activeThemes[curTheme]) {
-          const allowed = getActiveThemePresets();
-          if (allowed.length > 0) {
-            const pick = weightedPresetPick(allowed.filter(x => x.idx !== activePreset)) || allowed[0];
-            if (pick) switchToPreset(pick.idx);
+      // ALWAYS force switch if current preset's theme is disabled
+      const p2 = PRESETS[activePreset];
+      const curTheme2 = getPresetTheme(p2);
+      if (!activeThemes[curTheme2]) {
+        const allowed = getActiveThemePresets();
+        if (allowed.length > 0) {
+          const pick = weightedPresetPick(allowed.filter(x => x.idx !== activePreset)) || allowed[0];
+          if (pick) {
+            activePreset = pick.idx; // direct set, bypass switchToPreset checks
+            updateVideoVisibility();
+            updatePresetGrid();
           }
         }
       }
@@ -3112,15 +3140,17 @@ window.addEventListener('storage', (e) => {
       if (parsed.weights) themeWeights = parsed.weights;
       console.log('[THEME] Storage event → activeThemes:', activeThemes);
       
-      // If current preset's theme is now OFF → force switch
-      if (autopilotEnabled || beatCutEnabled) {
-        const p = PRESETS[activePreset];
-        const theme = p?.themeId || (p?.type === 'camera' ? 'camera' : 'omen');
-        if (!activeThemes[theme]) {
-          const allowed = getActiveThemePresets();
-          if (allowed.length > 0) {
-            const pick = weightedPresetPick(allowed.filter(x => x.idx !== activePreset)) || allowed[0];
-            if (pick) switchToPreset(pick.idx);
+      // ALWAYS force switch if current preset theme is OFF
+      const p = PRESETS[activePreset];
+      const theme = getPresetTheme(p);
+      if (!activeThemes[theme]) {
+        const allowed = getActiveThemePresets();
+        if (allowed.length > 0) {
+          const pick = weightedPresetPick(allowed.filter(x => x.idx !== activePreset)) || allowed[0];
+          if (pick) {
+            activePreset = pick.idx; // direct set
+            updateVideoVisibility();
+            updatePresetGrid();
           }
         }
       }

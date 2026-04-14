@@ -864,10 +864,18 @@ function sendThemeMix() {
       if (valEl) valEl.textContent = sl.value;
     }
   });
-  // Write to localStorage (player reads directly — no message needed)
-  localStorage.setItem('omen_thememix', JSON.stringify({ themes: themeMix, weights: themeWeights }));
-  // Also send via message as backup
-  send({ type: 'thememix', themes: themeMix, weights: themeWeights });
+  const data = { themes: themeMix, weights: themeWeights };
+  
+  // 1. localStorage (same PC — instant via storage event)
+  localStorage.setItem('omen_thememix', JSON.stringify(data));
+  
+  // 2. BroadcastChannel (same PC — backup)
+  ch.postMessage({ type: 'thememix', ...data });
+  
+  // 3. WebSocket relay (mobile remote)
+  if (relayWs && relayWs.readyState === 1) {
+    relayWs.send(JSON.stringify({ type: 'thememix', ...data }));
+  }
 }
 
 function sendTap()              { send({ type: 'tap' }); }
