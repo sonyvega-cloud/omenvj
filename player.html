@@ -1958,8 +1958,7 @@ function updateVideoLayer() {
   
   // Rotation: smooth drift when solo, ZERO during beat cut (clean cuts)
   if (beatCutEnabled) {
-    // Freeze + decay to 0
-    videoCompassAngle *= 0.95;
+    videoCompassAngle = 0; // instant zero, no decay
   } else {
     videoCompassAngle = videoCompassAngle * 0.97 + compassAngle * 0.03;
   }
