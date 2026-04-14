@@ -1795,7 +1795,12 @@ function isCamPresetLive(idx) {
   const p = PRESETS[idx];
   if (p?.type !== 'camera') return true; // not camera = always OK
   const src = p?.camSource || 'remote';
-  if (src === 'remote') return remoteCamActive;
+  if (src === 'remote') {
+    if (!remoteCamActive) return false;
+    // Only FIRST remote camera preset is "live" — they all share one canvas
+    const firstRemoteIdx = PRESETS.findIndex(pr => pr?.type === 'camera' && (pr?.camSource || 'remote') === 'remote');
+    return idx === firstRemoteIdx;
+  }
   return !!localCams[idx]; // local cam open
 }
 
