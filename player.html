@@ -1033,7 +1033,9 @@ function onBeatTick() {
   moodBeatCounter++; // watchdog counter
   beatFiredFrames = 5;
   
-  // Camera hold countdown
+  // Camera hold countdown (per beat, not per cut)
+  if (camHoldBeats > 0) camHoldBeats--;
+  
   // Camera beat pulse + rotation (mood-dependent range)
   if (PRESETS[activePreset]?.type === 'camera') {
     camPulseScale = 1.0;
@@ -1852,7 +1854,12 @@ function pickByThemeWeight(candidates) {
   return picked.presets[Math.floor(Math.random() * picked.presets.length)];
 }
 
+let camHoldBeats = 0;
+
 function beatCutNext() {
+  // Camera hold: don't switch away from camera
+  if (camHoldBeats > 0) return;
+  
   const loaded = getLoadedPresets();
   if (loaded.length < 2) return;
   
@@ -1882,6 +1889,11 @@ function beatCutNext() {
   
   // If switching TO camera from non-camera, no extra cooldown needed
   // Nuclear visibility fix ensures only one source shows
+  
+  // Camera minimum hold: stay on camera for 8 beats
+  if (PRESETS[pick]?.type === 'camera') {
+    camHoldBeats = 8;
+  }
   
   switchToPreset(pick);
 }
@@ -2776,6 +2788,7 @@ function connectCDJ() {
           beatIndex++;
           beatCount++;
           moodBeatCounter++; // watchdog counter
+          if (camHoldBeats > 0) camHoldBeats--; // camera hold countdown
           beatFiredFrames = 5;
           
           // FX hierarchy
