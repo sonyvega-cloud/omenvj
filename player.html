@@ -1932,10 +1932,14 @@ function updateVideoLayer() {
   const currentPreset = PRESETS[activePreset];
   const hasVideo = currentPreset && currentPreset.videoA != null;
   
-  // ── Auto-rotation — freeze during beat cut (prevents snap between videos) ──
+  // ── Auto-rotation — freeze during beat cut ──
   if (!beatCutEnabled) {
     compassTarget += smoothBass * 0.003 - smoothMid * 0.001;
     compassAngle += (compassTarget - compassAngle) * 0.015;
+  } else {
+    // Beat cut: decay compass to 0 (GFX canvas + video both at 0)
+    compassAngle *= 0.9;
+    compassTarget *= 0.9;
   }
   
   const isCamera = currentPreset && currentPreset.type === 'camera';
