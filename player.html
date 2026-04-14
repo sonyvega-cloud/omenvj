@@ -1769,7 +1769,7 @@ function switchToPreset(idx) {
   const preset = PRESETS[idx];
   
   // Local camera preset → open camera if needed
-  if (preset?.type === 'camera' && preset?.camSource !== 'remote') {
+  if (preset?.type === 'camera' && preset?.camSource === 'local') {
     openLocalCam(idx, preset?.deviceId || null);
   }
   
