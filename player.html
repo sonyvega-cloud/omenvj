@@ -2368,41 +2368,40 @@ function renderTextOverlay(pal) {
   ctx.restore();
 }
 
-// ── TYPO: Fullscreen text overlay theme ──────────────────────────
-let typoWordIndex = 0;
+// ── TYPO: Fullscreen text theme ──────────────────────────────────
 let typoScale = 1.0;
 let typoTargetScale = 1.0;
-let typoX = 0;
-let typoY = 0;
-let typoTargetX = 0;
-let typoTargetY = 0;
-let typoLastBeat = 0;
+let typoX = 0, typoY = 0;
+let typoTargetX = 0, typoTargetY = 0;
 let typoFlash = 0;
 
 function typoOnBeat() {
   const preset = PRESETS[activePreset];
-  if (!preset || preset.gfx !== 'typo') return;
+  if (!preset || getPresetTheme(preset) !== 'typo') return;
   
-  const words = preset.words || ['ØMEN', 'BASS', 'DROP', 'TECHNO'];
-  
-  // Cycle word on every 2nd or 4th beat (bar-aware)
-  const bar4 = beatIndex % 4;
-  if (bar4 === 0) {
-    typoWordIndex = (typoWordIndex + 1) % words.length;
-  }
-  
-  // Scale jump: snap to big then decay
   const energy = normEnergy || 0;
+  const bar4 = beatIndex % 4;
+  
+  // Scale: snap jump then decay
   if (energy > 0.6) {
-    typoTargetScale = 1.1 + Math.random() * 0.4; // 1.1-1.5
-  } else {
-    typoTargetScale = 0.9 + Math.random() * 0.3; // 0.9-1.2
+    typoTargetScale = 1.0 + Math.random() * 0.6; // 1.0-1.6 (can overshoot viewport)
+  } else if (bar4 === 0) {
+    typoTargetScale = 0.85 + Math.random() * 0.3;
   }
   
-  // Position snap: jump to random offset on strong beats
-  if (bar4 === 0 && energy > 0.4) {
-    typoTargetX = (Math.random() - 0.5) * 0.3; // ±15% offset
-    typoTargetY = (Math.random() - 0.5) * 0.2; // ±10% offset
+  // Position: hard jump on strong beats
+  if (bar4 === 0) {
+    // Pick from grid positions: center, top, bottom, offset
+    const positions = [
+      [0, 0],                           // center
+      [0, -0.25], [0, 0.25],           // top, bottom
+      [-0.15, -0.15], [0.15, 0.15],    // diagonal
+      [-0.2, 0], [0.2, 0],             // left, right offset
+      [0, -0.35],                        // high
+    ];
+    const pos = positions[Math.floor(Math.random() * positions.length)];
+    typoTargetX = pos[0];
+    typoTargetY = pos[1];
   }
   
   typoFlash = 1.0;
@@ -2410,84 +2409,61 @@ function typoOnBeat() {
 
 function renderTypo(pal) {
   const preset = PRESETS[activePreset] || {};
-  const words = preset.words || ['ØMEN', 'BASS', 'DROP', 'TECHNO'];
-  const word = words[typoWordIndex % words.length];
+  const text = preset.text || preset.name || 'ØMEN';
+  const font = preset.font || 'Helvetica Neue';
+  const weight = preset.weight || '900';
+  const spacing = preset.spacing || 10;
   
   const [rP, gP, bP] = hexRgb(pal[2]);
-  const [rB, gB, bB] = hexRgb(pal[3]);
   
-  // Smooth scale (snap then ease)
-  typoScale += (typoTargetScale - typoScale) * 0.15;
-  // Smooth position
-  typoX += (typoTargetX - typoX) * 0.08;
-  typoY += (typoTargetY - typoY) * 0.08;
-  // Flash decay
-  typoFlash *= 0.88;
+  // Hard snap (not smooth ease — JUMP CUTS)
+  typoScale += (typoTargetScale - typoScale) * 0.25;
+  typoX += (typoTargetX - typoX) * 0.2;
+  typoY += (typoTargetY - typoY) * 0.2;
+  typoFlash *= 0.85;
   
-  // Background: solid black (text IS the visual)
+  // Black background
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
   
-  // Font size: viewport-relative, massive
-  const baseSize = Math.min(W, H) * 0.22 * typoScale;
+  // Auto-fill width: measure text then scale font size to fill viewport
+  ctx.font = `${weight} 100px '${font}', sans-serif`;
+  ctx.letterSpacing = `${spacing}px`;
+  const measured = ctx.measureText(text);
+  const textWidth = measured.width + (text.length - 1) * spacing;
+  const autoSize = Math.min(W * 0.92 / (textWidth / 100), H * 0.5);
+  const fontSize = autoSize * typoScale;
   
-  // Text position: center + offset
+  // Position
   const tx = CX + typoX * W;
   const ty = CY + typoY * H;
   
   ctx.save();
   ctx.translate(tx, ty);
-  // NO rotation (user spec)
+  // NO rotation (spec)
   
-  // ── Main text ──
-  ctx.font = `900 ${baseSize.toFixed(0)}px "Helvetica Neue", "Arial Black", sans-serif`;
+  ctx.font = `${weight} ${fontSize.toFixed(0)}px '${font}', sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.letterSpacing = `${baseSize * 0.08}px`;
+  ctx.letterSpacing = `${spacing * (fontSize / 100)}px`;
   
-  // Color: palette primary, flash to white on beat
-  const flashMix = typoFlash * 0.7;
-  const tr = Math.round(rP + (255 - rP) * flashMix);
-  const tg = Math.round(gP + (255 - gP) * flashMix);
-  const tb = Math.round(bP + (255 - bP) * flashMix);
+  // Color: palette, flash to white
+  const flash = typoFlash * 0.7;
+  const tr = Math.round(rP + (255 - rP) * flash);
+  const tg = Math.round(gP + (255 - gP) * flash);
+  const tb = Math.round(bP + (255 - bP) * flash);
   
-  // Shadow/glow on beat
-  if (typoFlash > 0.1) {
-    ctx.shadowColor = `rgba(${rP},${gP},${bP},${typoFlash * 0.5})`;
-    ctx.shadowBlur = baseSize * 0.15 * typoFlash;
+  // Glow on beat
+  if (typoFlash > 0.15) {
+    ctx.shadowColor = `rgba(${rP},${gP},${bP},${typoFlash * 0.4})`;
+    ctx.shadowBlur = fontSize * 0.1 * typoFlash;
   }
   
   ctx.fillStyle = `rgb(${tr},${tg},${tb})`;
-  ctx.fillText(word, 0, 0);
-  
-  // ── Contrast outline (subtle, adds depth) ──
+  ctx.fillText(text, 0, 0);
   ctx.shadowBlur = 0;
-  ctx.strokeStyle = `rgba(${rP},${gP},${bP},${0.15 + typoFlash * 0.2})`;
-  ctx.lineWidth = 2;
-  ctx.strokeText(word, 0, 0);
   
   ctx.restore();
-  
-  // ── Horizontal line accent (energy dependent) ──
-  if (normEnergy > 0.3) {
-    const lineAlpha = 0.08 + smoothBass * 0.2 + typoFlash * 0.3;
-    ctx.strokeStyle = `rgba(${rP},${gP},${bP},${lineAlpha.toFixed(3)})`;
-    ctx.lineWidth = 1;
-    
-    // Top line
-    const lineY1 = ty - baseSize * 0.7;
-    ctx.beginPath();
-    ctx.moveTo(W * 0.1, lineY1);
-    ctx.lineTo(W * 0.9, lineY1);
-    ctx.stroke();
-    
-    // Bottom line
-    const lineY2 = ty + baseSize * 0.7;
-    ctx.beginPath();
-    ctx.moveTo(W * 0.1, lineY2);
-    ctx.lineTo(W * 0.9, lineY2);
-    ctx.stroke();
-  }
 }
 
 // ── Data Scope: Concentric FFT waveform rings (Big Data style) ──

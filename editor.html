@@ -311,7 +311,7 @@ function renderThemeContent() {
     if (theme.type === 'camera') {
       html += '<span class="scene-source">' + (s.deviceLabel || 'Select camera...') + '</span>';
     } else if (theme.type === 'text') {
-      html += '<span class="scene-source">' + ((s.words || []).slice(0, 3).join(', ') || 'no words') + '</span>';
+      html += '<span class="scene-source" style="font-weight:bold;">' + (s.text || 'no text') + '</span>';
     } else {
       html += '<span class="scene-source">' + (s.videoA || 'no video') + '</span>';
     }
@@ -380,8 +380,28 @@ function buildEditorFields() {
     html += '<span class="field-label">DEVICE</span><div id="camDeviceRow"><button class="btn" onclick="pickCamera()" id="pickCamBtn">SELECT CAMERA</button> <span id="camLabel" class="camera-note">Auto-pick on player</span></div>';
     html += '<input type="hidden" id="editDeviceId"><input type="hidden" id="editDeviceLabel"><input type="hidden" id="editCamSource2">';
   } else if (theme.type === 'text') {
-    html += '<span class="field-label">WORDS (comma separated)</span>';
-    html += '<input class="field-input" id="editWords" placeholder="ØMEN, BASS, DROP, TECHNO">';
+    html += '<span class="field-label">TEXT</span>';
+    html += '<input class="field-input" id="editText" placeholder="ØMEN" style="font-size:18px; font-weight:900; letter-spacing:0.2em;">';
+    html += '<div style="display:flex; gap:8px; margin-top:6px;">';
+    html += '<div style="flex:1"><span class="field-label">FONT</span><select class="field-select" id="editFont">';
+    html += '<option value="Helvetica Neue">Helvetica Neue</option>';
+    html += '<option value="Arial Black">Arial Black</option>';
+    html += '<option value="Impact">Impact</option>';
+    html += '<option value="Futura">Futura</option>';
+    html += '<option value="Courier New">Courier New</option>';
+    html += '<option value="Georgia">Georgia</option>';
+    html += '<option value="Times New Roman">Times New Roman</option>';
+    html += '<option value="system-ui">System UI</option>';
+    html += '</select></div>';
+    html += '<div style="flex:1"><span class="field-label">WEIGHT</span><select class="field-select" id="editWeight">';
+    html += '<option value="100">100 Thin</option><option value="300">300 Light</option>';
+    html += '<option value="400">400 Regular</option><option value="700">700 Bold</option>';
+    html += '<option value="900" selected>900 Black</option></select></div>';
+    html += '</div>';
+    html += '<div style="margin-top:6px"><span class="field-label">LETTER SPACING</span>';
+    html += '<input type="range" id="editSpacing" min="-5" max="40" value="10" style="width:100%">';
+    html += '<span id="editSpacingVal" style="font-size:9px; opacity:0.4;">10px</span></div>';
+    html += '<div id="typoPreview" style="margin-top:10px; padding:12px; background:#000; overflow:hidden; text-align:center; border:1px solid #222;"></div>';
   } else {
     html += '<span class="field-label">VIDEO A</span><div class="upload-row">';
     html += '<input class="field-input" id="editVideoA" style="max-width:180px">';
@@ -415,6 +435,14 @@ function addScene() {
   document.getElementById('editGfx').value = defaultGfx[activeTheme] || 'video_rings';
   document.getElementById('editEnergy').value = '3';
 
+  // Typo defaults
+  if (activeTheme === 'typo') {
+    const tEl = document.getElementById('editText');
+    if (tEl) tEl.value = 'ØMEN';
+    attachTypoListeners();
+    setTimeout(updateTypoPreview, 50);
+  }
+
   document.getElementById('editorPanel').classList.add('open');
   renderAll();
 }
@@ -445,8 +473,16 @@ function editScene(idx) {
     document.getElementById('camLabel').textContent = s.deviceLabel || 'Auto-pick on player';
     onCamSourceChange();
   } else if (theme.type === 'text') {
-    const wEl = document.getElementById('editWords');
-    if (wEl) wEl.value = (s.words || []).join(', ');
+    const tEl = document.getElementById('editText');
+    if (tEl) tEl.value = s.text || '';
+    const fEl = document.getElementById('editFont');
+    if (fEl) fEl.value = s.font || 'Helvetica Neue';
+    const wEl = document.getElementById('editWeight');
+    if (wEl) wEl.value = s.weight || '900';
+    const sEl = document.getElementById('editSpacing');
+    if (sEl) { sEl.value = s.spacing || 10; document.getElementById('editSpacingVal').textContent = sEl.value + 'px'; }
+    attachTypoListeners();
+    updateTypoPreview();
   } else {
     document.getElementById('editVideoA').value = s.videoA || '';
     document.getElementById('editVideoB').value = s.videoB || '';
@@ -462,6 +498,30 @@ function onGfxChange() {
   if (tf) tf.style.display = gfx === 'text_overlay' ? 'block' : 'none';
 }
 
+function updateTypoPreview() {
+  const preview = document.getElementById('typoPreview');
+  if (!preview) return;
+  const text = document.getElementById('editText')?.value || 'ØMEN';
+  const font = document.getElementById('editFont')?.value || 'Helvetica Neue';
+  const weight = document.getElementById('editWeight')?.value || '900';
+  const spacing = document.getElementById('editSpacing')?.value || '10';
+  preview.innerHTML = '<div style="font-family:\'' + font + '\',sans-serif; font-weight:' + weight + '; letter-spacing:' + spacing + 'px; color:#fff; white-space:nowrap; font-size:32px; overflow:hidden; text-overflow:clip;">' + (text || 'PREVIEW') + '</div>';
+}
+
+function attachTypoListeners() {
+  const t = document.getElementById('editText');
+  const f = document.getElementById('editFont');
+  const w = document.getElementById('editWeight');
+  const s = document.getElementById('editSpacing');
+  if (t) t.addEventListener('input', updateTypoPreview);
+  if (f) f.addEventListener('change', updateTypoPreview);
+  if (w) w.addEventListener('change', updateTypoPreview);
+  if (s) s.addEventListener('input', function() {
+    document.getElementById('editSpacingVal').textContent = this.value + 'px';
+    updateTypoPreview();
+  });
+}
+
 function saveScene() {
   const theme = THEMES.find(t => t.id === activeTheme);
   const name = document.getElementById('editName').value.trim();
@@ -475,9 +535,14 @@ function saveScene() {
   else if (theme.type === 'text') sceneType = 'text';
   else if (document.getElementById('editVideoA')?.value) sceneType = 'video';
   
-  // Words for typo presets
-  const wordsEl = document.getElementById('editWords');
-  const words = wordsEl ? wordsEl.value.split(',').map(w => w.trim()).filter(w => w) : null;
+  // Typo text + font properties
+  let typoText = null, typoFont = null, typoWeight = null, typoSpacing = null;
+  if (theme.type === 'text') {
+    typoText = document.getElementById('editText')?.value.trim() || 'ØMEN';
+    typoFont = document.getElementById('editFont')?.value || 'Helvetica Neue';
+    typoWeight = document.getElementById('editWeight')?.value || '900';
+    typoSpacing = parseInt(document.getElementById('editSpacing')?.value || '10');
+  }
   
   const scene = {
     name,
@@ -490,7 +555,10 @@ function saveScene() {
     camSource: theme.type === 'camera' ? (document.getElementById('editCamSource')?.value || 'remote') : null,
     deviceId: theme.type === 'camera' ? (document.getElementById('editDeviceId')?.value || null) : null,
     deviceLabel: theme.type === 'camera' ? (document.getElementById('editDeviceLabel')?.value || null) : null,
-    words: theme.type === 'text' && words && words.length > 0 ? words : null,
+    text: typoText,
+    font: typoFont,
+    weight: typoWeight,
+    spacing: typoSpacing,
     gfxText: gfx === 'text_overlay' ? (document.getElementById('editGfxText')?.value.trim() || null) : null,
     gfxSubText: gfx === 'text_overlay' ? (document.getElementById('editGfxSubText')?.value.trim() || null) : null,
   };
