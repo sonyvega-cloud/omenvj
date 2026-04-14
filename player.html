@@ -3022,7 +3022,7 @@ function tick() {
     if (moodEl) moodEl.textContent = mood;
     const dbg = document.getElementById('debugDisplay');
     if (dbg) {
-      dbg.textContent = `${PRESETS[activePreset]?.name||'?'} omen:${activeThemes.omen} cam:${activeThemes.camera} | ${mood} cut:${beatCutInterval}`;
+      dbg.textContent = `${PRESETS[activePreset]?.name||'?'} | ${mood} cut:${beatCutInterval}${cdjConnected ? ' CDJ:'+cdjBarBeat+'/4' : ''}`;
     }
     
     // Beat dots
@@ -3272,6 +3272,7 @@ document.body.addEventListener('click', (e) => {
 let cdjConnected = false;
 let audioSourceName = '';
 let availableAudioDevices = [];
+let cdjBarBeat = 0; // 1-4 from CDJ (0 = no CDJ)
 let cdjWs = null;
 let cdjBpm = 0;
 let cdjLastBeat = 0;
@@ -3312,30 +3313,32 @@ function connectCDJ() {
           cdjBpm = msg.bpm;
           bpm = Math.round(msg.bpm * 10) / 10;
           
-          // Fire beat directly (no timer drift)
+          // Use CDJ bar position (1-4) — sync our beatIndex
+          const barBeat = msg.beatInMeasure || ((beatIndex % 4) + 1);
+          cdjBarBeat = barBeat;
           beatIndex++;
           beatCount++;
-          moodBeatCounter++; // watchdog counter
-          if (camHoldBeats > 0) camHoldBeats--; // camera hold countdown
+          moodBeatCounter++;
+          if (camHoldBeats > 0) camHoldBeats--;
           beatFiredFrames = 5;
           
-          // FX hierarchy
-          const bar4 = beatIndex % 4;
+          // FX hierarchy — use REAL bar position from CDJ
+          // barBeat: 1=downbeat(strongest), 2, 3, 4
+          const isDownbeat = barBeat === 1;
           const bar8 = beatIndex % 8;
           const bar16 = beatIndex % 16;
           
-          if (bar16 === 0) {
+          if (bar16 === 0 || (isDownbeat && bar8 === 0)) {
             beatFlash = 1.0 * fxIntensity;
             exposureOpacity = 0.4 * fxIntensity;
             pulseScale = 1.35 + smoothBass * 0.4;
-          } else if (bar8 === 0) {
+          } else if (isDownbeat) {
             beatFlash = 0.75 * fxIntensity;
-            exposureOpacity = 0.2 * fxIntensity;
+            exposureOpacity = 0.15 * fxIntensity;
             pulseScale = 1.25 + smoothBass * 0.3;
-          } else if (bar4 === 0) {
-            beatFlash = 0.5 * fxIntensity;
-            exposureOpacity = 0.08 * fxIntensity;
-            pulseScale = 1.15 + smoothBass * 0.2;
+          } else if (barBeat === 3) {
+            beatFlash = 0.4 * fxIntensity;
+            pulseScale = 1.12 + smoothBass * 0.15;
           } else {
             pulseScale = 1.05 + smoothBass * 0.1;
           }
@@ -3346,9 +3349,23 @@ function connectCDJ() {
           // Video speed sync
           if (videoLoaded) updateVideoSpeed(bpm);
           
-          // Beat cut (skip during camera hold)
-          if (beatCutEnabled && beatIndex % beatCutInterval === 0) {
-            beatCutNext();
+          // Beat cut — BAR ALIGNED using CDJ position
+          if (beatCutEnabled) {
+            let shouldCut = false;
+            if (beatCutInterval === 2) {
+              // CUT 2: downbeat + beat 3
+              shouldCut = (barBeat === 1 || barBeat === 3);
+            } else if (beatCutInterval === 4) {
+              // CUT 4: every downbeat
+              shouldCut = isDownbeat;
+            } else if (beatCutInterval === 8) {
+              // CUT 8: every other downbeat
+              shouldCut = isDownbeat && (bar8 === 0);
+            } else {
+              // Fallback
+              shouldCut = beatIndex % beatCutInterval === 0;
+            }
+            if (shouldCut) beatCutNext();
           }
           
           // TYPO FX on CDJ beat
@@ -3695,6 +3712,7 @@ function broadcastState() {
       autoColorEnabled: !!autoColorEnabled,
       autoSpeedEnabled: !!autoSpeedEnabled,
       cdjConnected: !!cdjConnected,
+      cdjBarBeat,
       cdjTrackTitle: cdjTrackTitle || '',
       audioSource: audioSourceName || '',
       audioDevices: availableAudioDevices || [],
