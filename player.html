@@ -38,6 +38,8 @@
     height: 100vh;
     object-fit: cover;
     opacity: 0;
+    will-change: transform, opacity;
+    backface-visibility: hidden;
   }
   #videoLayer video.active {
     opacity: 1;
@@ -1608,7 +1610,8 @@ const CAM_FILTERS = [
 ];
 
 // Cached DOM refs (set once)
-let _vlEl = null, _clEl = null, _coEl = null;
+let _vlEl = null, _clEl = null, _coEl = null, _vigEl = null;
+let _lastActivePreset = -1, _lastAB = -1;
 
 function updateVideoVisibility() {
   currentAB = getCurrentAB();
@@ -1679,21 +1682,25 @@ function updateVideoVisibility() {
     applyVideoColor();
   }
   
-  // ── Video A/B toggle ──
-  PRESETS.forEach((preset, i) => {
-    if (!preset.videoA || preset.type === 'camera') return;
-    const vidA = document.getElementById(`vid${i}a`);
-    const vidB = document.getElementById(`vid${i}b`);
-    if (!vidA || !vidB) return;
-    
-    if (i === activePreset && presetReady[i]) {
-      vidA.classList.toggle('active', currentAB === 0);
-      vidB.classList.toggle('active', currentAB === 1);
-    } else {
-      vidA.classList.remove('active');
-      vidB.classList.remove('active');
+  // ── Video A/B toggle (only when preset or AB changes) ──
+  if (activePreset !== _lastActivePreset || currentAB !== _lastAB) {
+    // Deactivate previous
+    if (_lastActivePreset >= 0 && _lastActivePreset !== activePreset) {
+      const pA = document.getElementById(`vid${_lastActivePreset}a`);
+      const pB = document.getElementById(`vid${_lastActivePreset}b`);
+      if (pA) pA.classList.remove('active');
+      if (pB) pB.classList.remove('active');
     }
-  });
+    // Activate current
+    if (presetReady[activePreset] && PRESETS[activePreset]?.videoA) {
+      const cA = document.getElementById(`vid${activePreset}a`);
+      const cB = document.getElementById(`vid${activePreset}b`);
+      if (cA) cA.classList.toggle('active', currentAB === 0);
+      if (cB) cB.classList.toggle('active', currentAB === 1);
+    }
+    _lastActivePreset = activePreset;
+    _lastAB = currentAB;
+  }
 }
 
 // ── Local Camera Management ────────────────────────────────────
@@ -1966,17 +1973,15 @@ function updateVideoLayer() {
   
   const transform = `translate(-50%, -50%) scale(${videoScale.toFixed(4)}) rotate(${videoCompassAngle.toFixed(4)}rad)`;
   
-  // Apply to active videos only
-  PRESETS.forEach((_, i) => {
-    const vidA = document.getElementById(`vid${i}a`);
-    const vidB = document.getElementById(`vid${i}b`);
-    if (vidA && vidA.classList.contains('active')) vidA.style.transform = transform;
-    if (vidB && vidB.classList.contains('active')) vidB.style.transform = transform;
-  });
+  // Apply transform ONLY to active preset's videos (skip loop)
+  const vidA = document.getElementById(`vid${activePreset}a`);
+  const vidB = document.getElementById(`vid${activePreset}b`);
+  if (vidA && vidA.classList.contains('active')) vidA.style.transform = transform;
+  if (vidB && vidB.classList.contains('active')) vidB.style.transform = transform;
   
-  // Vignette scales WITH video — same pinchScale → edges go beyond viewport
-  const vig = document.getElementById('videoVignette');
-  vig.style.transform = `scale(${pinchScale})`;
+  // Vignette scales WITH video
+  if (!_vigEl) _vigEl = document.getElementById('videoVignette');
+  if (_vigEl) _vigEl.style.transform = `scale(${pinchScale})`;
   
   updateVideoVisibility();
 }
