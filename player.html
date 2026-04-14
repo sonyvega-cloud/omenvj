@@ -1740,8 +1740,11 @@ async function openLocalCam(presetIdx, deviceId) {
   }
 }
 
-// Enumerate on demand (not startup — getUserMedia blocks)
-// enumerateLocalCameras();
+// Enumerate cameras after 3s delay (only if local camera presets exist)
+setTimeout(() => {
+  const hasLocalCam = PRESETS.some(p => p.type === 'camera' && p.camSource === 'local');
+  if (hasLocalCam) enumerateLocalCameras();
+}, 3000);
 
 let lastSwitchTime = 0;
 const SWITCH_MIN_MS = 300; // minimum 300ms between switches

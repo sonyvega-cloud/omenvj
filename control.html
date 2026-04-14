@@ -645,8 +645,8 @@ function buildPresetButtons() {
       btn.onclick = () => sendPreset(p.idx);
       row.appendChild(btn);
       
-      // Local camera preset → add pick button
-      if (p.type === 'camera' && presetData[p.idx]?.camSource !== 'remote') {
+      // Local camera preset → add pick button (only for camSource=local)
+      if (p.type === 'camera' && presetData[p.idx]?.camSource === 'local') {
         const pickBtn = document.createElement('div');
         pickBtn.className = 'btn';
         pickBtn.textContent = '⚙';
