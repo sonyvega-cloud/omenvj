@@ -2066,6 +2066,10 @@ function render() {
     renderBeatCircles(pal);
   } else if (gfx === 'dot_matrix') {
     renderDotMatrix(pal);
+  } else if (gfx === 'crosshair') {
+    renderCrosshair(pal);
+  } else if (gfx === 'data_scope') {
+    renderDataScope(pal);
   } else {
     renderVideoRings(pal);
   }
@@ -2259,6 +2263,208 @@ function renderOmen1(pal) {
 }
 
 // ── Video Rings: Simpler overlay for video presets (OMEN2/3) ───
+// ── Data Scope: Concentric FFT waveform rings (Big Data style) ──
+function renderDataScope(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  const [rB, gB, bB] = hexRgb(pal[3]);
+  const [rD, gD, bD] = hexRgb(pal[0]);
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(compassAngle);
+  
+  const ringCount = 18;
+  const innerR = minD * 0.08;
+  const outerR = minD * 0.48 * pulseScale;
+  const points = 128; // resolution per ring
+  
+  for (let ring = 0; ring < ringCount; ring++) {
+    const t = ring / (ringCount - 1); // 0→1
+    const baseR = innerR + (outerR - innerR) * t;
+    
+    // Each ring reads different FFT range
+    const freqStart = t * 0.6;
+    const freqEnd = freqStart + 0.15;
+    
+    // Color: inner = palette dark/warm, outer = palette bright
+    const cr = rD + (rP - rD) * t;
+    const cg = gD + (gP - gD) * t;
+    const cb = bD + (bP - bD) * t;
+    // Outer rings get bright accent
+    const ar = ring > ringCount * 0.7 ? rB : cr;
+    const ag = ring > ringCount * 0.7 ? gB : cg;
+    const ab = ring > ringCount * 0.7 ? bB : cb;
+    
+    const alpha = 0.15 + t * 0.45 + beatFlash * 0.3;
+    
+    // Amplitude: outer rings = more displacement
+    const ampScale = (0.3 + t * 0.7) * minD * 0.06;
+    
+    ctx.beginPath();
+    for (let i = 0; i <= points; i++) {
+      const angle = (i / points) * Math.PI * 2;
+      
+      // FFT value at this angle
+      const fftIdx = Math.floor((i / points) * (freqData ? freqData.length * 0.5 : 64));
+      const rawVal = freqData ? freqData[Math.min(fftIdx, freqData.length - 1)] / 255 : 0;
+      
+      // Sharp/jagged: quantize to steps
+      const quantized = Math.floor(rawVal * 6) / 6;
+      
+      // Displacement outward
+      const disp = quantized * ampScale;
+      const r = baseR + disp;
+      
+      const x = Math.cos(angle) * r;
+      const y = Math.sin(angle) * r;
+      
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = `rgba(${ar|0},${ag|0},${ab|0},${alpha.toFixed(3)})`;
+    ctx.lineWidth = ring > ringCount * 0.75 ? 1.5 : 0.8;
+    ctx.stroke();
+  }
+  
+  // ── Radial grid lines (subtle, like radar) ──
+  ctx.strokeStyle = `rgba(${rP},${gP},${bP},0.06)`;
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i < 36; i++) {
+    const angle = (i / 36) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * innerR, Math.sin(angle) * innerR);
+    ctx.lineTo(Math.cos(angle) * outerR * 1.1, Math.sin(angle) * outerR * 1.1);
+    ctx.stroke();
+  }
+  
+  // ── Tick marks around outer edge (like compass/protractor) ──
+  ctx.strokeStyle = `rgba(${rP},${gP},${bP},0.12)`;
+  const tickR = outerR * 1.05;
+  for (let i = 0; i < 72; i++) {
+    const angle = (i / 72) * Math.PI * 2;
+    const len = i % 9 === 0 ? minD * 0.02 : minD * 0.008;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * tickR, Math.sin(angle) * tickR);
+    ctx.lineTo(Math.cos(angle) * (tickR + len), Math.sin(angle) * (tickR + len));
+    ctx.stroke();
+  }
+  
+  // ── Center dot ──
+  const dotR = 2 + smoothBass * 4 + beatFlash * 6;
+  ctx.beginPath();
+  ctx.arc(0, 0, dotR, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(${rB},${gB},${bB},${0.3 + beatFlash * 0.7})`;
+  ctx.fill();
+  
+  ctx.restore();
+}
+
+// ── Crosshair: Red targeting scope overlay (iOS squareRed port) ──
+function renderCrosshair(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  
+  // Base opacity: low idle, bright on beat
+  const baseAlpha = 0.25 + smoothVol * 0.3 + beatFlash * 0.4;
+  const color = `rgba(${rP},${gP},${bP},${baseAlpha.toFixed(3)})`;
+  const colorDim = `rgba(${rP},${gP},${bP},${(baseAlpha * 0.4).toFixed(3)})`;
+  
+  // Sizes pulse with bass
+  const pulse = 1.0 + smoothBass * 0.08;
+  const outerW = minD * 0.55 * pulse;
+  const outerH = minD * 0.42 * pulse;
+  const innerW = minD * 0.32 * pulse;
+  const innerH = minD * 0.25 * pulse;
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(compassAngle);
+  
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = color;
+  
+  // ── Outer rectangle ──
+  ctx.strokeRect(-outerW, -outerH, outerW * 2, outerH * 2);
+  
+  // ── Inner rectangle ──
+  ctx.strokeStyle = colorDim;
+  ctx.strokeRect(-innerW, -innerH, innerW * 2, innerH * 2);
+  
+  // ── Center cross (extends beyond outer rect) ──
+  const crossExtend = minD * 0.65;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 0.8;
+  
+  // Vertical line
+  ctx.beginPath();
+  ctx.moveTo(0, -crossExtend);
+  ctx.lineTo(0, crossExtend);
+  ctx.stroke();
+  
+  // Horizontal line
+  ctx.beginPath();
+  ctx.moveTo(-crossExtend, 0);
+  ctx.lineTo(crossExtend, 0);
+  ctx.stroke();
+  
+  // ── Tick marks at intersections ──
+  const tickSize = minD * 0.015;
+  ctx.lineWidth = 1.0;
+  ctx.strokeStyle = color;
+  
+  // Ticks on outer rect (where cross meets edges)
+  const outerTicks = [
+    [0, -outerH], [0, outerH],       // top, bottom center
+    [-outerW, 0], [outerW, 0],       // left, right center
+  ];
+  outerTicks.forEach(([tx, ty]) => {
+    ctx.beginPath();
+    ctx.moveTo(tx - tickSize, ty);
+    ctx.lineTo(tx + tickSize, ty);
+    ctx.moveTo(tx, ty - tickSize);
+    ctx.lineTo(tx, ty + tickSize);
+    ctx.stroke();
+  });
+  
+  // Ticks on inner rect
+  const innerTicks = [
+    [0, -innerH], [0, innerH],
+    [-innerW, 0], [innerW, 0],
+  ];
+  innerTicks.forEach(([tx, ty]) => {
+    ctx.beginPath();
+    ctx.moveTo(tx - tickSize, ty);
+    ctx.lineTo(tx + tickSize, ty);
+    ctx.moveTo(tx, ty - tickSize);
+    ctx.lineTo(tx, ty + tickSize);
+    ctx.stroke();
+  });
+  
+  // ── Corner dots on outer rect (4 corners) ──
+  const dotR = 2 + beatFlash * 4;
+  const corners = [
+    [-outerW, -outerH], [outerW, -outerH],
+    [-outerW, outerH], [outerW, outerH],
+  ];
+  corners.forEach(([cx, cy]) => {
+    ctx.beginPath();
+    ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  });
+  
+  // ── Center dot ──
+  const centerDot = 2 + smoothBass * 5 + beatFlash * 8;
+  ctx.beginPath();
+  ctx.arc(0, 0, centerDot, 0, Math.PI * 2);
+  ctx.fillStyle = beatFlash > 0.1 ? pal[2] : color;
+  ctx.fill();
+  
+  ctx.restore();
+}
+
 function renderVideoRings(pal) {
   const minD = Math.min(W, H) * GFX_SCALE;
   const [rP, gP, bP] = hexRgb(pal[2]);
