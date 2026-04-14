@@ -2435,7 +2435,8 @@ function renderTypo(pal) {
   typoScale += (typoTargetScale - typoScale) * 0.25;
   typoX += (typoTargetX - typoX) * 0.2;
   typoY += (typoTargetY - typoY) * 0.2;
-  typoFlash *= 0.85;
+  // Flash decay: slower for strobo (stays visible longer)
+  typoFlash *= (fx === 'strobo') ? 0.93 : 0.85;
   
   // Background
   const invertActive = fx === 'invert' && typoFlash > 0.4;
@@ -2444,11 +2445,11 @@ function renderTypo(pal) {
   
   // Auto-fill width: 5% margin each side = 90% of viewport
   ctx.font = `${weight} 100px '${font}', sans-serif`;
-  const spacingScale = spacing / 100;
   const measured = ctx.measureText(text);
-  const textWidth = measured.width + text.length * spacing;
+  const textWidth = Math.max(measured.width + text.length * spacing, 1); // prevent /0
   const autoSize = (W * 0.90) / (textWidth / 100);
-  const fontSize = Math.min(autoSize, H * 0.6) * typoScale;
+  const beatPulse = 1.0 + typoFlash * 0.25 * fxIntensity + smoothBass * 0.08 * fxIntensity;
+  const fontSize = Math.max(Math.min(autoSize, H * 0.6) * typoScale * beatPulse, 10);
   
   // Position
   const tx = CX + typoX * W;
@@ -2467,7 +2468,7 @@ function renderTypo(pal) {
   ctx.font = `${weight} ${fontSize.toFixed(0)}px '${font}', sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.letterSpacing = `${spacing * (fontSize / 100)}px`;
+  try { ctx.letterSpacing = `${spacing * (fontSize / 100)}px`; } catch(e) {}
   
   // ── FX: GLITCH — RGB split ──
   if (fx === 'glitch' && typoFlash > 0.2) {
@@ -2497,8 +2498,8 @@ function renderTypo(pal) {
     ctx.shadowBlur = fontSize * 0.08 * typoFlash;
   }
   
-  // ── FX: STROBO — rapid on/off ──
-  const stroboHide = fx === 'strobo' && typoFlash > 0.3 && Math.floor(animTime * 30) % 2 === 0;
+  // ── FX: STROBO — rapid on/off (1/4 beat, 60Hz flicker) ──
+  const stroboHide = fx === 'strobo' && typoFlash > 0.1 && Math.floor(animTime * 60) % 2 === 0;
   
   if (!stroboHide) {
     ctx.fillStyle = `rgb(${tr},${tg},${tb})`;
