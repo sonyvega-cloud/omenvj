@@ -1752,10 +1752,12 @@ const SWITCH_MIN_MS = 300; // minimum 300ms between switches
 function switchToPreset(idx) {
   if (!presetReady[idx]) return;
   
-  // ABSOLUTE BLOCK: disabled theme = NEVER switch. No exceptions.
-  const p = PRESETS[idx];
-  const theme = getPresetTheme(p);
-  if (!activeThemes[theme]) return;
+  // Theme block ONLY during autopilot/beatcut — manual clicks always pass
+  if (autopilotEnabled || beatCutEnabled) {
+    const p = PRESETS[idx];
+    const theme = getPresetTheme(p);
+    if (!activeThemes[theme]) return;
+  }
   
   // Throttle beat cut (not manual clicks)
   const now = performance.now();
@@ -2427,19 +2429,21 @@ function tick() {
     
     updateAutopilot();
     
-    // THEME ENFORCEMENT: check every ~0.5s — disabled theme NEVER on screen
-    _themeCheckCounter++;
-    if (_themeCheckCounter >= 30) {
-      _themeCheckCounter = 0;
-      const _p = PRESETS[activePreset];
-      const _t = getPresetTheme(_p);
-      if (!activeThemes[_t]) {
-        const _allowed = getActiveThemePresets();
-        if (_allowed.length > 0) {
-          const _pick = _allowed[Math.floor(Math.random() * _allowed.length)];
-          activePreset = _pick.idx;
-          updateVideoVisibility();
-          updatePresetGrid();
+    // THEME ENFORCEMENT: only during autopilot/beatcut
+    if (autopilotEnabled || beatCutEnabled) {
+      _themeCheckCounter++;
+      if (_themeCheckCounter >= 30) {
+        _themeCheckCounter = 0;
+        const _p = PRESETS[activePreset];
+        const _t = getPresetTheme(_p);
+        if (!activeThemes[_t]) {
+          const _allowed = getActiveThemePresets();
+          if (_allowed.length > 0) {
+            const _pick = _allowed[Math.floor(Math.random() * _allowed.length)];
+            activePreset = _pick.idx;
+            updateVideoVisibility();
+            updatePresetGrid();
+          }
         }
       }
     }
@@ -2906,17 +2910,19 @@ function handleCommand(msg) {
     case 'thememix': {
       if (msg.themes) activeThemes = msg.themes;
       if (msg.weights) themeWeights = msg.weights;
-      // ALWAYS force switch if current preset's theme is disabled
-      const p2 = PRESETS[activePreset];
-      const curTheme2 = getPresetTheme(p2);
-      if (!activeThemes[curTheme2]) {
-        const allowed = getActiveThemePresets();
-        if (allowed.length > 0) {
-          const pick = weightedPresetPick(allowed.filter(x => x.idx !== activePreset)) || allowed[0];
-          if (pick) {
-            activePreset = pick.idx; // direct set, bypass switchToPreset checks
-            updateVideoVisibility();
-            updatePresetGrid();
+      // Force switch only during autopilot/beatcut
+      if (autopilotEnabled || beatCutEnabled) {
+        const p2 = PRESETS[activePreset];
+        const curTheme2 = getPresetTheme(p2);
+        if (!activeThemes[curTheme2]) {
+          const allowed = getActiveThemePresets();
+          if (allowed.length > 0) {
+            const pick = weightedPresetPick(allowed.filter(x => x.idx !== activePreset)) || allowed[0];
+            if (pick) {
+              activePreset = pick.idx;
+              updateVideoVisibility();
+              updatePresetGrid();
+            }
           }
         }
       }
