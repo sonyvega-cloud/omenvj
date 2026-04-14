@@ -2407,19 +2407,6 @@ function tick() {
     updateEnergy();
     updateSilenceDampen();
     
-    // Read theme mix from localStorage (controller writes it)
-    // Periodic read as fallback
-    if (broadcastCounter % 30 === 0) {
-      try {
-        const tmx = localStorage.getItem('omen_thememix');
-        if (tmx) {
-          const parsed = JSON.parse(tmx);
-          if (parsed.themes) activeThemes = parsed.themes;
-          if (parsed.weights) themeWeights = parsed.weights;
-        }
-      } catch(e) {}
-    }
-    
     updateAutopilot();
     
     // THEME ENFORCEMENT: check every ~0.5s — disabled theme NEVER on screen
@@ -2451,9 +2438,7 @@ function tick() {
     if (moodEl) moodEl.textContent = mood;
     const dbg = document.getElementById('debugDisplay');
     if (dbg) {
-      const _ls = localStorage.getItem('omen_thememix');
-      const _lsO = _ls ? JSON.parse(_ls).themes?.omen : '?';
-      dbg.textContent = `${PRESETS[activePreset]?.name||'?'} omen:${activeThemes.omen} ls:${_lsO} cam:${activeThemes.camera} | ${mood} cut:${beatCutInterval}`;
+      dbg.textContent = `${PRESETS[activePreset]?.name||'?'} omen:${activeThemes.omen} cam:${activeThemes.camera} | ${mood} cut:${beatCutInterval}`;
     }
     
     // Beat dots
@@ -2833,30 +2818,6 @@ function handleCommand(msg) {
       document.getElementById('hud').classList.add('hidden');
       document.getElementById('controls-hint').classList.add('hidden');
       
-      // Read theme mix from controller (sent with every ping)
-      if (msg.themes) {
-        const oldThemes = JSON.stringify(activeThemes);
-        activeThemes = msg.themes;
-        if (msg.weights) themeWeights = msg.weights;
-        
-        // Theme changed → ALWAYS check if current preset is disabled
-        if (JSON.stringify(activeThemes) !== oldThemes) {
-          const p = PRESETS[activePreset];
-          const curTheme = getPresetTheme(p);
-          if (!activeThemes[curTheme]) {
-            const allowed = getActiveThemePresets();
-            if (allowed.length > 0) {
-              const pick = weightedPresetPick(allowed.filter(x => x.idx !== activePreset)) || allowed[0];
-              if (pick) {
-                activePreset = pick.idx;
-                updateVideoVisibility();
-                updatePresetGrid();
-              }
-            }
-          }
-        }
-      }
-      
       // Reply on both channels
       const pong = { type: 'pong', presets: PRESETS.map(p => p.name), scenes: PRESETS.map(p => ({ name: p.name, themeId: p.themeId || 'omen', type: p.type || 'video' })) };
       omenChannel.postMessage(pong);
@@ -3128,45 +3089,6 @@ function broadcastState() {
     console.error('broadcast error:', err);
   }
 }
-
-// ═══════════════════════════════════════════════════════════════
-// INSTANT theme mix sync via storage event (fires when other tab writes)
-// ═══════════════════════════════════════════════════════════════
-window.addEventListener('storage', (e) => {
-  if (e.key === 'omen_thememix' && e.newValue) {
-    try {
-      const parsed = JSON.parse(e.newValue);
-      if (parsed.themes) activeThemes = parsed.themes;
-      if (parsed.weights) themeWeights = parsed.weights;
-      console.log('[THEME] Storage event → activeThemes:', activeThemes);
-      
-      // ALWAYS force switch if current preset theme is OFF
-      const p = PRESETS[activePreset];
-      const theme = getPresetTheme(p);
-      if (!activeThemes[theme]) {
-        const allowed = getActiveThemePresets();
-        if (allowed.length > 0) {
-          const pick = weightedPresetPick(allowed.filter(x => x.idx !== activePreset)) || allowed[0];
-          if (pick) {
-            activePreset = pick.idx; // direct set
-            updateVideoVisibility();
-            updatePresetGrid();
-          }
-        }
-      }
-    } catch(err) {}
-  }
-});
-
-// Also read on startup
-try {
-  const tmx = localStorage.getItem('omen_thememix');
-  if (tmx) {
-    const parsed = JSON.parse(tmx);
-    if (parsed.themes) activeThemes = parsed.themes;
-    if (parsed.weights) themeWeights = parsed.weights;
-  }
-} catch(e) {}
 
 </script>
 </body>

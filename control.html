@@ -467,15 +467,6 @@ const THEME_ORDER = ['omen', 'camera', 'voyager'];
 let state = { beatCutEnabled: false, beatCutInterval: 4, activePreset: 0, colorIndex: 0, videoSpeedMultiplier: 1.0, stroboActive: false, videoHidden: false, autopilotEnabled: false, autoEnergyEnabled: true, autoFxEnabled: true, autoBeatCutEnabled: true, autoStroboEnabled: true, autoColorEnabled: true, autoSpeedEnabled: true };
 let themeMix = { omen: true, camera: false, voyager: false };
 let themeWeights = { omen: 80, camera: 20, voyager: 0 };
-// Load saved theme mix
-try {
-  const saved = localStorage.getItem('omen_thememix');
-  if (saved) {
-    const p = JSON.parse(saved);
-    if (p.themes) themeMix = p.themes;
-    if (p.weights) themeWeights = p.weights;
-  }
-} catch(e) {}
 
 // ── Init: build beat dots + preset buttons ────────────────────
 const beatBar = document.getElementById('beatBar');
@@ -508,9 +499,9 @@ buildPresetButtons();
 });
 
 // ── Ping player on load ───────────────────────────────────────
-send({ type: 'ping', themes: themeMix, weights: themeWeights });
+send({ type: 'ping' });
 setInterval(() => {
-  send({ type: 'ping', themes: themeMix, weights: themeWeights });
+  send({ type: 'ping' });
 }, 3000);
 
 // ── Handle messages from player ───────────────────────────────
@@ -698,8 +689,26 @@ function updateUI(s) {
     playerCameras = s.availableCameras;
   }
   
-  // Theme mix: controller is source of truth, don't overwrite from player
-  // Only sync on first connect (when we don't have local state yet)
+  // Theme mix: sync from player (player is source of truth)
+  if (s.activeThemes) {
+    themeMix = s.activeThemes;
+    ['omen', 'camera', 'voyager'].forEach(id => {
+      const el = document.getElementById('tm_' + id);
+      if (el) {
+        el.textContent = themeMix[id] ? '✓' : '✗';
+        el.className = 'auto-check' + (themeMix[id] ? ' on' : '');
+      }
+    });
+  }
+  if (s.themeWeights) {
+    themeWeights = s.themeWeights;
+    ['omen', 'camera', 'voyager'].forEach(id => {
+      const sl = document.getElementById('tw_' + id);
+      const valEl = document.getElementById('twv_' + id);
+      if (sl) { sl.value = themeWeights[id] || 0; }
+      if (valEl) valEl.textContent = themeWeights[id] || 0;
+    });
+  }
   
   // Beat dots
   if (s.beatJustFired && s.bar16 !== lastBar16) {
@@ -864,18 +873,8 @@ function sendThemeMix() {
       if (valEl) valEl.textContent = sl.value;
     }
   });
-  const data = { themes: themeMix, weights: themeWeights };
-  
-  // 1. localStorage (same PC — instant via storage event)
-  localStorage.setItem('omen_thememix', JSON.stringify(data));
-  
-  // 2. BroadcastChannel (same PC — backup)
-  ch.postMessage({ type: 'thememix', ...data });
-  
-  // 3. WebSocket relay (mobile remote)
-  if (relayWs && relayWs.readyState === 1) {
-    relayWs.send(JSON.stringify({ type: 'thememix', ...data }));
-  }
+  // Send to player (player is source of truth)
+  send({ type: 'thememix', themes: themeMix, weights: themeWeights });
 }
 
 function sendTap()              { send({ type: 'tap' }); }
