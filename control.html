@@ -371,7 +371,7 @@
   <div class="btn-row" style="margin-bottom:8px;">
     <div class="btn" id="strbBtn" onclick="sendStrobo()">STRB</div>
     <div class="btn" id="vhidBtn" onclick="sendVideoHide()">VHID</div>
-    <div class="btn" id="camBtn" onclick="toggleCamera()" style="margin-left:auto">CAM</div>
+    <div class="btn" id="camBtn" onclick="toggleCamera()" style="margin-left:auto; display:none">CAM</div>
     <div style="flex:1;"></div>
     <div class="btn" id="hudBtn" onclick="sendHudToggle()">HUD</div>
   </div>
@@ -571,6 +571,7 @@ async function connectWithPin() {
       document.getElementById('relayStatus').style.display = 'inline-block';
       document.getElementById('relayStatus').classList.add('connected');
       document.getElementById('pinConnect').style.display = 'none';
+      document.getElementById('camBtn').style.display = 'block'; // show CAM button
       console.log('[RELAY] Connected as controller');
       send({ type: 'ping', themes: themeMix, weights: themeWeights });
     };
@@ -921,6 +922,11 @@ const CAM_FPS = 10;
 const CAM_QUALITY = 0.5; // jpeg quality
 
 async function toggleCamera() {
+  // Camera streaming only works from mobile (via relay)
+  if (!relayConnected) {
+    alert('Camera streaming works from mobile controller only.\nFor local webcam, use ⚙ button on camera presets.');
+    return;
+  }
   console.log('[CAM] toggleCamera called, camActive:', camActive);
   if (camActive) {
     stopCamera();
@@ -979,8 +985,9 @@ function stopCamera() {
 
 function sendCameraFrame() {
   if (!camVideo || !camCtx || !camActive) return;
+  // Camera frames ONLY via WS relay (mobile → player)
+  if (!relayWs || relayWs.readyState !== 1) return;
   
-  // Draw video to canvas (square crop from center)
   const vw = camVideo.videoWidth;
   const vh = camVideo.videoHeight;
   const size = Math.min(vw, vh);
@@ -988,17 +995,9 @@ function sendCameraFrame() {
   const sy = (vh - size) / 2;
   camCtx.drawImage(camVideo, sx, sy, size, size, 0, 0, CAM_SIZE, CAM_SIZE);
   
-  // Send as JPEG base64
   const dataUrl = camCanvas.toDataURL('image/jpeg', CAM_QUALITY);
   const base64 = dataUrl.split(',')[1];
-  const msg = JSON.stringify({ type: 'cam_frame', data: base64 });
-  
-  // Send via active channel (WS for remote, BC for local)
-  if (relayConnected && relayWs && relayWs.readyState === 1) {
-    relayWs.send(msg);
-  } else {
-    ch.postMessage({ type: 'cam_frame', data: base64 });
-  }
+  relayWs.send(JSON.stringify({ type: 'cam_frame', data: base64 }));
 }
 
 // PWA Service Worker

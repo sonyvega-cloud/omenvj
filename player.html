@@ -1618,57 +1618,42 @@ function updateVideoVisibility() {
   // Hide overlay div (unused)
   if (_coEl && _coEl.style.display !== 'none') _coEl.style.display = 'none';
   
-  // ── Camera (only compute when camera preset active) ──
-  if (currentPresetIsCamera) {
+  // ═══ CAMERA: exactly ONE source visible, all others HIDDEN ═══
+  // Step 1: HIDE EVERYTHING camera-related first
+  if (_clEl) _clEl.style.display = 'none';
+  Object.keys(localCams).forEach(pidx => {
+    const cam = localCams[pidx];
+    if (cam && cam.videoEl) cam.videoEl.style.display = 'none';
+  });
+  
+  // Step 2: Show ONE source if camera preset is active
+  if (currentPresetIsCamera && !videoHidden) {
     const camSource = currentPreset?.camSource || 'remote';
-    const isRemote = camSource === 'remote';
     const camFilter = CAM_FILTERS[colorIndex] || CAM_FILTERS[0];
     const t = performance.now() / 1000;
     const activePulse = camPulseScale > 0.05 ? camPulseScale : (Math.sin(t * 3) * 0.5 + 0.5) * 0.3;
-    const camAnimated = beatCutEnabled;
-    const rot = camAnimated ? camRotCurrent : Math.sin(t * 0.4) * 3;
+    const rot = beatCutEnabled ? camRotCurrent : Math.sin(t * 0.4) * 3;
     const breathe = 1.0 + smoothVol * 0.15;
     const pulse = 1.0 + activePulse * 0.22;
     const camScale = breathe * pulse * pinchScale;
     const transformStr = `translate(-50%, -50%) scale(${camScale.toFixed(3)}) rotate(${rot.toFixed(1)}deg)`;
     
-    // Remote camera
-    if (_clEl) {
-      const show = isRemote && remoteCamActive && !videoHidden;
-      if (show) {
-        if (_clEl.style.display !== 'block') _clEl.style.display = 'block';
-        _clEl.style.transform = transformStr;
-        _clEl.style.filter = camFilter;
-      } else {
-        if (_clEl.style.display !== 'none') _clEl.style.display = 'none';
-      }
+    if (camSource === 'local' && localCams[activePreset]?.videoEl) {
+      // LOCAL camera: show this preset's video element
+      const el = localCams[activePreset].videoEl;
+      el.style.display = 'block';
+      el.style.transform = transformStr;
+      el.style.filter = camFilter;
+    } else if (remoteCamActive && _clEl) {
+      // REMOTE camera: show shared canvas
+      _clEl.style.display = 'block';
+      _clEl.style.transform = transformStr;
+      _clEl.style.filter = camFilter;
     }
-    
-    // Local camera
-    const localCam = localCams[activePreset];
-    if (localCam && localCam.videoEl && !isRemote && !videoHidden) {
-      if (localCam.videoEl.style.display !== 'block') localCam.videoEl.style.display = 'block';
-      localCam.videoEl.style.transform = transformStr;
-      localCam.videoEl.style.filter = camFilter;
-    }
-  } else {
-    // Not camera preset — hide camera layers + reset filters
-    if (_clEl) {
-      if (_clEl.style.display !== 'none') {
-        _clEl.style.display = 'none';
-        _clEl.style.filter = 'none';
-        applyVideoColor(); // restore video color on cam→video transition
-      }
-    }
+  } else if (!currentPresetIsCamera && _clEl) {
+    _clEl.style.filter = 'none';
+    applyVideoColor();
   }
-  
-  // Hide inactive local cams
-  Object.keys(localCams).forEach(pidx => {
-    if (parseInt(pidx) !== activePreset || !currentPresetIsCamera) {
-      const cam = localCams[pidx];
-      if (cam && cam.videoEl && cam.videoEl.style.display !== 'none') cam.videoEl.style.display = 'none';
-    }
-  });
   
   // ── Video A/B toggle ──
   PRESETS.forEach((preset, i) => {
