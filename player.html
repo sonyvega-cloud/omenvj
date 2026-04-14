@@ -521,6 +521,7 @@ const VIDEO_BASE_SCALE = 1.0; // web: 1.0 = viewport fill (iOS was 0.375 due to 
 // Speed
 let videoSpeed = 1.0;
 let videoCompassAngle = 0;
+let _lastVideoTransform = 'translate(-50%,-50%)';
 
 // A/B monotonic clock
 let abClockStart = 0;
@@ -1668,19 +1669,19 @@ function updateVideoVisibility() {
   
   // ── Video A/B toggle (only when preset or AB changes) ──
   if (activePreset !== _lastActivePreset || currentAB !== _lastAB) {
-    // Deactivate previous — remove class + reset transform
+    // Deactivate previous
     if (_lastActivePreset >= 0 && _lastActivePreset !== activePreset) {
       const pA = document.getElementById(`vid${_lastActivePreset}a`);
       const pB = document.getElementById(`vid${_lastActivePreset}b`);
-      if (pA) { pA.classList.remove('active'); pA.style.transform = 'translate(-50%,-50%)'; }
-      if (pB) { pB.classList.remove('active'); pB.style.transform = 'translate(-50%,-50%)'; }
+      if (pA) { pA.classList.remove('active'); }
+      if (pB) { pB.classList.remove('active'); }
     }
-    // Activate current
+    // Activate current — set transform BEFORE adding .active (no snap)
     if (presetReady[activePreset] && PRESETS[activePreset]?.videoA) {
       const cA = document.getElementById(`vid${activePreset}a`);
       const cB = document.getElementById(`vid${activePreset}b`);
-      if (cA) cA.classList.toggle('active', currentAB === 0);
-      if (cB) cB.classList.toggle('active', currentAB === 1);
+      if (cA) { cA.style.transform = _lastVideoTransform; cA.classList.toggle('active', currentAB === 0); }
+      if (cB) { cB.style.transform = _lastVideoTransform; cB.classList.toggle('active', currentAB === 1); }
     }
     _lastActivePreset = activePreset;
     _lastAB = currentAB;
@@ -1957,6 +1958,7 @@ function updateVideoLayer() {
   videoCompassAngle = videoCompassAngle * 0.97 + compassAngle * 0.03;
   
   const transform = `translate(-50%, -50%) scale(${videoScale.toFixed(4)}) rotate(${videoCompassAngle.toFixed(4)}rad)`;
+  _lastVideoTransform = transform;
   
   // VISIBILITY FIRST — toggle classes before applying transforms
   updateVideoVisibility();
