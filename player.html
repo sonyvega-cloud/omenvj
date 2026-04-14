@@ -676,6 +676,7 @@ async function startAudio(source) {
     document.getElementById('hud').classList.remove('hidden');
     document.getElementById('controls-hint').classList.remove('hidden');
     document.getElementById('sourceLabel').textContent = sourceLabel;
+    audioSourceName = sourceLabel;
 
     // Reinit preset arrays (presets.json already loaded at page load)
     presetReady = new Array(PRESETS.length).fill(false);
@@ -1036,10 +1037,9 @@ function onBeatTick() {
   // Camera hold countdown (per beat, not per cut)
   if (camHoldBeats > 0) camHoldBeats--;
   
-  // Camera beat pulse + rotation (mood-dependent range)
-  if (PRESETS[activePreset]?.type === 'camera') {
+  // Camera beat pulse + rotation (mood-dependent range, skip in silence)
+  if (PRESETS[activePreset]?.type === 'camera' && smoothVol >= 0.008) {
     camPulseScale = 1.0;
-    // Rotation range by mood: PEAK ±8°, GROOVE ±5°, BUILDING ±3°, AMBIENT ±1°
     let camRotRange = 1;
     if (mood === 'PEAK' || mood === 'DROP') camRotRange = 8;
     else if (mood === 'GROOVE') camRotRange = 5;
@@ -1639,18 +1639,27 @@ function updateVideoVisibility() {
   if (currentPresetIsCamera && !videoHidden) {
     const camSource = currentPreset?.camSource || 'remote';
     const camFilter = CAM_FILTERS[colorIndex] || CAM_FILTERS[0];
+    const isSilence = smoothVol < 0.008;
     const t = performance.now() / 1000;
-    const activePulse = camPulseScale > 0.05 ? camPulseScale : (Math.sin(t * 3) * 0.5 + 0.5) * 0.3;
-    // Rotation: mood-dependent range
-    let driftRange = 1;
-    if (mood === 'PEAK' || mood === 'DROP') driftRange = 5;
-    else if (mood === 'GROOVE') driftRange = 3;
-    else if (mood === 'BUILDING') driftRange = 2;
-    else driftRange = 1;
-    const rot = beatCutEnabled ? camRotCurrent : Math.sin(t * 0.4) * driftRange;
-    const breathe = 1.0 + smoothVol * 0.15;
-    const pulse = 1.0 + activePulse * 0.22;
-    const camScale = breathe * pulse * pinchScale;
+    
+    let rot = 0;
+    let camScale = pinchScale;
+    
+    if (!isSilence) {
+      // Audio active: pulse + rotation
+      const activePulse = camPulseScale > 0.05 ? camPulseScale : (Math.sin(t * 3) * 0.5 + 0.5) * 0.3;
+      let driftRange = 1;
+      if (mood === 'PEAK' || mood === 'DROP') driftRange = 5;
+      else if (mood === 'GROOVE') driftRange = 3;
+      else if (mood === 'BUILDING') driftRange = 2;
+      else driftRange = 1;
+      rot = beatCutEnabled ? camRotCurrent : Math.sin(t * 0.4) * driftRange;
+      const breathe = 1.0 + smoothVol * 0.15;
+      const pulse = 1.0 + activePulse * 0.22;
+      camScale = breathe * pulse * pinchScale;
+    }
+    // Silence: rot=0, camScale=pinchScale (static)
+    
     const transformStr = `translate(-50%, -50%) scale(${camScale.toFixed(3)}) rotate(${rot.toFixed(1)}deg)`;
     
     if (camSource === 'local' && localCams[activePreset]?.videoEl) {
@@ -2744,6 +2753,7 @@ document.body.addEventListener('click', (e) => {
 // ═══════════════════════════════════════════════════════════════
 
 let cdjConnected = false;
+let audioSourceName = '';
 let cdjWs = null;
 let cdjBpm = 0;
 let cdjLastBeat = 0;
@@ -3140,6 +3150,7 @@ function broadcastState() {
       autoSpeedEnabled: !!autoSpeedEnabled,
       cdjConnected: !!cdjConnected,
       cdjTrackTitle: cdjTrackTitle || '',
+      audioSource: audioSourceName || '',
       availableCameras: availableCameras || [],
       activeThemes,
       themeWeights,

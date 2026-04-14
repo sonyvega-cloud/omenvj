@@ -258,6 +258,7 @@
   <div class="status" id="connStatus">DISCONNECTED</div>
   <div class="status" id="cdjStatus" style="display:none;">CDJ</div>
   <div class="status" id="relayStatus" style="display:none;">REMOTE</div>
+  <div class="status" id="audioStatus" style="display:none; font-size:0.5rem; opacity:0.5;"></div>
 </div>
 
 <!-- PIN Connect (shown when no BroadcastChannel connection) -->
@@ -684,6 +685,13 @@ function updateUI(s) {
     cdjEl.style.display = s.cdjConnected ? 'inline-block' : 'none';
     cdjEl.classList.toggle('connected', s.cdjConnected);
     cdjEl.textContent = s.cdjTrackTitle ? 'CDJ: ' + s.cdjTrackTitle : 'CDJ';
+  }
+  
+  // Audio source
+  const audioEl = document.getElementById('audioStatus');
+  if (audioEl && s.audioSource) {
+    audioEl.style.display = 'inline-block';
+    audioEl.textContent = s.audioSource;
   }
   
   // Available cameras from player
