@@ -2382,35 +2382,36 @@ function typoOnBeat() {
   const bar4 = beatIndex % 4;
   const fx = preset.fx || 'none';
   
-  // Scale: FX-dependent
+  // ── SCALE FX: extreme zoom punches ──
   if (fx === 'scale') {
-    // SCALE FX: big zoom snap every beat, half-beat feel
-    typoTargetScale = 1.0 + Math.random() * 1.0; // 1.0-2.0 (oversized!)
+    // Alternate between tiny and MASSIVE
+    const picks = [0.4, 0.6, 1.0, 1.5, 2.0, 2.8, 0.3, 1.8];
+    typoScale = picks[beatIndex % picks.length]; // INSTANT, no easing
+    typoTargetScale = typoScale;
   } else if (fx === 'jump') {
-    typoTargetScale = 0.9 + Math.random() * 0.2; // subtle scale variation
-  } else if (energy > 0.6) {
-    typoTargetScale = 1.0 + Math.random() * 0.5;
-  } else if (bar4 === 0) {
     typoTargetScale = 0.85 + Math.random() * 0.3;
+  } else if (energy > 0.5) {
+    typoTargetScale = 1.0 + Math.random() * 0.6;
+  } else {
+    typoTargetScale = 0.9 + Math.random() * 0.2;
   }
   
-  // Position: FX-dependent
+  // ── JUMP FX: INSTANT teleport every beat ──
   if (fx === 'jump') {
-    // JUMP FX: every beat = new position
     const positions = [
-      [0, 0], [0, -0.3], [0, 0.3],
-      [-0.2, -0.2], [0.2, 0.2],
-      [-0.25, 0], [0.25, 0],
-      [0, -0.4], [0.15, -0.25],
+      [0, 0], [0, -0.35], [0, 0.35],
+      [-0.3, -0.25], [0.3, 0.25],
+      [-0.35, 0], [0.35, 0],
+      [0, -0.45], [0.2, -0.3],
+      [-0.25, 0.2], [0.15, 0.4],
     ];
     const pos = positions[Math.floor(Math.random() * positions.length)];
-    typoTargetX = pos[0];
-    typoTargetY = pos[1];
+    typoX = pos[0]; typoY = pos[1]; // INSTANT, no lerp
+    typoTargetX = pos[0]; typoTargetY = pos[1];
   } else if (bar4 === 0) {
     const positions = [
-      [0, 0], [0, -0.25], [0, 0.25],
-      [-0.15, -0.15], [0.15, 0.15],
-      [-0.2, 0], [0.2, 0], [0, -0.35],
+      [0, 0], [0, -0.2], [0, 0.2],
+      [-0.15, 0], [0.15, 0], [0, -0.3],
     ];
     const pos = positions[Math.floor(Math.random() * positions.length)];
     typoTargetX = pos[0];
@@ -2437,31 +2438,32 @@ function renderTypo(pal) {
   const fx = preset.fx || 'none';
   const [rP, gP, bP] = hexRgb(pal[2]);
   
-  // Easing
-  typoScale += (typoTargetScale - typoScale) * 0.25;
-  typoX += (typoTargetX - typoX) * 0.2;
-  typoY += (typoTargetY - typoY) * 0.2;
-  typoFlash *= (fx === 'strobo') ? 0.93 : 0.85;
+  // Easing — FAST for punch feel
+  typoScale += (typoTargetScale - typoScale) * 0.5; // was 0.25
+  typoX += (typoTargetX - typoX) * 0.4; // was 0.2
+  typoY += (typoTargetY - typoY) * 0.4;
+  typoFlash *= (fx === 'strobo') ? 0.93 : 0.82;
   
   // Background
-  const invertActive = fx === 'invert' && typoFlash > 0.4;
+  const invertActive = fx === 'invert' && typoFlash > 0.15; // was 0.4
   ctx.fillStyle = invertActive ? '#fff' : '#000';
   ctx.fillRect(0, 0, W, H);
   
-  const beatPulse = 1.0 + typoFlash * 0.25 * fxIntensity + smoothBass * 0.08 * fxIntensity;
+  const beatPulse = 1.0 + typoFlash * 0.3 * fxIntensity + smoothBass * 0.1 * fxIntensity;
   const tx = CX + typoX * W;
   const ty = CY + typoY * H;
   
-  // FX: SHAKE
+  // FX: SHAKE — violent vibration
   let shakeX = 0, shakeY = 0;
-  if (fx === 'shake' && typoFlash > 0.1) {
-    shakeX = (Math.random() - 0.5) * W * 0.02;
-    shakeY = (Math.random() - 0.5) * H * 0.01;
+  if (fx === 'shake' && typoFlash > 0.05) {
+    const shakeAmt = typoFlash * fxIntensity;
+    shakeX = (Math.random() - 0.5) * W * 0.08 * shakeAmt;
+    shakeY = (Math.random() - 0.5) * H * 0.04 * shakeAmt;
   }
   
-  // FX: STROBO
-  const stroboHide = fx === 'strobo' && typoFlash > 0.1 && Math.floor(animTime * 60) % 2 === 0;
-  if (stroboHide) return;
+  // FX: STROBO — rapid on/off
+  const stroboHide = fx === 'strobo' && typoFlash > 0.08 && Math.floor(animTime * 60) % 2 === 0;
+  if (stroboHide) { ctx.restore?.(); return; }
   
   // Color
   const flash = typoFlash * 0.7;
@@ -2487,11 +2489,11 @@ function renderTypo(pal) {
         ctx.shadowBlur = imgW * 0.05 * typoFlash;
       }
       
-      // FX: GLITCH on logo
-      if (fx === 'glitch' && typoFlash > 0.2) {
-        const go = imgW * 0.02 * typoFlash;
+      // FX: GLITCH on logo — aggressive RGB split
+      if (fx === 'glitch' && typoFlash > 0.05) {
+        const go = imgW * 0.06 * typoFlash;
         ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = 0.5 + typoFlash * 0.3;
+        ctx.globalAlpha = 0.6 + typoFlash * 0.3;
         ctx.drawImage(img, -imgW/2 - go, -imgH/2 - go*0.5, imgW, imgH);
         ctx.drawImage(img, -imgW/2 + go, -imgH/2 + go*0.5, imgW, imgH);
         ctx.globalAlpha = 1;
@@ -2537,22 +2539,24 @@ function renderTypo(pal) {
   ctx.textBaseline = 'middle';
   try { ctx.letterSpacing = `${(spacing * fontSize / 100).toFixed(1)}px`; } catch(e) {}
   
-  // Glow
-  if (typoFlash > 0.15 && fx !== 'invert') {
-    ctx.shadowColor = `rgba(${rP},${gP},${bP},${typoFlash * 0.4})`;
-    ctx.shadowBlur = fontSize * 0.08 * typoFlash;
+  // Glow — strong burst
+  if (typoFlash > 0.05 && fx !== 'invert') {
+    ctx.shadowColor = `rgba(${rP},${gP},${bP},${typoFlash * 0.6})`;
+    ctx.shadowBlur = fontSize * 0.15 * typoFlash;
   }
   
-  // FX: GLITCH
-  if (fx === 'glitch' && typoFlash > 0.2) {
-    const go = fontSize * 0.015 * typoFlash;
+  // FX: GLITCH — massive RGB split + slice
+  if (fx === 'glitch' && typoFlash > 0.05) {
+    const go = fontSize * 0.06 * typoFlash; // was 0.015 — 4x bigger
     ctx.globalCompositeOperation = 'screen';
     lines.forEach((line, i) => {
       const ly = startY + i * lineHeight;
-      ctx.fillStyle = `rgba(255,0,0,${0.5 + typoFlash * 0.3})`;
-      ctx.fillText(line, -go, ly - go * 0.5);
-      ctx.fillStyle = `rgba(0,255,255,${0.5 + typoFlash * 0.3})`;
-      ctx.fillText(line, go, ly + go * 0.5);
+      // Horizontal slice offset per line
+      const sliceX = (Math.random() - 0.5) * fontSize * 0.1 * typoFlash;
+      ctx.fillStyle = `rgba(255,0,0,${0.6 + typoFlash * 0.3})`;
+      ctx.fillText(line, -go + sliceX, ly - go * 0.5);
+      ctx.fillStyle = `rgba(0,255,255,${0.6 + typoFlash * 0.3})`;
+      ctx.fillText(line, go - sliceX, ly + go * 0.5);
     });
     ctx.globalCompositeOperation = 'source-over';
   }
