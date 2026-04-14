@@ -1668,12 +1668,12 @@ function updateVideoVisibility() {
   
   // ── Video A/B toggle (only when preset or AB changes) ──
   if (activePreset !== _lastActivePreset || currentAB !== _lastAB) {
-    // Deactivate previous
+    // Deactivate previous — remove class + reset transform
     if (_lastActivePreset >= 0 && _lastActivePreset !== activePreset) {
       const pA = document.getElementById(`vid${_lastActivePreset}a`);
       const pB = document.getElementById(`vid${_lastActivePreset}b`);
-      if (pA) pA.classList.remove('active');
-      if (pB) pB.classList.remove('active');
+      if (pA) { pA.classList.remove('active'); pA.style.transform = 'translate(-50%,-50%)'; }
+      if (pB) { pB.classList.remove('active'); pB.style.transform = 'translate(-50%,-50%)'; }
     }
     // Activate current
     if (presetReady[activePreset] && PRESETS[activePreset]?.videoA) {
@@ -1938,7 +1938,8 @@ function updateVideoLayer() {
   const isCamera = currentPreset && currentPreset.type === 'camera';
   
   if (!hasVideo && !isCamera || !videoLoaded && !isCamera) {
-    // GFX-only (not camera) — skip video transforms
+    // GFX-only — still update visibility (deactivate old videos)
+    updateVideoVisibility();
     return;
   }
   
@@ -1957,17 +1958,18 @@ function updateVideoLayer() {
   
   const transform = `translate(-50%, -50%) scale(${videoScale.toFixed(4)}) rotate(${videoCompassAngle.toFixed(4)}rad)`;
   
-  // Apply transform ONLY to active preset's videos (skip loop)
+  // VISIBILITY FIRST — toggle classes before applying transforms
+  updateVideoVisibility();
+  
+  // Apply transform AFTER visibility toggle (no flash of old transform)
   const vidA = document.getElementById(`vid${activePreset}a`);
   const vidB = document.getElementById(`vid${activePreset}b`);
-  if (vidA && vidA.classList.contains('active')) vidA.style.transform = transform;
-  if (vidB && vidB.classList.contains('active')) vidB.style.transform = transform;
+  if (vidA) vidA.style.transform = transform;
+  if (vidB) vidB.style.transform = transform;
   
   // Vignette scales WITH video
   if (!_vigEl) _vigEl = document.getElementById('videoVignette');
   if (_vigEl) _vigEl.style.transform = `scale(${pinchScale})`;
-  
-  updateVideoVisibility();
 }
 
 function updatePresetGrid() {
