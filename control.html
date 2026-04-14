@@ -363,6 +363,12 @@
       <input type="range" id="tw_voyager" min="0" max="100" value="0" class="theme-slider" oninput="sendThemeMix()" onclick="event.stopPropagation()">
       <span class="tw-val" id="twv_voyager">0</span>
     </div>
+    <div class="auto-item" onclick="toggleThemeMix('typo')">
+      <div class="auto-check" id="tm_typo" style="color:#ffffff;">✗</div>
+      <div class="auto-label" style="color:#ffffff;">TYPO</div>
+      <input type="range" id="tw_typo" min="0" max="100" value="30" class="theme-slider" oninput="sendThemeMix()" onclick="event.stopPropagation()">
+      <span class="tw-val" id="twv_typo">30</span>
+    </div>
   </div>
 </div>
 
@@ -408,6 +414,17 @@
   </div>
 </div>
 
+<!-- Audio Source -->
+<div class="section">
+  <div class="section-label">Audio Source</div>
+  <div class="btn-row">
+    <div class="btn" id="srcSystem" onclick="sendAudioSource('system')">SYSTEM</div>
+    <div class="btn" id="srcLinein" onclick="sendAudioSource('linein')">LINE-IN</div>
+    <div class="btn" id="srcMic" onclick="sendAudioSource('mic')">MIC</div>
+  </div>
+  <div id="audioDeviceList" style="padding-top:4px; display:none;"></div>
+</div>
+
 <script src="presets.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════
@@ -432,8 +449,10 @@ function send(msg) {
 }
 let presetNames = [];
 let presetData = []; // full scene data with themeId
-const THEME_COLORS = { omen: '#ff2200', camera: '#22cc44', voyager: '#aa44ff' };
-const THEME_ORDER = ['omen', 'camera', 'voyager'];
+// ═══ THEME REGISTRY — add new themes HERE only ═══
+const THEME_IDS = ['omen', 'camera', 'voyager', 'typo'];
+const THEME_COLORS = { omen: '#ff2200', camera: '#22cc44', voyager: '#aa44ff', typo: '#ffffff' };
+const THEME_ORDER = THEME_IDS;
 
 // Read from localStorage (editor) first, then presets.js fallback
 (function() {
@@ -466,8 +485,8 @@ const THEME_ORDER = ['omen', 'camera', 'voyager'];
   if (presetNames.length === 0) { presetNames = ['OMEN1']; presetData = [{ name: 'OMEN1', themeId: 'omen' }]; }
 })();
 let state = { beatCutEnabled: false, beatCutInterval: 4, activePreset: 0, colorIndex: 0, videoSpeedMultiplier: 1.0, stroboActive: false, videoHidden: false, autopilotEnabled: false, autoEnergyEnabled: true, autoFxEnabled: true, autoBeatCutEnabled: true, autoStroboEnabled: true, autoColorEnabled: true, autoSpeedEnabled: true };
-let themeMix = { omen: true, camera: false, voyager: false };
-let themeWeights = { omen: 80, camera: 20, voyager: 0 };
+let themeMix = { omen: true, camera: false, voyager: false, typo: false };
+let themeWeights = { omen: 80, camera: 20, voyager: 0, typo: 30 };
 let themeMixDirty = false; // true for 2s after user toggle
 
 // ── Init: build beat dots + preset buttons ────────────────────
@@ -488,7 +507,7 @@ for (let i = 0; i < 16; i++) {
 buildPresetButtons();
 
 // Init theme mix checkboxes from saved state
-['omen', 'camera', 'voyager'].forEach(id => {
+THEME_IDS.forEach(id => {
   const el = document.getElementById('tm_' + id);
   if (el) {
     el.textContent = themeMix[id] ? '✓' : '✗';
@@ -692,6 +711,15 @@ function updateUI(s) {
   if (audioEl && s.audioSource) {
     audioEl.style.display = 'inline-block';
     audioEl.textContent = s.audioSource;
+    // Highlight active source button
+    ['srcSystem', 'srcLinein', 'srcMic'].forEach(id => document.getElementById(id)?.classList.remove('on'));
+    if (s.audioSource.includes('SYSTEM')) document.getElementById('srcSystem')?.classList.add('on');
+    else if (s.audioSource.includes('LINE-IN')) document.getElementById('srcLinein')?.classList.add('on');
+    else if (s.audioSource.includes('MIC')) document.getElementById('srcMic')?.classList.add('on');
+  }
+  // Audio device list from player
+  if (s.audioDevices && s.audioDevices.length > 0) {
+    playerAudioDevices = s.audioDevices;
   }
   
   // Available cameras from player
@@ -702,7 +730,7 @@ function updateUI(s) {
   // Theme mix: sync from player (but not if user just changed locally)
   if (s.activeThemes && !themeMixDirty) {
     themeMix = s.activeThemes;
-    ['omen', 'camera', 'voyager'].forEach(id => {
+    THEME_IDS.forEach(id => {
       const el = document.getElementById('tm_' + id);
       if (el) {
         el.textContent = themeMix[id] ? '✓' : '✗';
@@ -712,7 +740,7 @@ function updateUI(s) {
   }
   if (s.themeWeights && !themeMixDirty) {
     themeWeights = s.themeWeights;
-    ['omen', 'camera', 'voyager'].forEach(id => {
+    THEME_IDS.forEach(id => {
       const sl = document.getElementById('tw_' + id);
       const valEl = document.getElementById('twv_' + id);
       if (sl) { sl.value = themeWeights[id] || 0; }
@@ -880,7 +908,7 @@ function toggleThemeMix(themeId) {
 let themeMixDirtyTimer = null;
 
 function sendThemeMix() {
-  ['omen', 'camera', 'voyager'].forEach(id => {
+  THEME_IDS.forEach(id => {
     const sl = document.getElementById('tw_' + id);
     const valEl = document.getElementById('twv_' + id);
     if (sl) {
@@ -909,6 +937,43 @@ function sendAutoFeature(f)     { send({ type: 'autofeature', feature: f }); }
 function sendSpeed(val)         { send({ type: 'speed', value: val }); }
 function sendFx(val)            { send({ type: 'fx', value: val }); }
 function sendPinch(val)         { send({ type: 'pinch', value: val }); }
+
+// ── Audio Source ──────────────────────────────────────────────
+let playerAudioDevices = [];
+
+function sendAudioSource(source, deviceId) {
+  send({ type: 'audio', source, deviceId: deviceId || null });
+  // Highlight active button
+  ['srcSystem', 'srcLinein', 'srcMic'].forEach(id => {
+    document.getElementById(id)?.classList.remove('on');
+  });
+  const btnId = source === 'system' ? 'srcSystem' : source === 'linein' ? 'srcLinein' : 'srcMic';
+  document.getElementById(btnId)?.classList.add('on');
+  
+  // Show device list for LINE-IN
+  if (source === 'linein' && playerAudioDevices.length > 1) {
+    showAudioDevicePicker();
+  } else {
+    document.getElementById('audioDeviceList').style.display = 'none';
+  }
+}
+
+function showAudioDevicePicker() {
+  const container = document.getElementById('audioDeviceList');
+  container.innerHTML = '';
+  container.style.display = 'block';
+  playerAudioDevices.forEach(d => {
+    const btn = document.createElement('div');
+    btn.className = 'btn';
+    btn.style.cssText = 'font-size:0.5rem; padding:6px 8px; margin-bottom:2px; text-align:left;';
+    btn.textContent = d.label;
+    btn.onclick = () => {
+      send({ type: 'audio', source: 'linein', deviceId: d.deviceId });
+      container.style.display = 'none';
+    };
+    container.appendChild(btn);
+  });
+}
 
 // ── TAP: Space key or tap on button ───────────────────────────
 document.addEventListener('keydown', (e) => {

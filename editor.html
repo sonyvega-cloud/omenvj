@@ -45,6 +45,7 @@
   .theme-tab.t-omen.active { color: var(--accent); border-bottom-color: var(--accent); }
   .theme-tab.t-camera.active { color: var(--green); border-bottom-color: var(--green); }
   .theme-tab.t-voyager.active { color: var(--purple); border-bottom-color: var(--purple); }
+  .theme-tab.t-typo.active { color: #ffffff; border-bottom-color: #ffffff; }
 
   /* Theme header */
   .theme-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
@@ -161,6 +162,7 @@ const THEMES = [
   { id: 'omen',    name: 'OMEN',    type: 'video',   color: '#ff2200', desc: 'Radial video presets' },
   { id: 'camera',  name: 'CAMERA',  type: 'camera',  color: '#22cc44', desc: 'Live camera input' },
   { id: 'voyager', name: 'VOYAGER', type: 'video',   color: '#aa44ff', desc: 'Perspective tunnel presets' },
+  { id: 'typo',    name: 'TYPO',    type: 'text',    color: '#ffffff', desc: 'Fullscreen typography' },
 ];
 
 const GFX_REGISTRY = [
@@ -170,6 +172,8 @@ const GFX_REGISTRY = [
   { id: 'dot_matrix', name: 'Dot Matrix' },
   { id: 'crosshair', name: 'Crosshair Scope' },
   { id: 'data_scope', name: 'Data Scope' },
+  { id: 'text_overlay', name: 'Text Overlay' },
+  { id: 'typo', name: 'TYPO Fullscreen' },
 ];
 
 // scenes = flat array, each has themeId
@@ -286,6 +290,8 @@ function renderThemeContent() {
   // Column headers
   if (theme.type === 'camera') {
     html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>DEVICE</span><span>ENERGY</span><span></span><span></span></div>';
+  } else if (theme.type === 'text') {
+    html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>WORDS</span><span>ENERGY</span><span></span><span></span></div>';
   } else {
     html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>VIDEO A</span><span>ENERGY</span><span>VIDEO B</span><span></span></div>';
   }
@@ -304,13 +310,15 @@ function renderThemeContent() {
 
     if (theme.type === 'camera') {
       html += '<span class="scene-source">' + (s.deviceLabel || 'Select camera...') + '</span>';
+    } else if (theme.type === 'text') {
+      html += '<span class="scene-source">' + ((s.words || []).slice(0, 3).join(', ') || 'no words') + '</span>';
     } else {
       html += '<span class="scene-source">' + (s.videoA || 'no video') + '</span>';
     }
 
     html += '<span class="energy-badge ' + eClass + '">' + eLabel + '</span>';
 
-    if (theme.type !== 'camera') {
+    if (theme.type === 'video') {
       html += '<span class="scene-source">' + (s.videoB || '') + '</span>';
     } else {
       html += '<span></span>';
@@ -357,7 +365,11 @@ function buildEditorFields() {
 
   let html = '';
   html += '<span class="field-label">NAME</span><input class="field-input" id="editName">';
-  html += '<span class="field-label">GFX</span><select class="field-select" id="editGfx">' + gfxOptions + '</select>';
+  html += '<span class="field-label">GFX</span><select class="field-select" id="editGfx" onchange="onGfxChange()">' + gfxOptions + '</select>';
+  html += '<div id="textFields" style="display:none;">';
+  html += '<span class="field-label">MAIN TEXT</span><input class="field-input" id="editGfxText" placeholder="ØMEN">';
+  html += '<span class="field-label">SUBTITLE</span><input class="field-input" id="editGfxSubText" placeholder="Optional subtitle">';
+  html += '</div>';
   html += '<span class="field-label">ENERGY</span><select class="field-select" id="editEnergy">';
   html += '<option value="1">CAT 1 — ambient</option><option value="2">CAT 2 — building</option><option value="3">CAT 3 — groove</option></select>';
 
@@ -367,6 +379,9 @@ function buildEditorFields() {
     html += '<option value="local">LOCAL (webcam on player PC)</option></select>';
     html += '<span class="field-label">DEVICE</span><div id="camDeviceRow"><button class="btn" onclick="pickCamera()" id="pickCamBtn">SELECT CAMERA</button> <span id="camLabel" class="camera-note">Auto-pick on player</span></div>';
     html += '<input type="hidden" id="editDeviceId"><input type="hidden" id="editDeviceLabel"><input type="hidden" id="editCamSource2">';
+  } else if (theme.type === 'text') {
+    html += '<span class="field-label">WORDS (comma separated)</span>';
+    html += '<input class="field-input" id="editWords" placeholder="ØMEN, BASS, DROP, TECHNO">';
   } else {
     html += '<span class="field-label">VIDEO A</span><div class="upload-row">';
     html += '<input class="field-input" id="editVideoA" style="max-width:180px">';
@@ -393,9 +408,11 @@ function addScene() {
 
   // Defaults
   const count = scenes.filter(s => s.themeId === activeTheme).length;
-  const prefix = activeTheme === 'camera' ? 'CAM' : activeTheme === 'voyager' ? 'VOY' : 'OMEN';
+  const prefixes = { camera: 'CAM', voyager: 'VOY', typo: 'TXT', omen: 'OMEN' };
+  const prefix = prefixes[activeTheme] || activeTheme.toUpperCase();
   document.getElementById('editName').value = prefix + (count + 1);
-  document.getElementById('editGfx').value = 'video_rings';
+  const defaultGfx = { typo: 'typo', camera: 'video_rings', voyager: 'video_rings', omen: 'video_rings' };
+  document.getElementById('editGfx').value = defaultGfx[activeTheme] || 'video_rings';
   document.getElementById('editEnergy').value = '3';
 
   document.getElementById('editorPanel').classList.add('open');
@@ -413,6 +430,13 @@ function editScene(idx) {
   document.getElementById('editName').value = s.name;
   document.getElementById('editGfx').value = s.gfx;
   document.getElementById('editEnergy').value = s.energy;
+  onGfxChange(); // show/hide text fields
+  if (s.gfx === 'text_overlay') {
+    const tf = document.getElementById('editGfxText');
+    const sf = document.getElementById('editGfxSubText');
+    if (tf) tf.value = s.gfxText || '';
+    if (sf) sf.value = s.gfxSubText || '';
+  }
 
   if (theme.type === 'camera') {
     document.getElementById('editCamSource').value = s.camSource || 'remote';
@@ -420,6 +444,9 @@ function editScene(idx) {
     document.getElementById('editDeviceLabel').value = s.deviceLabel || '';
     document.getElementById('camLabel').textContent = s.deviceLabel || 'Auto-pick on player';
     onCamSourceChange();
+  } else if (theme.type === 'text') {
+    const wEl = document.getElementById('editWords');
+    if (wEl) wEl.value = (s.words || []).join(', ');
   } else {
     document.getElementById('editVideoA').value = s.videoA || '';
     document.getElementById('editVideoB').value = s.videoB || '';
@@ -429,22 +456,43 @@ function editScene(idx) {
   renderAll();
 }
 
+function onGfxChange() {
+  const gfx = document.getElementById('editGfx')?.value;
+  const tf = document.getElementById('textFields');
+  if (tf) tf.style.display = gfx === 'text_overlay' ? 'block' : 'none';
+}
+
 function saveScene() {
   const theme = THEMES.find(t => t.id === activeTheme);
   const name = document.getElementById('editName').value.trim();
   if (!name) { alert('Name required'); return; }
 
+  const gfx = document.getElementById('editGfx').value;
+  
+  // Determine type
+  let sceneType = 'gfx';
+  if (theme.type === 'camera') sceneType = 'camera';
+  else if (theme.type === 'text') sceneType = 'text';
+  else if (document.getElementById('editVideoA')?.value) sceneType = 'video';
+  
+  // Words for typo presets
+  const wordsEl = document.getElementById('editWords');
+  const words = wordsEl ? wordsEl.value.split(',').map(w => w.trim()).filter(w => w) : null;
+  
   const scene = {
     name,
-    gfx: document.getElementById('editGfx').value,
+    gfx,
     energy: parseInt(document.getElementById('editEnergy').value),
     themeId: activeTheme,
-    type: theme.type === 'camera' ? 'camera' : (document.getElementById('editVideoA')?.value ? 'video' : 'gfx'),
-    videoA: theme.type !== 'camera' ? (document.getElementById('editVideoA')?.value.trim() || null) : null,
-    videoB: theme.type !== 'camera' ? (document.getElementById('editVideoB')?.value.trim() || null) : null,
+    type: sceneType,
+    videoA: theme.type === 'video' ? (document.getElementById('editVideoA')?.value.trim() || null) : null,
+    videoB: theme.type === 'video' ? (document.getElementById('editVideoB')?.value.trim() || null) : null,
     camSource: theme.type === 'camera' ? (document.getElementById('editCamSource')?.value || 'remote') : null,
     deviceId: theme.type === 'camera' ? (document.getElementById('editDeviceId')?.value || null) : null,
     deviceLabel: theme.type === 'camera' ? (document.getElementById('editDeviceLabel')?.value || null) : null,
+    words: theme.type === 'text' && words && words.length > 0 ? words : null,
+    gfxText: gfx === 'text_overlay' ? (document.getElementById('editGfxText')?.value.trim() || null) : null,
+    gfxSubText: gfx === 'text_overlay' ? (document.getElementById('editGfxSubText')?.value.trim() || null) : null,
   };
 
   if (editingIdx >= 0) {

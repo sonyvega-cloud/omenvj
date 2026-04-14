@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500&display=swap" rel="stylesheet">
 <title>ØMEN Player</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1038,6 +1040,9 @@ function onBeatTick() {
     }
   }
   
+  // Typo beat hook
+  typoOnBeat();
+  
   const bar4 = beatIndex % 4;
   const bar8 = beatIndex % 8;
   const bar16 = beatIndex % 16;
@@ -1104,8 +1109,8 @@ function updateSilenceDampen() {
 
 let autopilotEnabled = false;       // master toggle
 // Theme mix: which themes autopilot uses + weight ratios
-let activeThemes = { omen: true, camera: false, voyager: false };
-let themeWeights = { omen: 80, camera: 20, voyager: 0 };
+let activeThemes = { omen: true, camera: false, voyager: false, typo: false };
+let themeWeights = { omen: 80, camera: 20, voyager: 0, typo: 30 };
 let _themeCheckCounter = 0;
 let autoEnergyEnabled = true;       // sub: energy-based preset switch
 let autoFxEnabled = true;           // sub: FX amount driven by volume
@@ -2070,6 +2075,10 @@ function render() {
     renderCrosshair(pal);
   } else if (gfx === 'data_scope') {
     renderDataScope(pal);
+  } else if (gfx === 'text_overlay') {
+    renderTextOverlay(pal);
+  } else if (gfx === 'typo') {
+    renderTypo(pal);
   } else {
     renderVideoRings(pal);
   }
@@ -2263,6 +2272,224 @@ function renderOmen1(pal) {
 }
 
 // ── Video Rings: Simpler overlay for video presets (OMEN2/3) ───
+// ── Text Overlay: Editable animated text (dynamic sans-serif) ──
+// Uses Space Grotesk from Google Fonts (loaded in HTML head)
+function renderTextOverlay(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  const [rB, gB, bB] = hexRgb(pal[3]);
+  
+  const preset = PRESETS[activePreset] || {};
+  const mainText = preset.gfxText || 'ØMEN';
+  const subText = preset.gfxSubText || '';
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  
+  // Subtle rotation drift
+  const drift = Math.sin(animTime * 0.3) * 0.008;
+  ctx.rotate(drift);
+  
+  // Beat pulse scale
+  const textPulse = 1.0 + beatFlash * 0.06 + smoothBass * 0.03;
+  ctx.scale(textPulse, textPulse);
+  
+  // ── Main text ──
+  const fontSize = minD * 0.18;
+  ctx.font = `300 ${fontSize}px 'Space Grotesk', 'Inter', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  
+  // Letter spacing via manual character placement
+  const tracking = 0.25 + smoothVol * 0.15; // em units
+  const chars = mainText.split('');
+  const charWidths = chars.map(c => ctx.measureText(c).width);
+  const spacingPx = fontSize * tracking;
+  const totalW = charWidths.reduce((a, b) => a + b, 0) + spacingPx * (chars.length - 1);
+  
+  // Glitch offset on beat
+  const glitchX = beatFlash > 0.3 ? (Math.random() - 0.5) * minD * 0.01 : 0;
+  const glitchY = beatFlash > 0.3 ? (Math.random() - 0.5) * minD * 0.005 : 0;
+  
+  const baseAlpha = 0.6 + smoothVol * 0.3 + beatFlash * 0.1;
+  
+  // Draw each character
+  let xPos = -totalW / 2;
+  chars.forEach((char, i) => {
+    // Per-character vertical wave
+    const wave = Math.sin(animTime * 1.5 + i * 0.4) * minD * 0.003;
+    
+    ctx.fillStyle = `rgba(${rP},${gP},${bP},${baseAlpha.toFixed(3)})`;
+    ctx.fillText(char, xPos + charWidths[i] / 2 + glitchX, wave + glitchY);
+    
+    xPos += charWidths[i] + spacingPx;
+  });
+  
+  // ── Beat flash: brief bright duplicate (offset) ──
+  if (beatFlash > 0.15) {
+    const flashAlpha = beatFlash * 0.3;
+    xPos = -totalW / 2;
+    chars.forEach((char, i) => {
+      const wave = Math.sin(animTime * 1.5 + i * 0.4) * minD * 0.003;
+      ctx.fillStyle = `rgba(${rB},${gB},${bB},${flashAlpha.toFixed(3)})`;
+      ctx.fillText(char, xPos + charWidths[i] / 2 + minD * 0.003, wave - minD * 0.003);
+      xPos += charWidths[i] + spacingPx;
+    });
+  }
+  
+  // ── Subtitle ──
+  if (subText) {
+    const subSize = fontSize * 0.22;
+    ctx.font = `400 ${subSize}px 'Space Grotesk', 'Inter', system-ui, sans-serif`;
+    const subAlpha = 0.2 + smoothVol * 0.2;
+    ctx.fillStyle = `rgba(${rP},${gP},${bP},${subAlpha.toFixed(3)})`;
+    // Wide letter spacing for subtitle
+    const subChars = subText.split('');
+    const subWidths = subChars.map(c => ctx.measureText(c).width);
+    const subSpacing = subSize * 0.5;
+    const subTotalW = subWidths.reduce((a, b) => a + b, 0) + subSpacing * (subChars.length - 1);
+    let sx = -subTotalW / 2;
+    subChars.forEach((char) => {
+      ctx.fillText(char, sx + ctx.measureText(char).width / 2, fontSize * 0.55);
+      sx += ctx.measureText(char).width + subSpacing;
+    });
+  }
+  
+  // ── Thin horizontal line accent ──
+  const lineW = minD * 0.3 * (0.8 + smoothVol * 0.2);
+  const lineAlpha = 0.1 + smoothVol * 0.15;
+  ctx.strokeStyle = `rgba(${rP},${gP},${bP},${lineAlpha.toFixed(3)})`;
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(-lineW, fontSize * 0.32);
+  ctx.lineTo(lineW, fontSize * 0.32);
+  ctx.stroke();
+  
+  ctx.restore();
+}
+
+// ── TYPO: Fullscreen text overlay theme ──────────────────────────
+let typoWordIndex = 0;
+let typoScale = 1.0;
+let typoTargetScale = 1.0;
+let typoX = 0;
+let typoY = 0;
+let typoTargetX = 0;
+let typoTargetY = 0;
+let typoLastBeat = 0;
+let typoFlash = 0;
+
+function typoOnBeat() {
+  const preset = PRESETS[activePreset];
+  if (!preset || preset.gfx !== 'typo') return;
+  
+  const words = preset.words || ['ØMEN', 'BASS', 'DROP', 'TECHNO'];
+  
+  // Cycle word on every 2nd or 4th beat (bar-aware)
+  const bar4 = beatIndex % 4;
+  if (bar4 === 0) {
+    typoWordIndex = (typoWordIndex + 1) % words.length;
+  }
+  
+  // Scale jump: snap to big then decay
+  const energy = normEnergy || 0;
+  if (energy > 0.6) {
+    typoTargetScale = 1.1 + Math.random() * 0.4; // 1.1-1.5
+  } else {
+    typoTargetScale = 0.9 + Math.random() * 0.3; // 0.9-1.2
+  }
+  
+  // Position snap: jump to random offset on strong beats
+  if (bar4 === 0 && energy > 0.4) {
+    typoTargetX = (Math.random() - 0.5) * 0.3; // ±15% offset
+    typoTargetY = (Math.random() - 0.5) * 0.2; // ±10% offset
+  }
+  
+  typoFlash = 1.0;
+}
+
+function renderTypo(pal) {
+  const preset = PRESETS[activePreset] || {};
+  const words = preset.words || ['ØMEN', 'BASS', 'DROP', 'TECHNO'];
+  const word = words[typoWordIndex % words.length];
+  
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  const [rB, gB, bB] = hexRgb(pal[3]);
+  
+  // Smooth scale (snap then ease)
+  typoScale += (typoTargetScale - typoScale) * 0.15;
+  // Smooth position
+  typoX += (typoTargetX - typoX) * 0.08;
+  typoY += (typoTargetY - typoY) * 0.08;
+  // Flash decay
+  typoFlash *= 0.88;
+  
+  // Background: solid black (text IS the visual)
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  
+  // Font size: viewport-relative, massive
+  const baseSize = Math.min(W, H) * 0.22 * typoScale;
+  
+  // Text position: center + offset
+  const tx = CX + typoX * W;
+  const ty = CY + typoY * H;
+  
+  ctx.save();
+  ctx.translate(tx, ty);
+  // NO rotation (user spec)
+  
+  // ── Main text ──
+  ctx.font = `900 ${baseSize.toFixed(0)}px "Helvetica Neue", "Arial Black", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.letterSpacing = `${baseSize * 0.08}px`;
+  
+  // Color: palette primary, flash to white on beat
+  const flashMix = typoFlash * 0.7;
+  const tr = Math.round(rP + (255 - rP) * flashMix);
+  const tg = Math.round(gP + (255 - gP) * flashMix);
+  const tb = Math.round(bP + (255 - bP) * flashMix);
+  
+  // Shadow/glow on beat
+  if (typoFlash > 0.1) {
+    ctx.shadowColor = `rgba(${rP},${gP},${bP},${typoFlash * 0.5})`;
+    ctx.shadowBlur = baseSize * 0.15 * typoFlash;
+  }
+  
+  ctx.fillStyle = `rgb(${tr},${tg},${tb})`;
+  ctx.fillText(word, 0, 0);
+  
+  // ── Contrast outline (subtle, adds depth) ──
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = `rgba(${rP},${gP},${bP},${0.15 + typoFlash * 0.2})`;
+  ctx.lineWidth = 2;
+  ctx.strokeText(word, 0, 0);
+  
+  ctx.restore();
+  
+  // ── Horizontal line accent (energy dependent) ──
+  if (normEnergy > 0.3) {
+    const lineAlpha = 0.08 + smoothBass * 0.2 + typoFlash * 0.3;
+    ctx.strokeStyle = `rgba(${rP},${gP},${bP},${lineAlpha.toFixed(3)})`;
+    ctx.lineWidth = 1;
+    
+    // Top line
+    const lineY1 = ty - baseSize * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.1, lineY1);
+    ctx.lineTo(W * 0.9, lineY1);
+    ctx.stroke();
+    
+    // Bottom line
+    const lineY2 = ty + baseSize * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.1, lineY2);
+    ctx.lineTo(W * 0.9, lineY2);
+    ctx.stroke();
+  }
+}
+
 // ── Data Scope: Concentric FFT waveform rings (Big Data style) ──
 function renderDataScope(pal) {
   const minD = Math.min(W, H) * GFX_SCALE;
