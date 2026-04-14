@@ -291,7 +291,7 @@ function renderThemeContent() {
   if (theme.type === 'camera') {
     html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>DEVICE</span><span>ENERGY</span><span></span><span></span></div>';
   } else if (theme.type === 'text') {
-    html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>WORDS</span><span>ENERGY</span><span></span><span></span></div>';
+    html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>TEXT</span><span>FX</span><span>ENERGY</span><span></span></div>';
   } else {
     html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>VIDEO A</span><span>ENERGY</span><span>VIDEO B</span><span></span></div>';
   }
@@ -312,6 +312,7 @@ function renderThemeContent() {
       html += '<span class="scene-source">' + (s.deviceLabel || 'Select camera...') + '</span>';
     } else if (theme.type === 'text') {
       html += '<span class="scene-source" style="font-weight:bold;">' + (s.text || 'no text') + '</span>';
+      html += '<span class="scene-gfx" style="font-size:9px; opacity:0.6;">' + (s.fx || 'none') + '</span>';
     } else {
       html += '<span class="scene-source">' + (s.videoA || 'no video') + '</span>';
     }
@@ -382,8 +383,8 @@ function buildEditorFields() {
   } else if (theme.type === 'text') {
     html += '<span class="field-label">TEXT</span>';
     html += '<input class="field-input" id="editText" placeholder="ØMEN" style="font-size:18px; font-weight:900; letter-spacing:0.2em;">';
-    html += '<div style="display:flex; gap:8px; margin-top:6px;">';
-    html += '<div style="flex:1"><span class="field-label">FONT</span><select class="field-select" id="editFont">';
+    html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">';
+    html += '<div><span class="field-label">FONT</span><select class="field-select" id="editFont">';
     html += '<option value="Helvetica Neue">Helvetica Neue</option>';
     html += '<option value="Arial Black">Arial Black</option>';
     html += '<option value="Impact">Impact</option>';
@@ -393,15 +394,26 @@ function buildEditorFields() {
     html += '<option value="Times New Roman">Times New Roman</option>';
     html += '<option value="system-ui">System UI</option>';
     html += '</select></div>';
-    html += '<div style="flex:1"><span class="field-label">WEIGHT</span><select class="field-select" id="editWeight">';
+    html += '<div><span class="field-label">WEIGHT</span><select class="field-select" id="editWeight">';
     html += '<option value="100">100 Thin</option><option value="300">300 Light</option>';
     html += '<option value="400">400 Regular</option><option value="700">700 Bold</option>';
     html += '<option value="900" selected>900 Black</option></select></div>';
     html += '</div>';
-    html += '<div style="margin-top:6px"><span class="field-label">LETTER SPACING</span>';
+    html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">';
+    html += '<div><span class="field-label">LETTER SPACING</span>';
     html += '<input type="range" id="editSpacing" min="-5" max="40" value="10" style="width:100%">';
     html += '<span id="editSpacingVal" style="font-size:9px; opacity:0.4;">10px</span></div>';
-    html += '<div id="typoPreview" style="margin-top:10px; padding:12px; background:#000; overflow:hidden; text-align:center; border:1px solid #222;"></div>';
+    html += '<div><span class="field-label">FX</span><select class="field-select" id="editFx">';
+    html += '<option value="none">NONE</option>';
+    html += '<option value="jump">JUMP — position snap</option>';
+    html += '<option value="scale">SCALE — zoom punch</option>';
+    html += '<option value="glitch">GLITCH — RGB split</option>';
+    html += '<option value="invert">INVERT — black↔white</option>';
+    html += '<option value="strobo">STROBO — rapid flash</option>';
+    html += '<option value="shake">SHAKE — vibration</option>';
+    html += '</select></div>';
+    html += '</div>';
+    html += '<div id="typoPreview" style="margin-top:10px; padding:16px 4px; background:#000; overflow:hidden; text-align:center; border:1px solid #222;"></div>';
   } else {
     html += '<span class="field-label">VIDEO A</span><div class="upload-row">';
     html += '<input class="field-input" id="editVideoA" style="max-width:180px">';
@@ -481,6 +493,8 @@ function editScene(idx) {
     if (wEl) wEl.value = s.weight || '900';
     const sEl = document.getElementById('editSpacing');
     if (sEl) { sEl.value = s.spacing || 10; document.getElementById('editSpacingVal').textContent = sEl.value + 'px'; }
+    const fxEl = document.getElementById('editFx');
+    if (fxEl) fxEl.value = s.fx || 'none';
     attachTypoListeners();
     updateTypoPreview();
   } else {
@@ -501,11 +515,18 @@ function onGfxChange() {
 function updateTypoPreview() {
   const preview = document.getElementById('typoPreview');
   if (!preview) return;
-  const text = document.getElementById('editText')?.value || 'ØMEN';
+  const text = document.getElementById('editText')?.value || 'PREVIEW';
   const font = document.getElementById('editFont')?.value || 'Helvetica Neue';
   const weight = document.getElementById('editWeight')?.value || '900';
   const spacing = document.getElementById('editSpacing')?.value || '10';
-  preview.innerHTML = '<div style="font-family:\'' + font + '\',sans-serif; font-weight:' + weight + '; letter-spacing:' + spacing + 'px; color:#fff; white-space:nowrap; font-size:32px; overflow:hidden; text-overflow:clip;">' + (text || 'PREVIEW') + '</div>';
+  // Auto-size to fill preview width
+  preview.innerHTML = '<div id="typoPreviewText" style="font-family:\'' + font + '\',sans-serif; font-weight:' + weight + '; letter-spacing:' + spacing + 'px; color:#fff; white-space:nowrap; line-height:1;">' + text + '</div>';
+  // Scale to fit
+  const el = document.getElementById('typoPreviewText');
+  if (el && el.scrollWidth > 0) {
+    const scale = Math.min(preview.clientWidth / el.scrollWidth, 2);
+    el.style.fontSize = Math.floor(40 * scale) + 'px';
+  }
 }
 
 function attachTypoListeners() {
@@ -543,6 +564,7 @@ function saveScene() {
     typoWeight = document.getElementById('editWeight')?.value || '900';
     typoSpacing = parseInt(document.getElementById('editSpacing')?.value || '10');
   }
+  const typoFx = theme.type === 'text' ? (document.getElementById('editFx')?.value || 'none') : null;
   
   const scene = {
     name,
@@ -559,6 +581,7 @@ function saveScene() {
     font: typoFont,
     weight: typoWeight,
     spacing: typoSpacing,
+    fx: typoFx,
     gfxText: gfx === 'text_overlay' ? (document.getElementById('editGfxText')?.value.trim() || null) : null,
     gfxSubText: gfx === 'text_overlay' ? (document.getElementById('editGfxSubText')?.value.trim() || null) : null,
   };
