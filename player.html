@@ -2976,6 +2976,10 @@ function tick() {
           if (PRESETS[activePreset]?.type === 'camera') {
             camPulseScale = 1.0;
           }
+          // TYPO: fire FX on raw beat (no TAP BPM needed)
+          typoFlash = 1.0;
+          beatIndex++;
+          typoOnBeat();
         }
       } else {
         if (beat) autoCorrectBpm();
@@ -3346,6 +3350,10 @@ function connectCDJ() {
           if (beatCutEnabled && beatIndex % beatCutInterval === 0) {
             beatCutNext();
           }
+          
+          // TYPO FX on CDJ beat
+          typoFlash = 1.0;
+          typoOnBeat();
         }
         
         else if (msg.type === 'cdj_status') {
