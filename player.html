@@ -1932,9 +1932,11 @@ function updateVideoLayer() {
   const currentPreset = PRESETS[activePreset];
   const hasVideo = currentPreset && currentPreset.videoA != null;
   
-  // ── Auto-rotation (replaces iOS gyro compass) — runs always ──
-  compassTarget += smoothBass * 0.003 - smoothMid * 0.001;
-  compassAngle += (compassTarget - compassAngle) * 0.015;
+  // ── Auto-rotation — freeze during beat cut (prevents snap between videos) ──
+  if (!beatCutEnabled) {
+    compassTarget += smoothBass * 0.003 - smoothMid * 0.001;
+    compassAngle += (compassTarget - compassAngle) * 0.015;
+  }
   
   const isCamera = currentPreset && currentPreset.type === 'camera';
   
@@ -1950,8 +1952,7 @@ function updateVideoLayer() {
     return;
   }
   
-  // Video: 100vh square via CSS. Scale just fills mask + margin for rotation/bass.
-  // Mask = 72% closest-side → radius 36vh. Video at 0.95 → half = 47.5vh > 36vh ✓
+  // Video transform
   const videoPulse = 1.0 + (pulseScale - 1.0) * 0.25;
   const videoScale = (0.95 + smoothBass * 0.04) * pinchScale * videoPulse;
   
