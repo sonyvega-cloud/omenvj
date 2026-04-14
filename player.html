@@ -459,8 +459,7 @@ const SILENCE_DAMPEN_AFTER = 90;
 
 // ── Preset Registry (localStorage from editor → presets.js fallback) ──
 let PRESETS = [];
-(function loadPresets() {
-  // Try omen_scenes first (new editor format)
+function loadPresets() {
   const scenes = localStorage.getItem('omen_scenes');
   if (scenes) {
     try {
@@ -472,12 +471,11 @@ let PRESETS = [];
           videoA: p.type === 'video' && p.videoA && !p.videoA.startsWith('http') ? cdn + p.videoA : (p.type === 'video' ? p.videoA : null),
           videoB: p.type === 'video' && p.videoB && !p.videoB.startsWith('http') ? cdn + p.videoB : (p.type === 'video' ? p.videoB : null),
         }));
-        console.log('[PRESETS] Loaded ' + PRESETS.length + ' from scenes (localStorage)');
+        console.log('[PRESETS] Loaded ' + PRESETS.length + ' from scenes');
         return;
       }
     } catch(e) {}
   }
-  // Fallback: omen_presets
   const saved = localStorage.getItem('omen_presets');
   if (saved) {
     try {
@@ -489,14 +487,15 @@ let PRESETS = [];
           videoA: p.videoA && !p.videoA.startsWith('http') ? cdn + p.videoA : p.videoA,
           videoB: p.videoB && !p.videoB.startsWith('http') ? cdn + p.videoB : p.videoB,
         }));
-        console.log('[PRESETS] Loaded ' + PRESETS.length + ' from presets (localStorage)');
+        console.log('[PRESETS] Loaded ' + PRESETS.length + ' from presets');
         return;
       }
     } catch(e) {}
   }
   PRESETS = typeof PRESETS_DATA !== 'undefined' ? PRESETS_DATA : [];
   console.log('[PRESETS] Loaded ' + PRESETS.length + ' from presets.js');
-})();
+}
+loadPresets();
 
 let videoLoaded = false;
 let presetReady = new Array(PRESETS.length).fill(false);
@@ -2421,21 +2420,27 @@ function typoOnBeat() {
   typoFlash = 1.0;
 }
 
+// Logo image cache
+const _logoCache = {};
+function getLogoImage(url) {
+  if (!url) return null;
+  if (_logoCache[url]) return _logoCache[url].complete ? _logoCache[url] : null;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.src = url;
+  _logoCache[url] = img;
+  return null; // loading
+}
+
 function renderTypo(pal) {
   const preset = PRESETS[activePreset] || {};
-  const text = preset.text || preset.name || 'ØMEN';
-  const font = preset.font || 'Helvetica Neue';
-  const weight = preset.weight || '900';
-  const spacing = preset.spacing || 10;
   const fx = preset.fx || 'none';
-  
   const [rP, gP, bP] = hexRgb(pal[2]);
   
-  // Hard snap easing (fast, not smooth)
+  // Easing
   typoScale += (typoTargetScale - typoScale) * 0.25;
   typoX += (typoTargetX - typoX) * 0.2;
   typoY += (typoTargetY - typoY) * 0.2;
-  // Flash decay: slower for strobo (stays visible longer)
   typoFlash *= (fx === 'strobo') ? 0.93 : 0.85;
   
   // Background
@@ -2443,54 +2448,94 @@ function renderTypo(pal) {
   ctx.fillStyle = invertActive ? '#fff' : '#000';
   ctx.fillRect(0, 0, W, H);
   
-  // Auto-fill width: 5% margin each side = 90% of viewport
-  ctx.font = `${weight} 100px '${font}', sans-serif`;
-  const measured = ctx.measureText(text);
-  const textWidth = Math.max(measured.width + text.length * spacing, 1); // prevent /0
-  const autoSize = (W * 0.90) / (textWidth / 100);
   const beatPulse = 1.0 + typoFlash * 0.25 * fxIntensity + smoothBass * 0.08 * fxIntensity;
-  const fontSize = Math.max(Math.min(autoSize, H * 0.6) * typoScale * beatPulse, 10);
-  
-  // Position
   const tx = CX + typoX * W;
   const ty = CY + typoY * H;
   
-  // ── FX: SHAKE ──
+  // FX: SHAKE
   let shakeX = 0, shakeY = 0;
   if (fx === 'shake' && typoFlash > 0.1) {
-    shakeX = (Math.random() - 0.5) * fontSize * 0.04;
-    shakeY = (Math.random() - 0.5) * fontSize * 0.02;
+    shakeX = (Math.random() - 0.5) * W * 0.02;
+    shakeY = (Math.random() - 0.5) * H * 0.01;
   }
+  
+  // FX: STROBO
+  const stroboHide = fx === 'strobo' && typoFlash > 0.1 && Math.floor(animTime * 60) % 2 === 0;
+  if (stroboHide) return;
+  
+  // Color
+  const flash = typoFlash * 0.7;
+  let tr, tg, tb;
+  if (invertActive) { tr = tg = tb = 0; }
+  else { tr = Math.round(rP + (255 - rP) * flash); tg = Math.round(gP + (255 - gP) * flash); tb = Math.round(bP + (255 - bP) * flash); }
   
   ctx.save();
   ctx.translate(tx + shakeX, ty + shakeY);
   
+  // ═══ LOGO MODE ═══
+  if (preset.logoUrl) {
+    const img = getLogoImage(preset.logoUrl);
+    if (img) {
+      const logoSize = (preset.logoSize || 40) / 100;
+      const scale = typoScale * beatPulse;
+      const imgW = Math.min(W * logoSize, img.width) * scale;
+      const imgH = imgW * (img.height / img.width);
+      
+      // Glow
+      if (typoFlash > 0.15 && fx !== 'invert') {
+        ctx.shadowColor = `rgba(${rP},${gP},${bP},${typoFlash * 0.4})`;
+        ctx.shadowBlur = imgW * 0.05 * typoFlash;
+      }
+      
+      // FX: GLITCH on logo
+      if (fx === 'glitch' && typoFlash > 0.2) {
+        const go = imgW * 0.02 * typoFlash;
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = 0.5 + typoFlash * 0.3;
+        ctx.drawImage(img, -imgW/2 - go, -imgH/2 - go*0.5, imgW, imgH);
+        ctx.drawImage(img, -imgW/2 + go, -imgH/2 + go*0.5, imgW, imgH);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      
+      if (invertActive) { ctx.filter = 'invert(1)'; }
+      ctx.drawImage(img, -imgW/2, -imgH/2, imgW, imgH);
+      ctx.filter = 'none';
+    }
+    ctx.shadowBlur = 0;
+    ctx.restore();
+    return;
+  }
+  
+  // ═══ TEXT MODE (multi-line) ═══
+  const text = preset.text || preset.name || 'ØMEN';
+  const font = preset.font || 'Helvetica Neue';
+  const weight = preset.weight || '900';
+  const spacing = preset.spacing || 10;
+  
+  const lines = text.split('\n').filter(l => l.trim());
+  const lineCount = Math.max(lines.length, 1);
+  
+  // Calculate font size per line: widest line fills 90% viewport
+  ctx.font = `${weight} 100px '${font}', sans-serif`;
+  let maxTextWidth = 1;
+  lines.forEach(line => {
+    const m = ctx.measureText(line);
+    const w = m.width + line.length * spacing;
+    if (w > maxTextWidth) maxTextWidth = w;
+  });
+  const autoSize = (W * 0.90) / (maxTextWidth / 100);
+  // Multi-line: shrink to fit all lines vertically
+  const maxH = H * 0.75 / lineCount;
+  const fontSize = Math.max(Math.min(autoSize, maxH) * typoScale * beatPulse, 10);
+  const lineHeight = fontSize * 1.1;
+  const totalH = lineHeight * lineCount;
+  const startY = -totalH / 2 + lineHeight / 2;
+  
   ctx.font = `${weight} ${fontSize.toFixed(0)}px '${font}', sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  try { ctx.letterSpacing = `${spacing * (fontSize / 100)}px`; } catch(e) {}
-  
-  // ── FX: GLITCH — RGB split ──
-  if (fx === 'glitch' && typoFlash > 0.2) {
-    const glitchOffset = fontSize * 0.015 * typoFlash;
-    ctx.globalCompositeOperation = 'screen';
-    ctx.fillStyle = `rgba(255,0,0,${0.5 + typoFlash * 0.3})`;
-    ctx.fillText(text, -glitchOffset, -glitchOffset * 0.5);
-    ctx.fillStyle = `rgba(0,255,255,${0.5 + typoFlash * 0.3})`;
-    ctx.fillText(text, glitchOffset, glitchOffset * 0.5);
-    ctx.globalCompositeOperation = 'source-over';
-  }
-  
-  // ── Main text ──
-  const flash = typoFlash * 0.7;
-  let tr, tg, tb;
-  if (invertActive) {
-    tr = tg = tb = 0; // black text on white
-  } else {
-    tr = Math.round(rP + (255 - rP) * flash);
-    tg = Math.round(gP + (255 - gP) * flash);
-    tb = Math.round(bP + (255 - bP) * flash);
-  }
+  try { ctx.letterSpacing = `${(spacing * fontSize / 100).toFixed(1)}px`; } catch(e) {}
   
   // Glow
   if (typoFlash > 0.15 && fx !== 'invert') {
@@ -2498,13 +2543,25 @@ function renderTypo(pal) {
     ctx.shadowBlur = fontSize * 0.08 * typoFlash;
   }
   
-  // ── FX: STROBO — rapid on/off (1/4 beat, 60Hz flicker) ──
-  const stroboHide = fx === 'strobo' && typoFlash > 0.1 && Math.floor(animTime * 60) % 2 === 0;
-  
-  if (!stroboHide) {
-    ctx.fillStyle = `rgb(${tr},${tg},${tb})`;
-    ctx.fillText(text, 0, 0);
+  // FX: GLITCH
+  if (fx === 'glitch' && typoFlash > 0.2) {
+    const go = fontSize * 0.015 * typoFlash;
+    ctx.globalCompositeOperation = 'screen';
+    lines.forEach((line, i) => {
+      const ly = startY + i * lineHeight;
+      ctx.fillStyle = `rgba(255,0,0,${0.5 + typoFlash * 0.3})`;
+      ctx.fillText(line, -go, ly - go * 0.5);
+      ctx.fillStyle = `rgba(0,255,255,${0.5 + typoFlash * 0.3})`;
+      ctx.fillText(line, go, ly + go * 0.5);
+    });
+    ctx.globalCompositeOperation = 'source-over';
   }
+  
+  // Main text
+  ctx.fillStyle = `rgb(${tr},${tg},${tb})`;
+  lines.forEach((line, i) => {
+    ctx.fillText(line, 0, startY + i * lineHeight);
+  });
   
   ctx.shadowBlur = 0;
   ctx.restore();
@@ -3341,6 +3398,26 @@ function handleCommand(msg) {
   controllerConnected = true;
   
   switch (msg.type) {
+    case 'presets_updated': {
+      // Hot-reload from editor — rebuild PRESETS without page refresh
+      const oldLen = PRESETS.length;
+      loadPresets();
+      // Rebuild arrays to match new length
+      const newReady = new Array(PRESETS.length).fill(false);
+      presetReady.forEach((v, i) => { if (i < newReady.length) newReady[i] = v; });
+      // Mark non-video presets (GFX/camera/text) as ready
+      PRESETS.forEach((p, i) => { if (!p.videoA || p.type === 'camera' || p.type === 'text') newReady[i] = true; });
+      presetReady = newReady;
+      presetPool = new Set(PRESETS.map((_, i) => i));
+      beatCutActive = new Set(PRESETS.map((_, i) => i));
+      // Clamp active preset
+      if (activePreset >= PRESETS.length) activePreset = 0;
+      _lastActivePreset = -1; // force visibility rebuild
+      updateVideoVisibility();
+      updatePresetGrid();
+      console.log('[HOT-RELOAD] Presets updated:', oldLen, '→', PRESETS.length);
+      break;
+    }
     case 'ping': {
       if (PRESETS.length === 0) break;
       document.getElementById('hud').classList.add('hidden');

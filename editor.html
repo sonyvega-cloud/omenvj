@@ -234,7 +234,7 @@ function getDefaults() {
 
 function saveToStorage() {
   localStorage.setItem('omen_scenes', JSON.stringify(scenes));
-  // Also save flattened presets for player compatibility
+  // Flattened presets for player — include ALL fields
   const presets = scenes.map(s => ({
     name: s.name,
     gfx: s.gfx,
@@ -246,8 +246,20 @@ function saveToStorage() {
     camSource: s.camSource || null,
     deviceId: s.deviceId || null,
     deviceLabel: s.deviceLabel || null,
+    text: s.text || null,
+    font: s.font || null,
+    weight: s.weight || null,
+    spacing: s.spacing || null,
+    fx: s.fx || null,
+    logoUrl: s.logoUrl || null,
+    logoSize: s.logoSize || null,
+    lines: s.lines || null,
+    gfxText: s.gfxText || null,
+    gfxSubText: s.gfxSubText || null,
   }));
   localStorage.setItem('omen_presets', JSON.stringify(presets));
+  // Hot-reload: tell player to rebuild presets
+  try { new BroadcastChannel('omen').postMessage({ type: 'presets_updated' }); } catch(e) {}
   setStatus('Saved');
 }
 
@@ -381,8 +393,17 @@ function buildEditorFields() {
     html += '<span class="field-label">DEVICE</span><div id="camDeviceRow"><button class="btn" onclick="pickCamera()" id="pickCamBtn">SELECT CAMERA</button> <span id="camLabel" class="camera-note">Auto-pick on player</span></div>';
     html += '<input type="hidden" id="editDeviceId"><input type="hidden" id="editDeviceLabel"><input type="hidden" id="editCamSource2">';
   } else if (theme.type === 'text') {
-    html += '<span class="field-label">TEXT</span>';
-    html += '<input class="field-input" id="editText" placeholder="ØMEN" style="font-size:18px; font-weight:900; letter-spacing:0.2em;">';
+    // Mode toggle: TEXT or LOGO
+    html += '<span class="field-label">MODE</span>';
+    html += '<div style="display:flex; gap:4px; margin-bottom:8px;">';
+    html += '<button class="btn" id="modeText" onclick="setTypoMode(\'text\')" style="flex:1; font-size:10px;">TEXT</button>';
+    html += '<button class="btn" id="modeLogo" onclick="setTypoMode(\'logo\')" style="flex:1; font-size:10px;">LOGO</button>';
+    html += '</div>';
+    
+    // TEXT mode fields
+    html += '<div id="typoTextFields">';
+    html += '<span class="field-label">TEXT (each line = separate line on screen)</span>';
+    html += '<textarea class="field-input" id="editText" placeholder="ØMEN&#10;or multiple&#10;lines" rows="3" style="font-size:16px; font-weight:900; letter-spacing:0.15em; resize:vertical;"></textarea>';
     html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">';
     html += '<div><span class="field-label">FONT</span><select class="field-select" id="editFont">';
     html += '<option value="Helvetica Neue">Helvetica Neue</option>';
@@ -413,7 +434,29 @@ function buildEditorFields() {
     html += '<option value="shake">SHAKE — vibration</option>';
     html += '</select></div>';
     html += '</div>';
-    html += '<div id="typoPreview" style="margin-top:10px; padding:16px 4px; background:#000; overflow:hidden; text-align:center; border:1px solid #222;"></div>';
+    html += '</div>';
+    
+    // LOGO mode fields
+    html += '<div id="typoLogoFields" style="display:none;">';
+    html += '<span class="field-label">LOGO PNG</span>';
+    html += '<div class="upload-row">';
+    html += '<input class="field-input" id="editLogoUrl" style="max-width:200px" placeholder="https://cdn...">';
+    html += '<input type="file" id="fileLogo" accept="image/png,image/svg+xml" style="display:none" onchange="handleLogoUpload()">';
+    html += '<button class="upload-btn" onclick="document.getElementById(\'fileLogo\').click()">UPLOAD</button>';
+    html += '<span class="upload-status" id="statusLogo"></span></div>';
+    html += '<span class="field-label">SIZE</span>';
+    html += '<input type="range" id="editLogoSize" min="10" max="80" value="40" style="width:100%">';
+    html += '<span id="editLogoSizeVal" style="font-size:9px; opacity:0.4;">40%</span>';
+    html += '<div><span class="field-label">FX</span><select class="field-select" id="editLogoFx">';
+    html += '<option value="none">NONE</option>';
+    html += '<option value="jump">JUMP</option><option value="scale">SCALE</option>';
+    html += '<option value="glitch">GLITCH</option><option value="invert">INVERT</option>';
+    html += '<option value="strobo">STROBO</option><option value="shake">SHAKE</option>';
+    html += '</select></div>';
+    html += '</div>';
+    
+    // Preview — full width, taller
+    html += '<div id="typoPreview" style="margin-top:12px; padding:24px 8px; background:#000; overflow:hidden; text-align:center; border:1px solid #222; min-height:80px;"></div>';
   } else {
     html += '<span class="field-label">VIDEO A</span><div class="upload-row">';
     html += '<input class="field-input" id="editVideoA" style="max-width:180px">';
@@ -449,6 +492,7 @@ function addScene() {
 
   // Typo defaults
   if (activeTheme === 'typo') {
+    setTypoMode('text');
     const tEl = document.getElementById('editText');
     if (tEl) tEl.value = 'ØMEN';
     attachTypoListeners();
@@ -485,16 +529,29 @@ function editScene(idx) {
     document.getElementById('camLabel').textContent = s.deviceLabel || 'Auto-pick on player';
     onCamSourceChange();
   } else if (theme.type === 'text') {
-    const tEl = document.getElementById('editText');
-    if (tEl) tEl.value = s.text || '';
-    const fEl = document.getElementById('editFont');
-    if (fEl) fEl.value = s.font || 'Helvetica Neue';
-    const wEl = document.getElementById('editWeight');
-    if (wEl) wEl.value = s.weight || '900';
-    const sEl = document.getElementById('editSpacing');
-    if (sEl) { sEl.value = s.spacing || 10; document.getElementById('editSpacingVal').textContent = sEl.value + 'px'; }
-    const fxEl = document.getElementById('editFx');
-    if (fxEl) fxEl.value = s.fx || 'none';
+    // Detect mode: logo if logoUrl exists
+    const mode = s.logoUrl ? 'logo' : 'text';
+    setTypoMode(mode);
+    
+    if (mode === 'text') {
+      const tEl = document.getElementById('editText');
+      if (tEl) tEl.value = s.text || '';
+      const fEl = document.getElementById('editFont');
+      if (fEl) fEl.value = s.font || 'Helvetica Neue';
+      const wEl = document.getElementById('editWeight');
+      if (wEl) wEl.value = s.weight || '900';
+      const sEl = document.getElementById('editSpacing');
+      if (sEl) { sEl.value = s.spacing || 10; document.getElementById('editSpacingVal').textContent = sEl.value + 'px'; }
+      const fxEl = document.getElementById('editFx');
+      if (fxEl) fxEl.value = s.fx || 'none';
+    } else {
+      const luEl = document.getElementById('editLogoUrl');
+      if (luEl) luEl.value = s.logoUrl || '';
+      const lsEl = document.getElementById('editLogoSize');
+      if (lsEl) { lsEl.value = s.logoSize || 40; document.getElementById('editLogoSizeVal').textContent = lsEl.value + '%'; }
+      const lfxEl = document.getElementById('editLogoFx');
+      if (lfxEl) lfxEl.value = s.fx || 'none';
+    }
     attachTypoListeners();
     updateTypoPreview();
   } else {
@@ -512,21 +569,72 @@ function onGfxChange() {
   if (tf) tf.style.display = gfx === 'text_overlay' ? 'block' : 'none';
 }
 
+let typoMode = 'text';
+
+function setTypoMode(mode) {
+  typoMode = mode;
+  const tf = document.getElementById('typoTextFields');
+  const lf = document.getElementById('typoLogoFields');
+  if (tf) tf.style.display = mode === 'text' ? 'block' : 'none';
+  if (lf) lf.style.display = mode === 'logo' ? 'block' : 'none';
+  document.getElementById('modeText').className = 'btn' + (mode === 'text' ? ' primary' : '');
+  document.getElementById('modeLogo').className = 'btn' + (mode === 'logo' ? ' primary' : '');
+  updateTypoPreview();
+}
+
+async function handleLogoUpload() {
+  const file = document.getElementById('fileLogo').files[0];
+  if (!file) return;
+  const status = document.getElementById('statusLogo');
+  status.textContent = 'Uploading...';
+  try {
+    const formData = new FormData();
+    formData.append('file', file, 'logo_' + Date.now() + '.png');
+    const resp = await fetch('https://omen-upload.sony-vega.workers.dev/upload', { method: 'POST', body: formData });
+    const data = await resp.json();
+    if (data.url) {
+      document.getElementById('editLogoUrl').value = data.url;
+      status.textContent = '✓';
+      updateTypoPreview();
+    } else { status.textContent = 'Error'; }
+  } catch(e) { status.textContent = 'Failed'; }
+}
+
 function updateTypoPreview() {
   const preview = document.getElementById('typoPreview');
   if (!preview) return;
+  
+  if (typoMode === 'logo') {
+    const url = document.getElementById('editLogoUrl')?.value;
+    const size = document.getElementById('editLogoSize')?.value || 40;
+    if (url) {
+      preview.innerHTML = '<img src="' + url + '" style="max-width:' + size + '%; max-height:120px; object-fit:contain;">';
+    } else {
+      preview.innerHTML = '<div style="color:#333; font-size:11px;">Upload logo PNG</div>';
+    }
+    return;
+  }
+  
   const text = document.getElementById('editText')?.value || 'PREVIEW';
   const font = document.getElementById('editFont')?.value || 'Helvetica Neue';
   const weight = document.getElementById('editWeight')?.value || '900';
   const spacing = document.getElementById('editSpacing')?.value || '10';
-  // Auto-size to fill preview width
-  preview.innerHTML = '<div id="typoPreviewText" style="font-family:\'' + font + '\',sans-serif; font-weight:' + weight + '; letter-spacing:' + spacing + 'px; color:#fff; white-space:nowrap; line-height:1;">' + text + '</div>';
-  // Scale to fit
-  const el = document.getElementById('typoPreviewText');
-  if (el && el.scrollWidth > 0) {
-    const scale = Math.min(preview.clientWidth / el.scrollWidth, 2);
-    el.style.fontSize = Math.floor(40 * scale) + 'px';
-  }
+  
+  const lines = text.split('\n').filter(l => l.trim());
+  let html = '';
+  lines.forEach((line, i) => {
+    html += '<div class="typoPreviewLine" style="font-family:\'' + font + '\',sans-serif; font-weight:' + weight + '; letter-spacing:' + spacing + 'px; color:#fff; white-space:nowrap; line-height:1.15;">' + line + '</div>';
+  });
+  preview.innerHTML = html;
+  
+  // Auto-scale each line to fill preview width
+  preview.querySelectorAll('.typoPreviewLine').forEach(el => {
+    const pw = preview.clientWidth - 16;
+    if (el.scrollWidth > 0 && pw > 0) {
+      const scale = Math.min(pw / el.scrollWidth, 3);
+      el.style.fontSize = Math.floor(36 * scale) + 'px';
+    }
+  });
 }
 
 function attachTypoListeners() {
@@ -534,6 +642,8 @@ function attachTypoListeners() {
   const f = document.getElementById('editFont');
   const w = document.getElementById('editWeight');
   const s = document.getElementById('editSpacing');
+  const ls = document.getElementById('editLogoSize');
+  const lu = document.getElementById('editLogoUrl');
   if (t) t.addEventListener('input', updateTypoPreview);
   if (f) f.addEventListener('change', updateTypoPreview);
   if (w) w.addEventListener('change', updateTypoPreview);
@@ -541,6 +651,11 @@ function attachTypoListeners() {
     document.getElementById('editSpacingVal').textContent = this.value + 'px';
     updateTypoPreview();
   });
+  if (ls) ls.addEventListener('input', function() {
+    document.getElementById('editLogoSizeVal').textContent = this.value + '%';
+    updateTypoPreview();
+  });
+  if (lu) lu.addEventListener('input', updateTypoPreview);
 }
 
 function saveScene() {
@@ -558,13 +673,18 @@ function saveScene() {
   
   // Typo text + font properties
   let typoText = null, typoFont = null, typoWeight = null, typoSpacing = null;
-  if (theme.type === 'text') {
+  if (theme.type === 'text' && typoMode === 'text') {
     typoText = document.getElementById('editText')?.value.trim() || 'ØMEN';
     typoFont = document.getElementById('editFont')?.value || 'Helvetica Neue';
     typoWeight = document.getElementById('editWeight')?.value || '900';
     typoSpacing = parseInt(document.getElementById('editSpacing')?.value || '10');
   }
-  const typoFx = theme.type === 'text' ? (document.getElementById('editFx')?.value || 'none') : null;
+  const typoFx = theme.type === 'text' ? (
+    typoMode === 'text' ? (document.getElementById('editFx')?.value || 'none') :
+    (document.getElementById('editLogoFx')?.value || 'none')
+  ) : null;
+  const logoUrl = (theme.type === 'text' && typoMode === 'logo') ? (document.getElementById('editLogoUrl')?.value.trim() || null) : null;
+  const logoSize = (theme.type === 'text' && typoMode === 'logo') ? parseInt(document.getElementById('editLogoSize')?.value || '40') : null;
   
   const scene = {
     name,
@@ -582,6 +702,8 @@ function saveScene() {
     weight: typoWeight,
     spacing: typoSpacing,
     fx: typoFx,
+    logoUrl: logoUrl,
+    logoSize: logoSize,
     gfxText: gfx === 'text_overlay' ? (document.getElementById('editGfxText')?.value.trim() || null) : null,
     gfxSubText: gfx === 'text_overlay' ? (document.getElementById('editGfxSubText')?.value.trim() || null) : null,
   };
