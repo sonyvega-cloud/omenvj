@@ -1140,6 +1140,7 @@ function getPresetsByEnergy(cat) {
       if (p.energy !== cat) return false;
       if (!presetReady[p.idx] || !presetPool.has(p.idx)) return false;
       if (!activeThemes[getPresetTheme(p)]) return false;
+      if (!isCamPresetLive(p.idx)) return false;
       return true;
     });
 }
@@ -1150,6 +1151,7 @@ function getActiveThemePresets() {
     .filter(p => {
       if (!presetReady[p.idx] || !presetPool.has(p.idx)) return false;
       if (!activeThemes[getPresetTheme(p)]) return false;
+      if (!isCamPresetLive(p.idx)) return false;
       return true;
     });
 }
@@ -1300,11 +1302,14 @@ function updateAutopilot() {
       if (!beatCutEnabled || beatCutInterval !== autoInterval) {
         beatCutEnabled = true;
         beatCutInterval = autoInterval;
-        // Pool = ALL ready presets from ALL active themes
+        // Pool = ready presets from active themes, respecting presetPool exclusions
         const allActive = PRESETS.map((p, i) => i).filter(i => {
           if (!presetReady[i]) return false;
+          if (!presetPool.has(i)) return false; // user excluded
           const theme = getPresetTheme(PRESETS[i]);
-          return activeThemes[theme];
+          if (!activeThemes[theme]) return false;
+          if (!isCamPresetLive(i)) return false;
+          return true;
         });
         if (allActive.length >= 2) {
           beatCutActive = new Set(allActive);
@@ -1749,6 +1754,9 @@ function switchToPreset(idx) {
   const theme = getPresetTheme(p);
   if (!activeThemes[theme]) return;
   
+  // Camera preset without active stream = skip
+  if (!isCamPresetLive(idx)) return;
+  
   // Throttle beat cut (not manual clicks)
   const now = performance.now();
   if (now - lastSwitchTime < SWITCH_MIN_MS && beatCutEnabled) return;
@@ -1780,11 +1788,21 @@ function switchToPreset(idx) {
   updatePresetGrid();
 }
 
+// Check if a camera preset has an active stream
+function isCamPresetLive(idx) {
+  const p = PRESETS[idx];
+  if (p?.type !== 'camera') return true; // not camera = always OK
+  const src = p?.camSource || 'remote';
+  if (src === 'remote') return remoteCamActive;
+  return !!localCams[idx]; // local cam open
+}
+
 function getLoadedPresets() {
   return PRESETS.map((_, i) => i).filter(i => {
     if (!presetReady[i] || !beatCutActive.has(i)) return false;
     const theme = getPresetTheme(PRESETS[i]);
     if (!activeThemes[theme]) return false;
+    if (!isCamPresetLive(i)) return false;
     return true;
   });
 }
