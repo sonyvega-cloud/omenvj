@@ -1956,7 +1956,13 @@ function updateVideoLayer() {
   const videoPulse = 1.0 + (pulseScale - 1.0) * 0.25;
   const videoScale = (0.95 + smoothBass * 0.04) * pinchScale * videoPulse;
   
-  videoCompassAngle = videoCompassAngle * 0.97 + compassAngle * 0.03;
+  // Rotation: smooth drift when solo, ZERO during beat cut (clean cuts)
+  if (beatCutEnabled) {
+    // Freeze + decay to 0
+    videoCompassAngle *= 0.95;
+  } else {
+    videoCompassAngle = videoCompassAngle * 0.97 + compassAngle * 0.03;
+  }
   
   const transform = `translate(-50%, -50%) scale(${videoScale.toFixed(4)}) rotate(${videoCompassAngle.toFixed(4)}rad)`;
   _lastVideoTransform = transform;
