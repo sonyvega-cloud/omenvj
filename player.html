@@ -1859,13 +1859,24 @@ function beatCutNext() {
   if (loaded.length < 2) return;
   
   const currentIsCamera = PRESETS[activePreset]?.type === 'camera';
+  const currentCamSource = PRESETS[activePreset]?.camSource || 'remote';
   
-  // Filter: avoid current preset + no camera→camera
+  // Filter: avoid current preset
   let others = loaded.filter(i => i !== activePreset);
+  
+  // After camera: prefer non-camera. Never switch remote→remote camera (same stream)
   if (currentIsCamera) {
-    // After camera, prefer non-camera
     const nonCam = others.filter(i => PRESETS[i]?.type !== 'camera');
-    if (nonCam.length > 0) others = nonCam;
+    if (nonCam.length > 0) {
+      others = nonCam;
+    } else {
+      // Only cameras left — don't switch between same source
+      others = others.filter(i => {
+        const src = PRESETS[i]?.camSource || 'remote';
+        return src !== currentCamSource;
+      });
+      if (others.length === 0) return; // all same source, skip
+    }
   }
   
   const pick = others.length > 0 ? pickByThemeWeight(others) : null;
