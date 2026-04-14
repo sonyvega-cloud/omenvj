@@ -1754,9 +1754,6 @@ function switchToPreset(idx) {
   const theme = getPresetTheme(p);
   if (!activeThemes[theme]) return;
   
-  // Camera preset without active stream = skip
-  if (!isCamPresetLive(idx)) return;
-  
   // Throttle beat cut (not manual clicks)
   const now = performance.now();
   if (now - lastSwitchTime < SWITCH_MIN_MS && beatCutEnabled) return;
