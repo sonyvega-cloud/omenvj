@@ -288,37 +288,20 @@
 <div id="videoVignette"></div>
 <div id="edgeMask"></div>
 
-<!-- ── Setup: Audio source selector ──────────────────── -->
+<!-- ── Setup: Single start button ──────────────────── -->
 <div id="setup">
   <div class="setup-box">
     <h1>ØMEN</h1>
     <div class="sub">Visual Engine</div>
     
-    <div style="margin-bottom: 1.5rem;">
-      <div style="font-size:0.6rem; letter-spacing:0.15rem; color:rgba(255,255,255,0.2); margin-bottom:8px; text-transform:uppercase;">Presets (auto-load from folder)</div>
-      <div style="font-size:0.5rem; color:rgba(255,255,255,0.12); letter-spacing:0.05rem; line-height:1.6;">
-        omen2a.mp4 / omen2b.mp4<br>
-        omen3a.mp4 / omen3b.mp4<br>
-        omen4a.mp4 / omen4b.mp4
-      </div>
+    <button class="source-btn" onclick="startAudio('linein')" style="margin-top:2rem;">
+      <div class="label">▶ START ENGINE</div>
+      <div class="desc">Audio source: LINE-IN (change from controller)</div>
+    </button>
+    
+    <div style="font-size:0.45rem; color:rgba(255,255,255,0.12); letter-spacing:0.1em; margin-top:1.5rem;">
+      Press S for System Audio capture
     </div>
-
-    <div style="font-size:0.6rem; letter-spacing:0.15rem; color:rgba(255,255,255,0.2); margin-bottom:8px; text-transform:uppercase;">Audio Source</div>
-    
-    <button class="source-btn" onclick="startAudio('system')">
-      <div class="label">▶ SYSTEM AUDIO</div>
-      <div class="desc">Capture what's playing on this computer</div>
-    </button>
-    
-    <button class="source-btn" onclick="startAudio('linein')">
-      <div class="label">▶ LINE-IN / USB AUDIO</div>
-      <div class="desc">External audio interface, mixer REC out</div>
-    </button>
-
-    <button class="source-btn" onclick="startAudio('mic')">
-      <div class="label">▶ MICROPHONE</div>
-      <div class="desc">Built-in mic — fallback option</div>
-    </button>
   </div>
 </div>
 
@@ -637,24 +620,25 @@ async function startAudio(source) {
       sourceLabel = 'SYSTEM AUDIO';
     }
     else if (source === 'linein') {
-      // First get permission (labels empty without it)
+      // Get permission first
       const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       tempStream.getTracks().forEach(t => t.stop());
       
-      // Now enumerate with labels
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices.filter(d => d.kind === 'audioinput');
       
-      if (audioInputs.length > 1) {
-        // Show device picker
-        const deviceId = await showDevicePicker(audioInputs);
-        if (!deviceId) { audioCtx.close(); audioCtx = null; return; }
+      // Broadcast available devices for controller picker
+      availableAudioDevices = audioInputs.map(d => ({ deviceId: d.deviceId, label: d.label || 'Audio ' + d.deviceId.slice(0, 8) }));
+      
+      if (deviceId) {
+        // Specific device from controller
         stream = await navigator.mediaDevices.getUserMedia({
           audio: { deviceId: { exact: deviceId } }
         });
         const picked = audioInputs.find(d => d.deviceId === deviceId);
         sourceLabel = 'LINE-IN: ' + (picked?.label || 'Audio Device');
       } else {
+        // Auto-pick first device (no popup on player)
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         sourceLabel = 'LINE-IN: ' + (audioInputs[0]?.label || 'Default');
       }
@@ -2677,6 +2661,12 @@ document.addEventListener('touchmove', (e) => {
 let hudVisible = true;
 
 document.addEventListener('keydown', (e) => {
+  // S key on setup screen → system audio
+  if (e.code === 'KeyS' && !document.getElementById('setup').classList.contains('hidden')) {
+    e.preventDefault();
+    startAudio('system');
+    return;
+  }
   switch (e.code) {
     case 'Space':
       e.preventDefault();
@@ -2759,6 +2749,7 @@ document.body.addEventListener('click', (e) => {
 
 let cdjConnected = false;
 let audioSourceName = '';
+let availableAudioDevices = [];
 let cdjWs = null;
 let cdjBpm = 0;
 let cdjLastBeat = 0;
@@ -3036,6 +3027,10 @@ function handleCommand(msg) {
         openLocalCam(msg.presetIdx, msg.deviceId);
       }
       break;
+    case 'audio':
+      // Controller requests audio source change
+      startAudio(msg.source, msg.deviceId);
+      break;
   }
 }
 
@@ -3156,6 +3151,7 @@ function broadcastState() {
       cdjConnected: !!cdjConnected,
       cdjTrackTitle: cdjTrackTitle || '',
       audioSource: audioSourceName || '',
+      audioDevices: availableAudioDevices || [],
       availableCameras: availableCameras || [],
       activeThemes,
       themeWeights,
