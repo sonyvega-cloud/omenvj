@@ -2488,6 +2488,7 @@ function typoOnBeat() {
   }
   
   typoFlash = 1.0;
+  typoNextRandom(); // cycle {random} word on beat
 }
 
 // Logo image cache
@@ -2506,6 +2507,82 @@ function getLogoImage(url) {
   img.src = url;
   _logoCache[url] = img;
   return null;
+}
+
+// ── TYPO placeholder system ──────────────────────────────────────
+const TYPO_WORDS = ['BASS', 'DROP', 'TECHNO', 'OMEN', 'NIGHT', 'ENERGY', 'PULSE', 'MOVE', 'DEEP', 'DARK', 'ACID', 'RAVE', 'LOVE', 'UNITY', 'FLOW', 'HEAT'];
+let typoRandomWord = TYPO_WORDS[0];
+let typoRandomIdx = 0;
+
+// Cycle random word on beat (called from typoOnBeat)
+function typoNextRandom() {
+  typoRandomIdx = (typoRandomIdx + 1) % TYPO_WORDS.length;
+  typoRandomWord = TYPO_WORDS[typoRandomIdx];
+}
+
+// Event config — loaded from localStorage
+let typoEventConfig = { dj: '', event: '', schedule: [] };
+try {
+  const ec = localStorage.getItem('omen_event');
+  if (ec) typoEventConfig = JSON.parse(ec);
+} catch(e) {}
+
+function getDayString() {
+  const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+  const d = new Date();
+  const h = d.getHours();
+  const day = days[d.getDay()];
+  if (h >= 18 || h < 5) return day + ' NIGHT';
+  if (h >= 12) return day + ' AFTERNOON';
+  return day + ' MORNING';
+}
+
+function getCurrentSetDJ() {
+  if (!typoEventConfig.schedule || typoEventConfig.schedule.length === 0) return typoEventConfig.dj || '';
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  // Find current set (last one that started)
+  let current = typoEventConfig.schedule[0];
+  for (const s of typoEventConfig.schedule) {
+    const [h, m] = (s.time || '00:00').split(':').map(Number);
+    let setMins = h * 60 + m;
+    // Handle overnight (if set time < 12:00, assume next day = +1440)
+    if (setMins < 720 && mins > 720) setMins += 1440;
+    if (setMins <= (mins > 720 ? mins : mins + 1440)) current = s;
+  }
+  return current.dj || current.name || '';
+}
+
+function resolveTypoPlaceholders(text) {
+  if (!text || !text.includes('{')) return text;
+  
+  return text.replace(/\{(\w+)\}/g, (match, key) => {
+    switch (key) {
+      case 'mood':      return mood || 'AMBIENT';
+      case 'energy':    return Math.round((normEnergy || 0) * 100) + '%';
+      case 'day':       return getDayString();
+      case 'beats':     return String(beatCount);
+      case 'random':    return typoRandomWord;
+      case 'dj':        return getCurrentSetDJ() || typoEventConfig.dj || 'DJ';
+      case 'event':     return typoEventConfig.event || 'ØMEN';
+      case 'countdown': {
+        if (!typoEventConfig.countdownTo) return '00:00';
+        const target = new Date(typoEventConfig.countdownTo).getTime();
+        const diff = Math.max(0, target - Date.now());
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      }
+      case 'settime': {
+        const dj = getCurrentSetDJ();
+        const sched = typoEventConfig.schedule || [];
+        const entry = sched.find(s => (s.dj || s.name) === dj);
+        return entry ? `${dj} ${entry.time || ''}` : dj;
+      }
+      default: return match;
+    }
+  });
 }
 
 function renderTypo(pal) {
@@ -2591,7 +2668,8 @@ function renderTypo(pal) {
   }
   
   // ═══ TEXT MODE (multi-line) ═══
-  const text = preset.text || preset.name || 'ØMEN';
+  const rawText = preset.text || preset.name || 'ØMEN';
+  const text = resolveTypoPlaceholders(rawText);
   const font = preset.font || 'Helvetica Neue';
   const weight = preset.weight || '900';
   const spacing = preset.spacing || 10;
@@ -3560,6 +3638,14 @@ function handleCommand(msg) {
       updateVideoVisibility();
       updatePresetGrid();
       console.log('[HOT-RELOAD] Presets updated:', oldLen, '→', PRESETS.length);
+      break;
+    }
+    case 'event_updated': {
+      try {
+        const ec = localStorage.getItem('omen_event');
+        if (ec) typoEventConfig = JSON.parse(ec);
+        console.log('[HOT-RELOAD] Event config updated:', typoEventConfig.event, typoEventConfig.dj);
+      } catch(e) {}
       break;
     }
     case 'ping': {

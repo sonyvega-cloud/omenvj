@@ -147,6 +147,23 @@
     <div class="gfx-list" id="gfxList"></div>
   </div>
 
+  <!-- Event Config (for TYPO placeholders) -->
+  <div class="gfx-section" style="margin-top:20px;">
+    <div class="gfx-title">EVENT CONFIG <span style="font-size:8px; opacity:0.4;">(for {dj} {event} {countdown} {settime} placeholders)</span></div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:8px 0;">
+      <div><span class="field-label">EVENT NAME</span><input class="field-input" id="eventName" placeholder="AFTERLIFE PRAGUE" oninput="saveEventConfig()"></div>
+      <div><span class="field-label">DJ / ARTIST</span><input class="field-input" id="eventDJ" placeholder="SONY VEGA" oninput="saveEventConfig()"></div>
+    </div>
+    <div style="padding:4px 0;">
+      <span class="field-label">COUNTDOWN TO</span>
+      <input type="datetime-local" class="field-input" id="eventCountdown" style="max-width:220px;" oninput="saveEventConfig()">
+    </div>
+    <div style="padding:8px 0;">
+      <span class="field-label">SCHEDULE <span style="font-size:8px; opacity:0.3;">(one per line: HH:MM DJ NAME)</span></span>
+      <textarea class="field-input" id="eventSchedule" rows="4" placeholder="22:00 ARTBAT&#10;00:00 ANYMA&#10;02:00 TALE OF US" style="font-size:11px; font-family:monospace;" oninput="saveEventConfig()"></textarea>
+    </div>
+  </div>
+
   <div class="status-bar">
     <div class="status-dot" id="statusDot"></div>
     <span id="statusText">Ready</span>
@@ -403,7 +420,9 @@ function buildEditorFields() {
     // TEXT mode fields
     html += '<div id="typoTextFields">';
     html += '<span class="field-label">TEXT (each line = separate line on screen)</span>';
-    html += '<textarea class="field-input" id="editText" placeholder="ØMEN&#10;or multiple&#10;lines" rows="3" style="font-size:16px; font-weight:900; letter-spacing:0.15em; resize:vertical;"></textarea>';
+    html += '<textarea class="field-input" id="editText" placeholder="ØMEN&#10;{mood}&#10;{random}" rows="3" style="font-size:16px; font-weight:900; letter-spacing:0.15em; resize:vertical;"></textarea>';
+    html += '<div style="font-size:8px; color:rgba(255,255,255,0.25); letter-spacing:0.05em; margin:4px 0 8px; line-height:1.6;">';
+    html += 'PLACEHOLDERS: <span style="color:rgba(255,255,255,0.4)">{mood}</span> {energy} {day} {beats} {random} {dj} {event} {countdown} {settime}</div>';
     html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">';
     html += '<div><span class="field-label">FONT</span><select class="field-select" id="editFont">';
     html += '<option value="Helvetica Neue">Helvetica Neue</option>';
@@ -800,6 +819,48 @@ async function handleUpload(ab) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Event Config (TYPO placeholders)
+// ═══════════════════════════════════════════════════════════════
+
+function saveEventConfig() {
+  const config = {
+    event: document.getElementById('eventName')?.value.trim() || '',
+    dj: document.getElementById('eventDJ')?.value.trim() || '',
+    countdownTo: document.getElementById('eventCountdown')?.value || null,
+    schedule: parseSchedule(document.getElementById('eventSchedule')?.value || ''),
+  };
+  localStorage.setItem('omen_event', JSON.stringify(config));
+  // Hot-reload to player
+  try { new BroadcastChannel('omen').postMessage({ type: 'event_updated' }); } catch(e) {}
+}
+
+function parseSchedule(text) {
+  return text.split('\n').map(line => {
+    const m = line.trim().match(/^(\d{1,2}:\d{2})\s+(.+)$/);
+    if (!m) return null;
+    return { time: m[1], dj: m[2].trim() };
+  }).filter(Boolean);
+}
+
+function loadEventConfig() {
+  try {
+    const ec = localStorage.getItem('omen_event');
+    if (!ec) return;
+    const config = JSON.parse(ec);
+    const nameEl = document.getElementById('eventName');
+    const djEl = document.getElementById('eventDJ');
+    const cdEl = document.getElementById('eventCountdown');
+    const schEl = document.getElementById('eventSchedule');
+    if (nameEl) nameEl.value = config.event || '';
+    if (djEl) djEl.value = config.dj || '';
+    if (cdEl) cdEl.value = config.countdownTo || '';
+    if (schEl && config.schedule) {
+      schEl.value = config.schedule.map(s => s.time + ' ' + s.dj).join('\n');
+    }
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Export / Import
 // ═══════════════════════════════════════════════════════════════
 
@@ -861,6 +922,7 @@ function setStatus(text) {
 
 // Init
 loadScenes();
+loadEventConfig();
 </script>
 </body>
 </html>
