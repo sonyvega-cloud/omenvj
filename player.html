@@ -3437,8 +3437,22 @@ function handleCommand(msg) {
       // Mark non-video presets (GFX/camera/text) as ready
       PRESETS.forEach((p, i) => { if (!p.videoA || p.type === 'camera' || p.type === 'text') newReady[i] = true; });
       presetReady = newReady;
-      presetPool = new Set(PRESETS.map((_, i) => i));
-      beatCutActive = new Set(PRESETS.map((_, i) => i));
+      // Preserve existing pool state — only add NEW presets
+      const oldPool = new Set(presetPool);
+      const oldBeatCut = new Set(beatCutActive);
+      presetPool = new Set();
+      beatCutActive = new Set();
+      PRESETS.forEach((_, i) => {
+        if (i < oldLen) {
+          // Existing preset — keep old state
+          if (oldPool.has(i)) presetPool.add(i);
+          if (oldBeatCut.has(i)) beatCutActive.add(i);
+        } else {
+          // New preset — enabled by default
+          presetPool.add(i);
+          beatCutActive.add(i);
+        }
+      });
       // Clamp active preset
       if (activePreset >= PRESETS.length) activePreset = 0;
       _lastActivePreset = -1; // force visibility rebuild
