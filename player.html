@@ -2442,6 +2442,7 @@ let typoTargetScale = 1.0;
 let typoX = 0, typoY = 0;
 let typoTargetX = 0, typoTargetY = 0;
 let typoFlash = 0;
+let typoSpread = 0; // spacing explosion (0 = base, 1 = max spread)
 
 function typoOnBeat() {
   const preset = PRESETS[activePreset];
@@ -2451,21 +2452,26 @@ function typoOnBeat() {
   const bar4 = beatIndex % 4;
   const fx = preset.fx || 'none';
   
-  // ── SCALE FX: extreme zoom punches ──
+  // Combined animation intensity: drive × fxIntensity
+  const intensity = driveScale * fxIntensity;
+  // intensity 0 = no animation, 1 = full
+  
+  // ── SCALE ──
   if (fx === 'scale') {
-    // Alternate between tiny and MASSIVE
     const picks = [0.4, 0.6, 1.0, 1.5, 2.0, 2.8, 0.3, 1.8];
-    typoScale = picks[beatIndex % picks.length]; // INSTANT, no easing
+    const raw = picks[beatIndex % picks.length];
+    // Lerp toward raw based on intensity (low intensity → stays near 1.0)
+    typoScale = 1.0 + (raw - 1.0) * intensity;
     typoTargetScale = typoScale;
   } else if (fx === 'jump') {
-    typoTargetScale = 0.85 + Math.random() * 0.3;
+    typoTargetScale = 1.0 + (Math.random() * 0.3 - 0.15) * intensity;
   } else if (energy > 0.5) {
-    typoTargetScale = 1.0 + Math.random() * 0.6;
+    typoTargetScale = 1.0 + Math.random() * 0.6 * intensity;
   } else {
-    typoTargetScale = 0.9 + Math.random() * 0.2;
+    typoTargetScale = 1.0 + (Math.random() * 0.2 - 0.1) * intensity;
   }
   
-  // ── JUMP FX: INSTANT teleport every beat ──
+  // ── JUMP ──
   if (fx === 'jump') {
     const positions = [
       [0, 0], [0, -0.35], [0, 0.35],
@@ -2475,20 +2481,26 @@ function typoOnBeat() {
       [-0.25, 0.2], [0.15, 0.4],
     ];
     const pos = positions[Math.floor(Math.random() * positions.length)];
-    typoX = pos[0]; typoY = pos[1]; // INSTANT, no lerp
-    typoTargetX = pos[0]; typoTargetY = pos[1];
-  } else if (bar4 === 0) {
+    // Scale position offset by intensity
+    typoX = pos[0] * intensity; typoY = pos[1] * intensity;
+    typoTargetX = typoX; typoTargetY = typoY;
+  } else if (bar4 === 0 && intensity > 0.1) {
     const positions = [
       [0, 0], [0, -0.2], [0, 0.2],
       [-0.15, 0], [0.15, 0], [0, -0.3],
     ];
     const pos = positions[Math.floor(Math.random() * positions.length)];
-    typoTargetX = pos[0];
-    typoTargetY = pos[1];
+    typoTargetX = pos[0] * intensity;
+    typoTargetY = pos[1] * intensity;
+  }
+  
+  // ── SPREAD FX: spacing explosion ──
+  if (fx === 'spread') {
+    typoSpread = 1.0; // full burst, decays in render
   }
   
   typoFlash = 1.0;
-  typoNextRandom(); // cycle {random} word on beat
+  typoNextRandom();
 }
 
 // Logo image cache
@@ -2593,12 +2605,15 @@ function renderTypo(pal) {
   const preset = PRESETS[activePreset] || {};
   const fx = preset.fx || 'none';
   const [rP, gP, bP] = hexRgb(pal[2]);
+  const intensity = driveScale * fxIntensity; // combined animation level
   
-  // Easing — FAST for punch feel
-  typoScale += (typoTargetScale - typoScale) * 0.5; // was 0.25
-  typoX += (typoTargetX - typoX) * 0.4; // was 0.2
-  typoY += (typoTargetY - typoY) * 0.4;
+  // Easing — speed proportional to intensity
+  const easeSpeed = 0.2 + intensity * 0.3; // 0.2 at idle, 0.5 at max
+  typoScale += (typoTargetScale - typoScale) * easeSpeed;
+  typoX += (typoTargetX - typoX) * easeSpeed;
+  typoY += (typoTargetY - typoY) * easeSpeed;
   typoFlash *= (fx === 'strobo') ? 0.93 : 0.82;
+  typoSpread *= 0.88; // spread decay
   
   // Background
   const invertActive = fx === 'invert' && typoFlash > 0.15; // was 0.4
@@ -2700,7 +2715,13 @@ function renderTypo(pal) {
   ctx.font = `${weight} ${fontSize.toFixed(0)}px '${font}', sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  try { ctx.letterSpacing = `${(spacing * fontSize / 100).toFixed(1)}px`; } catch(e) {}
+  
+  // Spacing: base + bass breathing (always on) + SPREAD FX burst
+  const baseSp = spacing * fontSize / 100;
+  const breathSp = smoothBass * 8 * driveScale; // subtle bass breathing
+  const spreadSp = typoSpread * fontSize * 0.15; // SPREAD FX: massive burst
+  const totalSp = baseSp + breathSp + spreadSp;
+  try { ctx.letterSpacing = `${totalSp.toFixed(1)}px`; } catch(e) {}
   
   // Glow — strong burst
   if (typoFlash > 0.05 && fx !== 'invert') {

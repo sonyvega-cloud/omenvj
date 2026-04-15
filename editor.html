@@ -455,6 +455,7 @@ function buildEditorFields() {
     html += '<option value="invert">INVERT — black↔white</option>';
     html += '<option value="strobo">STROBO — rapid flash</option>';
     html += '<option value="shake">SHAKE — vibration</option>';
+    html += '<option value="spread">SPREAD — spacing burst</option>';
     html += '</select></div>';
     html += '</div>';
     html += '</div>';
@@ -475,7 +476,7 @@ function buildEditorFields() {
     html += '<option value="jump">JUMP</option><option value="scale">SCALE</option>';
     html += '<option value="glitch">GLITCH</option><option value="invert">INVERT</option>';
     html += '<option value="strobo">STROBO</option><option value="shake">SHAKE</option>';
-    html += '</select></div>';
+    html += '<option value="spread">SPREAD</option></select></div>';
     html += '</div>';
     
     // Preview — full width, taller
@@ -804,6 +805,9 @@ async function pickCamera() {
 // Upload
 // ═══════════════════════════════════════════════════════════════
 
+const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB chunks
+const SIMPLE_LIMIT = 90 * 1024 * 1024; // files > 90MB use multipart
+
 async function handleUpload(ab) {
   const fileInput = document.getElementById('file' + ab);
   const statusEl = document.getElementById('status' + ab);
@@ -813,80 +817,88 @@ async function handleUpload(ab) {
   const fileName = file.name.toLowerCase().replace(/[^a-z0-9._-]/g, '');
   const sizeMB = (file.size / 1024 / 1024).toFixed(1);
 
-  if (!EDITOR_WORKER) { nameInput.value = fileName; statusEl.textContent = 'manual upload'; return; }
+  if (!EDITOR_WORKER) { nameInput.value = fileName; statusEl.textContent = 'manual'; return; }
 
-  console.log('[UPLOAD] Starting:', fileName, sizeMB + 'MB', 'to', EDITOR_WORKER);
-  statusEl.textContent = '0% of ' + sizeMB + 'MB';
-  statusEl.className = 'upload-status uploading';
+  console.log('[UPLOAD] Start:', fileName, sizeMB + 'MB');
 
-  // Step 1: Test worker is reachable
-  try {
-    console.log('[UPLOAD] Testing worker...');
-    const test = await fetch(EDITOR_WORKER, { method: 'GET', mode: 'cors' });
-    console.log('[UPLOAD] Worker test:', test.status, await test.text());
-  } catch(e) {
-    console.error('[UPLOAD] Worker unreachable:', e);
-    statusEl.textContent = 'worker unreachable: ' + e.message;
-    statusEl.className = 'upload-status error';
-    return;
+  if (file.size > SIMPLE_LIMIT) {
+    // ── MULTIPART upload for large files ──
+    await handleMultipartUpload(file, fileName, sizeMB, statusEl, nameInput);
+  } else {
+    // ── Simple PUT for small files ──
+    await handleSimpleUpload(file, fileName, sizeMB, statusEl, nameInput);
   }
+}
 
-  // Step 2: Upload with XHR for progress
+async function handleSimpleUpload(file, fileName, sizeMB, statusEl, nameInput) {
+  statusEl.textContent = '0%'; statusEl.className = 'upload-status uploading';
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
-    const url = EDITOR_WORKER + '/upload/' + fileName;
-    console.log('[UPLOAD] PUT', url);
-    xhr.open('PUT', url);
+    xhr.open('PUT', EDITOR_WORKER + '/upload/' + fileName);
     xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
-
     xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const pct = Math.round(e.loaded / e.total * 100);
-        statusEl.textContent = pct + '% of ' + sizeMB + 'MB';
-        if (pct % 20 === 0) console.log('[UPLOAD] Progress:', pct + '%');
-      }
+      if (e.lengthComputable) statusEl.textContent = Math.round(e.loaded / e.total * 100) + '%';
     };
-
-    // Upload complete = data sent. Even if response CORS fails, file is in R2.
-    xhr.upload.onload = () => {
-      console.log('[UPLOAD] All bytes sent, waiting for response...');
-      statusEl.textContent = '✓ sent ' + sizeMB + 'MB';
-      // Mark success immediately — file is in R2 regardless of response
-      nameInput.value = fileName;
-    };
-
-    xhr.onload = () => {
-      console.log('[UPLOAD] Response:', xhr.status, xhr.responseText.slice(0, 100));
-      statusEl.textContent = '✓ ' + sizeMB + 'MB';
-      statusEl.className = 'upload-status';
-      nameInput.value = fileName;
+    xhr.upload.onload = () => { nameInput.value = fileName; statusEl.textContent = '✓ ' + sizeMB + 'MB'; statusEl.className = 'upload-status'; };
+    xhr.onload = () => { nameInput.value = fileName; statusEl.textContent = '✓ ' + sizeMB + 'MB'; statusEl.className = 'upload-status'; resolve(); };
+    xhr.onerror = () => {
+      if (nameInput.value === fileName) { statusEl.textContent = '✓ ' + sizeMB + 'MB'; statusEl.className = 'upload-status'; }
+      else { statusEl.textContent = 'error'; statusEl.className = 'upload-status error'; }
       resolve();
     };
-
-    xhr.onerror = (e) => {
-      console.warn('[UPLOAD] Response error (file likely in R2):', e);
-      // If upload reached 100%, file IS in R2 — CORS just blocks the response
-      if (nameInput.value === fileName) {
-        statusEl.textContent = '✓ ' + sizeMB + 'MB (verified by upload)';
-        statusEl.className = 'upload-status';
-      } else {
-        statusEl.textContent = 'CORS error — check R2 bucket';
-        statusEl.className = 'upload-status error';
-      }
-      resolve();
-    };
-
-    xhr.ontimeout = () => {
-      console.error('[UPLOAD] Timeout');
-      statusEl.textContent = 'timeout';
-      statusEl.className = 'upload-status error';
-      resolve();
-    };
-
-    xhr.timeout = 300000;
-    console.log('[UPLOAD] Sending', file.size, 'bytes...');
+    xhr.timeout = 300000; xhr.ontimeout = () => { statusEl.textContent = 'timeout'; statusEl.className = 'upload-status error'; resolve(); };
     xhr.send(file);
   });
+}
+
+async function handleMultipartUpload(file, fileName, sizeMB, statusEl, nameInput) {
+  statusEl.textContent = 'starting multipart...'; statusEl.className = 'upload-status uploading';
+  try {
+    // Step 1: Start
+    const startResp = await fetch(EDITOR_WORKER + '/multipart/start/' + fileName, { method: 'POST' });
+    if (!startResp.ok) { statusEl.textContent = 'start failed: ' + startResp.status; statusEl.className = 'upload-status error'; return; }
+    const { uploadId, key } = await startResp.json();
+    console.log('[MULTIPART] Started:', uploadId);
+
+    // Step 2: Upload chunks
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const parts = [];
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunk = file.slice(start, end);
+      const partNum = i + 1;
+      const pct = Math.round((i / totalChunks) * 100);
+      statusEl.textContent = pct + '% chunk ' + partNum + '/' + totalChunks;
+      console.log('[MULTIPART] Part', partNum, '/', totalChunks, Math.round(chunk.size / 1024 / 1024) + 'MB');
+
+      const partResp = await fetch(
+        EDITOR_WORKER + '/multipart/part/' + fileName + '?uploadId=' + uploadId + '&part=' + partNum,
+        { method: 'PUT', body: chunk }
+      );
+      if (!partResp.ok) { statusEl.textContent = 'chunk ' + partNum + ' failed'; statusEl.className = 'upload-status error'; return; }
+      const partData = await partResp.json();
+      parts.push({ partNumber: partData.partNumber, etag: partData.etag });
+    }
+
+    // Step 3: Complete
+    statusEl.textContent = '99% finalizing...';
+    const completeResp = await fetch(EDITOR_WORKER + '/multipart/complete/' + fileName, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uploadId, parts }),
+    });
+    if (!completeResp.ok) { statusEl.textContent = 'complete failed'; statusEl.className = 'upload-status error'; return; }
+
+    nameInput.value = fileName;
+    statusEl.textContent = '✓ ' + sizeMB + 'MB (' + totalChunks + ' chunks)';
+    statusEl.className = 'upload-status';
+    console.log('[MULTIPART] Done!', fileName);
+  } catch (err) {
+    console.error('[MULTIPART] Error:', err);
+    statusEl.textContent = 'error: ' + err.message;
+    statusEl.className = 'upload-status error';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
