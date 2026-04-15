@@ -1955,8 +1955,8 @@ function updateVideoLayer() {
   const currentPreset = PRESETS[activePreset];
   const hasVideo = currentPreset && currentPreset.videoA != null;
   
-  // ── Auto-rotation — always runs, smooth through beat cuts ──
-  compassTarget += smoothBass * 0.003 - smoothMid * 0.001;
+  // ── Auto-rotation — scaled by drive ──
+  compassTarget += (smoothBass * 0.003 - smoothMid * 0.001) * driveScale;
   compassAngle += (compassTarget - compassAngle) * 0.015;
   
   const isCamera = currentPreset && currentPreset.type === 'camera';
@@ -1973,9 +1973,9 @@ function updateVideoLayer() {
     return;
   }
   
-  // Video transform
+  // Video transform — bass breathing + pulse scaled by drive
   const videoPulse = 1.0 + (pulseScale - 1.0) * 0.25;
-  const videoScale = (0.95 + smoothBass * 0.04) * pinchScale * videoPulse;
+  const videoScale = (0.95 + smoothBass * 0.04 * driveScale) * pinchScale * videoPulse;
   
   // Rotation: always smooth, same angle for every video (no snap on cut)
   videoCompassAngle = videoCompassAngle * 0.97 + compassAngle * 0.03;
@@ -3332,7 +3332,9 @@ function connectCDJ() {
     
     cdjWs.onopen = () => {
       cdjConnected = true;
-      console.log('[CDJ] Bridge connected');
+      // Kill TAP BPM timer — CDJ is now the beat source
+      if (beatClockTimer) { clearInterval(beatClockTimer); beatClockTimer = null; }
+      console.log('[CDJ] Bridge connected — TAP BPM timer killed');
     };
     
     cdjWs.onmessage = (e) => {
