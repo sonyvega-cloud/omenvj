@@ -811,15 +811,52 @@ async function handleUpload(ab) {
   if (!fileInput.files[0]) return;
   const file = fileInput.files[0];
   const fileName = file.name.toLowerCase().replace(/[^a-z0-9._-]/g, '');
+  const sizeMB = (file.size / 1024 / 1024).toFixed(1);
 
   if (!EDITOR_WORKER) { nameInput.value = fileName; statusEl.textContent = 'manual upload'; return; }
 
-  statusEl.textContent = 'uploading...'; statusEl.className = 'upload-status uploading';
-  try {
-    const resp = await fetch(EDITOR_WORKER + '/upload/' + fileName, { method: 'PUT', body: file, headers: { 'Content-Type': 'video/mp4' } });
-    if (resp.ok) { nameInput.value = fileName; statusEl.textContent = '✓ uploaded'; statusEl.className = 'upload-status'; }
-    else { statusEl.textContent = 'error: ' + resp.status; statusEl.className = 'upload-status error'; }
-  } catch (err) { statusEl.textContent = 'error'; statusEl.className = 'upload-status error'; }
+  statusEl.textContent = `0% of ${sizeMB}MB`;
+  statusEl.className = 'upload-status uploading';
+
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', EDITOR_WORKER + '/upload/' + fileName);
+    xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round(e.loaded / e.total * 100);
+        statusEl.textContent = `${pct}% of ${sizeMB}MB`;
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        nameInput.value = fileName;
+        statusEl.textContent = '✓ ' + sizeMB + 'MB';
+        statusEl.className = 'upload-status';
+      } else {
+        statusEl.textContent = 'error ' + xhr.status + ': ' + xhr.responseText.slice(0, 50);
+        statusEl.className = 'upload-status error';
+      }
+      resolve();
+    };
+
+    xhr.onerror = () => {
+      statusEl.textContent = 'network error — worker down?';
+      statusEl.className = 'upload-status error';
+      resolve();
+    };
+
+    xhr.ontimeout = () => {
+      statusEl.textContent = 'timeout — file too large?';
+      statusEl.className = 'upload-status error';
+      resolve();
+    };
+
+    xhr.timeout = 300000; // 5 min timeout for large files
+    xhr.send(file);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
