@@ -586,18 +586,23 @@ async function handleLogoUpload() {
   const file = document.getElementById('fileLogo').files[0];
   if (!file) return;
   const status = document.getElementById('statusLogo');
-  status.textContent = 'Uploading...';
+  const urlInput = document.getElementById('editLogoUrl');
+  const fileName = 'logo_' + Date.now() + '.' + (file.name.split('.').pop() || 'png');
+  
+  if (!EDITOR_WORKER) { urlInput.value = fileName; status.textContent = 'manual'; return; }
+  
+  status.textContent = 'uploading...';
   try {
-    const formData = new FormData();
-    formData.append('file', file, 'logo_' + Date.now() + '.png');
-    const resp = await fetch('https://omen-upload.sony-vega.workers.dev/upload', { method: 'POST', body: formData });
-    const data = await resp.json();
-    if (data.url) {
-      document.getElementById('editLogoUrl').value = data.url;
+    const ct = file.type || 'image/png';
+    const resp = await fetch(EDITOR_WORKER + '/upload/' + fileName, {
+      method: 'PUT', body: file, headers: { 'Content-Type': ct }
+    });
+    if (resp.ok) {
+      urlInput.value = EDITOR_CDN + fileName;
       status.textContent = '✓';
       updateTypoPreview();
-    } else { status.textContent = 'Error'; }
-  } catch(e) { status.textContent = 'Failed'; }
+    } else { status.textContent = 'error: ' + resp.status; }
+  } catch(e) { status.textContent = 'failed'; }
 }
 
 function updateTypoPreview() {
