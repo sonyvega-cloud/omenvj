@@ -444,19 +444,18 @@ let compassTarget = 0;
 // ── FX state (iOS port) ───────────────────────────────────────
 let fxIntensity = 1.0;     // global FX multiplier
 let masterDrive = 70;      // 0-100 master drive
+let driveScale = 0.72;     // 0.05-1.0 derived from drive
 
 // Map drive 0-100 to all parameters
 function applyDrive(d) {
   masterDrive = d;
-  const n = d / 100; // 0.0 - 1.0
+  const n = d / 100;
   
-  // FX intensity: 0.05 at drive 0, 1.0 at drive 100
-  fxIntensity = 0.05 + n * 0.95;
+  // Drive scale: multiplied into fxIntensity every frame
+  driveScale = 0.05 + n * 0.95;
   
   // Video speed: 0.5x at drive 0, 2.0x at drive 100
   videoSpeedMultiplier = 0.5 + n * 1.5;
-  
-  // Beat cut interval is handled by getAutoBeatCutInterval() using masterDrive
 }
 let fxSliderValue = 1.0;   // user-set FX intensity (slider)
 let exposureOpacity = 0;   // white center glow on beat
@@ -1105,13 +1104,14 @@ function onBeatTick() {
 
 // ── Silence detection → dampen FX ─────────────────────────────
 function updateSilenceDampen() {
+  const target = fxSliderValue * driveScale; // drive scales the target
   if (smoothVol > SILENCE_THRESHOLD) {
     silenceTimer = 0;
-    fxIntensity = fxIntensity * 0.9 + fxSliderValue * 0.1; // ramp to slider value
+    fxIntensity = fxIntensity * 0.9 + target * 0.1;
   } else {
     silenceTimer++;
     if (silenceTimer > SILENCE_DAMPEN_AFTER) {
-      fxIntensity = fxIntensity * 0.95 + (0.15 * fxSliderValue) * 0.05; // dampen but scaled
+      fxIntensity = fxIntensity * 0.95 + (0.15 * target) * 0.05;
     }
   }
 }
