@@ -444,18 +444,18 @@ let compassTarget = 0;
 // ── FX state (iOS port) ───────────────────────────────────────
 let fxIntensity = 1.0;     // global FX multiplier
 let masterDrive = 70;      // 0-100 master drive
-let driveScale = 0.72;     // 0.05-1.0 derived from drive
+let driveScale = 0.70;     // 0.0-1.0 derived from drive
 
 // Map drive 0-100 to all parameters
 function applyDrive(d) {
   masterDrive = d;
   const n = d / 100;
   
-  // Drive scale: multiplied into fxIntensity every frame
-  driveScale = 0.05 + n * 0.95;
+  // Drive scale: 0 = ZERO, 100 = full
+  driveScale = n;
   
-  // Video speed: 0.5x at drive 0, 2.0x at drive 100
-  videoSpeedMultiplier = 0.5 + n * 1.5;
+  // Video speed: 0.7x at drive 0, 2.0x at drive 100
+  videoSpeedMultiplier = 0.7 + n * 1.3;
 }
 let fxSliderValue = 1.0;   // user-set FX intensity (slider)
 let exposureOpacity = 0;   // white center glow on beat
@@ -519,6 +519,7 @@ let currentAB = 0;
 // Beat cut (iOS-style with active set)
 let beatCutEnabled = false;
 let beatCutInterval = 4;
+let beatCutCountdown = 4;  // countdown to next cut (beats remaining)
 let beatCutSequenceIdx = 0;
 let beatCutActive = new Set(PRESETS.map((_, i) => i));
 
@@ -746,13 +747,7 @@ function detectBeat() {
   if (bass > avg * 1.2 + beatThreshold && 
       now - lastBeatTime > beatCooldown) {
     lastBeatTime = now;
-    beatIndex++;
-    
-    // Auto-BPM from beat intervals
-    if (tapTimes.length === 0) {
-      // Use detected beats for BPM estimation
-    }
-    
+    // beatIndex NOT incremented here — caller handles it
     return true;
   }
   return false;
@@ -1094,15 +1089,20 @@ function onBeatTick() {
     updateVideoSpeed(bpm);
   }
   
-  // Beat cut — switch preset on interval (skip during camera hold)
-  if (beatCutEnabled && beatIndex % beatCutInterval === 0) {
-    beatCutNext();
+  // Beat cut — COUNTDOWN guarantees exact hold time (sacred rule)
+  if (beatCutEnabled) {
+    beatCutCountdown--;
+    if (beatCutCountdown <= 0) {
+      beatCutNext();
+      beatCutCountdown = beatCutInterval; // reset: hold for exactly N beats
+    }
   }
 }
 
 // ── Silence detection → dampen FX ─────────────────────────────
 function updateSilenceDampen() {
-  const target = fxSliderValue * driveScale; // drive scales the target
+  // Drive is HARD CEILING — fxIntensity can never exceed driveScale
+  const target = Math.min(fxSliderValue * driveScale, driveScale);
   if (smoothVol > SILENCE_THRESHOLD) {
     silenceTimer = 0;
     fxIntensity = fxIntensity * 0.9 + target * 0.1;
@@ -1112,6 +1112,8 @@ function updateSilenceDampen() {
       fxIntensity = fxIntensity * 0.95 + (0.15 * target) * 0.05;
     }
   }
+  // Hard cap
+  fxIntensity = Math.min(fxIntensity, driveScale);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1281,9 +1283,10 @@ function updateAutopilot() {
     
     // Crash/open hat: variable duration by intensity
     // highRatio 1.3 = tiny flash (3 frames), 2.0+ = full burst (10 frames)
-    if (highRatio > 1.3) {
-      const intensity = Math.min((highRatio - 1.3) / 0.7, 1.0); // 0-1 mapped from ratio 1.3-2.0
-      const duration = Math.round(3 + intensity * 7); // 3-10 frames
+    // Drive gates auto-strobo: below 30% drive, no auto strobo
+    if (highRatio > 1.3 && driveScale > 0.3) {
+      const intensity = Math.min((highRatio - 1.3) / 0.7, 1.0);
+      const duration = Math.round(3 + intensity * 7);
       if (duration > stroboAutoFrames) {
         stroboAutoFrames = duration;
         stroboMaxFrames = duration;
@@ -1294,18 +1297,17 @@ function updateAutopilot() {
       stroboAutoFrames--;
       if (!stroboActive) stroboActive = true;
       
-      // Envelope: full brightness first 60%, fade in last 40%
       const progress = 1.0 - (stroboAutoFrames / Math.max(stroboMaxFrames, 1));
       if (progress < 0.6) {
-        stroboEnvelope = 0.85;
+        stroboEnvelope = 0.85 * driveScale; // SCALED by drive
       } else {
-        stroboEnvelope = 0.85 * (1.0 - (progress - 0.6) / 0.4);
+        stroboEnvelope = 0.85 * driveScale * (1.0 - (progress - 0.6) / 0.4);
       }
     } else {
       if (stroboActive && !manualStrobo) {
         stroboActive = false;
         stroboFlash = 0;
-        stroboEnvelope = 0.85; // reset for next burst
+        stroboEnvelope = 0.85 * driveScale; // reset for next burst
       }
     }
   }
@@ -1319,8 +1321,13 @@ function updateAutopilot() {
     } else {
       // Enable beat cut + set interval
       if (!beatCutEnabled || beatCutInterval !== autoInterval) {
+        const wasOff = !beatCutEnabled;
         beatCutEnabled = true;
         beatCutInterval = autoInterval;
+        // If freshly enabled, start countdown at interval (no immediate cut)
+        if (wasOff) beatCutCountdown = autoInterval;
+        // If interval shortened, cap countdown
+        else beatCutCountdown = Math.min(beatCutCountdown, autoInterval);
         // Pool = ready presets from active themes, respecting presetPool exclusions
         const allActive = PRESETS.map((p, i) => i).filter(i => {
           if (!presetReady[i]) return false;
@@ -2101,19 +2108,20 @@ function render() {
     renderVideoRings(pal);
   }
   
-  // ── Beat flash overlay (all modes) ──────────────────────────
-  if (beatFlash > 0.01) {
+  // ── Beat flash overlay (scaled by drive) ──────────────────────
+  if (beatFlash > 0.01 && driveScale > 0.05) {
     const [r, g, b] = hexRgb(pal[2]);
-    ctx.fillStyle = `rgba(${r},${g},${b},${beatFlash * 0.7})`;
+    ctx.fillStyle = `rgba(${r},${g},${b},${beatFlash * 0.7 * driveScale})`;
     ctx.fillRect(0, 0, W, H);
   }
   
-  // ── Exposure glow (white center flash on FX4/8/16) ─────────
-  if (exposureOpacity > 0.005) {
+  // ── Exposure glow (white center flash — scaled by drive) ─────
+  if (exposureOpacity > 0.005 && driveScale > 0.1) {
     const minD = Math.min(W, H);
+    const eo = exposureOpacity * driveScale;
     const expGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, minD * 0.5);
-    expGrad.addColorStop(0, `rgba(255,255,255,${exposureOpacity * 0.8})`);
-    expGrad.addColorStop(0.4, `rgba(255,255,255,${exposureOpacity * 0.3})`);
+    expGrad.addColorStop(0, `rgba(255,255,255,${eo * 0.8})`);
+    expGrad.addColorStop(0.4, `rgba(255,255,255,${eo * 0.3})`);
     expGrad.addColorStop(1, 'transparent');
     ctx.fillStyle = expGrad;
     ctx.fillRect(0, 0, W, H);
@@ -2131,9 +2139,9 @@ function render() {
     ctx.fillRect(0, 0, W, H);
   }
   
-  // ── Strobo overlay (LAST — on top of everything incl. vignette) ──
+  // ── Strobo overlay (LAST — scaled by drive) ──
   if (stroboFlash > 0.01) {
-    ctx.fillStyle = `rgba(255,255,255,${stroboFlash})`;
+    ctx.fillStyle = `rgba(255,255,255,${stroboFlash * driveScale})`;
     ctx.fillRect(0, 0, W, H);
   }
   
@@ -3082,8 +3090,8 @@ function tick() {
 function toggleBeatCut() {
   beatCutEnabled = !beatCutEnabled;
   beatCutSequenceIdx = 0;
-  // Reset active set to all loaded presets when enabling
   if (beatCutEnabled) {
+    beatCutCountdown = beatCutInterval; // start fresh, no immediate cut
     beatCutActive = new Set(PRESETS.map((_, i) => i).filter(i => presetReady[i]));
   }
   updatePresetGrid();
@@ -3091,6 +3099,7 @@ function toggleBeatCut() {
 
 function setBeatCutInterval(n) {
   beatCutInterval = n;
+  beatCutCountdown = Math.min(beatCutCountdown, n); // don't wait longer than new interval
   updatePresetGrid();
 }
 
@@ -3134,7 +3143,7 @@ function updateColorDots() {
 function toggleStrobo() {
   stroboActive = !stroboActive;
   manualStrobo = stroboActive;
-  stroboEnvelope = 0.85; // full brightness for manual
+  stroboEnvelope = 0.85 * driveScale; // manual strobo scaled by drive
   document.getElementById('strbBtn').className = 'pgrid' + (stroboActive ? ' cut-on' : '');
 }
 
@@ -3249,21 +3258,16 @@ document.addEventListener('keydown', (e) => {
       toggleStrobo();
       break;
     case 'KeyB':
-      // Toggle beat cut
-      beatCutEnabled = !beatCutEnabled;
-      beatCutSequenceIdx = 0;
-      updatePresetGrid();
+      toggleBeatCut();
       break;
     case 'Digit2':
-      beatCutInterval = 2;
-      updatePresetGrid();
+      setBeatCutInterval(2);
       break;
     case 'Digit4':
-      beatCutInterval = 4;
-      updatePresetGrid();
+      setBeatCutInterval(4);
       break;
     case 'Digit8':
-      beatCutInterval = 8;
+      setBeatCutInterval(8);
       updatePresetGrid();
       break;
     case 'Digit1': case 'Digit3':
@@ -3383,23 +3387,14 @@ function connectCDJ() {
           // Video speed sync
           if (videoLoaded) updateVideoSpeed(bpm);
           
-          // Beat cut — BAR ALIGNED using CDJ position
+          // Beat cut — COUNTDOWN + BAR ALIGNED (sacred: exact timing)
           if (beatCutEnabled) {
-            let shouldCut = false;
-            if (beatCutInterval === 2) {
-              // CUT 2: downbeat + beat 3
-              shouldCut = (barBeat === 1 || barBeat === 3);
-            } else if (beatCutInterval === 4) {
-              // CUT 4: every downbeat
-              shouldCut = isDownbeat;
-            } else if (beatCutInterval === 8) {
-              // CUT 8: every other downbeat
-              shouldCut = isDownbeat && (bar8 === 0);
-            } else {
-              // Fallback
-              shouldCut = beatIndex % beatCutInterval === 0;
+            beatCutCountdown--;
+            // Only cut on downbeat AND when countdown expired
+            if (beatCutCountdown <= 0 && isDownbeat) {
+              beatCutNext();
+              beatCutCountdown = beatCutInterval;
             }
-            if (shouldCut) beatCutNext();
           }
           
           // TYPO FX on CDJ beat
@@ -3443,6 +3438,7 @@ function connectCDJ() {
 
 // Auto-connect on page load (silent if bridge not running)
 connectCDJ();
+applyDrive(masterDrive); // initialize drive state
 
 // ═══════════════════════════════════════════════════════════════
 // Communication — BroadcastChannel (local) + WebSocket (remote)
@@ -3513,8 +3509,15 @@ function handleCommand(msg) {
       handlePresetClick(msg.idx);
       break;
     case 'beatcut':
-      if (msg.enabled !== undefined) { beatCutEnabled = msg.enabled; beatCutSequenceIdx = 0; }
-      if (msg.interval) beatCutInterval = msg.interval;
+      if (msg.enabled !== undefined) {
+        beatCutEnabled = msg.enabled;
+        beatCutSequenceIdx = 0;
+        if (msg.enabled) beatCutCountdown = beatCutInterval; // fresh start
+      }
+      if (msg.interval) {
+        beatCutInterval = msg.interval;
+        beatCutCountdown = Math.min(beatCutCountdown, msg.interval);
+      }
       if (beatCutEnabled && msg.togglePreset !== undefined) {
         if (beatCutActive.has(msg.togglePreset)) {
           if (beatCutActive.size > 1) beatCutActive.delete(msg.togglePreset);
