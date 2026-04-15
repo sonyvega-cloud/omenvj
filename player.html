@@ -40,11 +40,11 @@
     height: 100vh;
     object-fit: cover;
     opacity: 0;
-    will-change: transform, opacity;
     backface-visibility: hidden;
   }
   #videoLayer video.active {
     opacity: 1;
+    will-change: transform, opacity;
   }
 
   /* ── Vignette over video ─────────────────────────────── */
@@ -1394,9 +1394,32 @@ function updateAutopilot() {
   
   // When beat cut is running, DON'T switch presets directly
   // Beat cut countdown is the MASTER of switch timing
-  // Autopilot only affects the POOL (which presets are available)
-  if (beatCutEnabled) return;
+  // But AUTO COLOR still fires on mood change!
   
+  // ── Sub-feature: AUTO COLOR (change palette on mood switch) ──
+  if (autoColorEnabled) {
+    const moodPalettes = {
+      'AMBIENT': [1, 4],
+      'LISTENING': [1, 4],
+      'BUILDING': [1, 2],
+      'GROOVE': [0, 3],
+      'DROP': [3, 4],
+      'PEAK': [0, 3, 4],
+    };
+    const moodChoices = moodPalettes[mood] || [0];
+    const poolChoices = moodChoices.filter(c => colorPool.has(c));
+    const choices = poolChoices.length > 0 ? poolChoices : [...colorPool];
+    if (choices.length > 0) {
+      const colorFiltered = choices.filter(c => c !== colorIndex);
+      const newColor = colorFiltered.length > 0 
+        ? colorFiltered[Math.floor(Math.random() * colorFiltered.length)]
+        : choices[0];
+      setColor(newColor);
+    }
+  }
+  
+  if (beatCutEnabled) return; // block preset switch only, color already handled
+
   let targetCat = 2;
   switch (mood) {
     case 'AMBIENT':
@@ -1426,30 +1449,6 @@ function updateAutopilot() {
   if (!pick) return;
   
   switchToPreset(pick.idx);
-  
-  // ── Sub-feature: AUTO COLOR (change palette on mood switch) ──
-  if (autoColorEnabled) {
-    const moodPalettes = {
-      'AMBIENT': [1, 4],
-      'LISTENING': [1, 4],
-      'BUILDING': [1, 2],
-      'GROOVE': [0, 3],
-      'DROP': [3, 4],
-      'PEAK': [0, 3, 4],
-    };
-    // Intersect mood palette with user's color pool
-    const moodChoices = moodPalettes[mood] || [0];
-    const poolChoices = moodChoices.filter(c => colorPool.has(c));
-    // Fallback: any color in pool
-    const choices = poolChoices.length > 0 ? poolChoices : [...colorPool];
-    if (choices.length > 0) {
-      const colorFiltered = choices.filter(c => c !== colorIndex);
-      const newColor = colorFiltered.length > 0 
-        ? colorFiltered[Math.floor(Math.random() * colorFiltered.length)]
-        : choices[0];
-      setColor(newColor);
-    }
-  }
   
   updatePresetGrid();
   autopilotCooldown = AUTOPILOT_MIN_INTERVAL;
@@ -1735,19 +1734,19 @@ function updateVideoVisibility() {
   
   // ── Video A/B toggle (only when preset or AB changes) ──
   if (activePreset !== _lastActivePreset || currentAB !== _lastAB) {
-    // Deactivate previous
+    // Deactivate + PAUSE previous (release GPU decode)
     if (_lastActivePreset >= 0 && _lastActivePreset !== activePreset) {
       const pA = document.getElementById(`vid${_lastActivePreset}a`);
       const pB = document.getElementById(`vid${_lastActivePreset}b`);
-      if (pA) { pA.classList.remove('active'); }
-      if (pB) { pB.classList.remove('active'); }
+      if (pA) { pA.classList.remove('active'); pA.pause(); }
+      if (pB) { pB.classList.remove('active'); pB.pause(); }
     }
     // Activate current — set transform BEFORE adding .active (no snap)
     if (presetReady[activePreset] && PRESETS[activePreset]?.videoA) {
       const cA = document.getElementById(`vid${activePreset}a`);
       const cB = document.getElementById(`vid${activePreset}b`);
-      if (cA) { cA.style.transform = _lastVideoTransform; cA.classList.toggle('active', currentAB === 0); }
-      if (cB) { cB.style.transform = _lastVideoTransform; cB.classList.toggle('active', currentAB === 1); }
+      if (cA) { cA.style.transform = _lastVideoTransform; cA.play().catch(()=>{}); cA.classList.toggle('active', currentAB === 0); }
+      if (cB) { cB.style.transform = _lastVideoTransform; cB.play().catch(()=>{}); cB.classList.toggle('active', currentAB === 1); }
     }
     _lastActivePreset = activePreset;
     _lastAB = currentAB;
@@ -2005,8 +2004,12 @@ function updateVideoLayer() {
   const currentPreset = PRESETS[activePreset];
   const hasVideo = currentPreset && currentPreset.videoA != null;
   
-  // ── Auto-rotation — scaled by drive ──
-  compassTarget += (smoothBass * 0.003 - smoothMid * 0.001) * driveScale;
+  // ── Auto-rotation — friction-based (never accumulates forever) ──
+  const drift = (smoothBass * 0.003 - smoothMid * 0.001) * driveScale;
+  compassTarget += drift;
+  compassTarget *= 0.998; // FRICTION: slowly returns to 0 (half-life ~5 sec)
+  // CAP: max ±0.5 rad (~28°) — prevents runaway rotation
+  compassTarget = Math.max(-0.5, Math.min(0.5, compassTarget));
   compassAngle += (compassTarget - compassAngle) * 0.015;
   
   const isCamera = currentPreset && currentPreset.type === 'camera';
@@ -2027,8 +2030,8 @@ function updateVideoLayer() {
   const videoPulse = 1.0 + (pulseScale - 1.0) * 0.25;
   const videoScale = (0.95 + smoothBass * 0.04 * driveScale) * pinchScale * videoPulse;
   
-  // Rotation: always smooth, same angle for every video (no snap on cut)
-  videoCompassAngle = videoCompassAngle * 0.97 + compassAngle * 0.03;
+  // Rotation: smooth follow, faster than before (was 0.03)
+  videoCompassAngle = videoCompassAngle * 0.92 + compassAngle * 0.08;
   
   const transform = `translate(-50%, -50%) scale(${videoScale.toFixed(4)}) rotate(${videoCompassAngle.toFixed(4)}rad)`;
   _lastVideoTransform = transform;
