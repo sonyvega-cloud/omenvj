@@ -2510,21 +2510,25 @@ function getLogoImage(url) {
 }
 
 // ── TYPO placeholder system ──────────────────────────────────────
-const TYPO_WORDS = ['BASS', 'DROP', 'TECHNO', 'OMEN', 'NIGHT', 'ENERGY', 'PULSE', 'MOVE', 'DEEP', 'DARK', 'ACID', 'RAVE', 'LOVE', 'UNITY', 'FLOW', 'HEAT'];
-let typoRandomWord = TYPO_WORDS[0];
+const TYPO_WORDS_DEFAULT = ['BASS', 'DROP', 'TECHNO', 'OMEN', 'NIGHT', 'ENERGY', 'PULSE', 'MOVE', 'DEEP', 'DARK', 'ACID', 'RAVE', 'LOVE', 'UNITY', 'FLOW', 'HEAT'];
+let typoWords = TYPO_WORDS_DEFAULT;
+let typoRandomWord = typoWords[0];
 let typoRandomIdx = 0;
 
-// Cycle random word on beat (called from typoOnBeat)
 function typoNextRandom() {
-  typoRandomIdx = (typoRandomIdx + 1) % TYPO_WORDS.length;
-  typoRandomWord = TYPO_WORDS[typoRandomIdx];
+  if (typoWords.length === 0) return;
+  typoRandomIdx = (typoRandomIdx + 1) % typoWords.length;
+  typoRandomWord = typoWords[typoRandomIdx];
 }
 
 // Event config — loaded from localStorage
-let typoEventConfig = { dj: '', event: '', schedule: [] };
+let typoEventConfig = { dj: '', event: '', schedule: [], words: [] };
 try {
   const ec = localStorage.getItem('omen_event');
-  if (ec) typoEventConfig = JSON.parse(ec);
+  if (ec) {
+    typoEventConfig = JSON.parse(ec);
+    if (typoEventConfig.words && typoEventConfig.words.length > 0) typoWords = typoEventConfig.words;
+  }
 } catch(e) {}
 
 function getDayString() {
@@ -3643,8 +3647,17 @@ function handleCommand(msg) {
     case 'event_updated': {
       try {
         const ec = localStorage.getItem('omen_event');
-        if (ec) typoEventConfig = JSON.parse(ec);
-        console.log('[HOT-RELOAD] Event config updated:', typoEventConfig.event, typoEventConfig.dj);
+        if (ec) {
+          typoEventConfig = JSON.parse(ec);
+          if (typoEventConfig.words && typoEventConfig.words.length > 0) {
+            typoWords = typoEventConfig.words;
+          } else {
+            typoWords = TYPO_WORDS_DEFAULT;
+          }
+          typoRandomIdx = 0;
+          typoRandomWord = typoWords[0];
+        }
+        console.log('[HOT-RELOAD] Event config updated:', typoEventConfig.event, 'words:', typoWords.length);
       } catch(e) {}
       break;
     }

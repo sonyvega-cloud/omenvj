@@ -162,6 +162,10 @@
       <span class="field-label">SCHEDULE <span style="font-size:8px; opacity:0.3;">(one per line: HH:MM DJ NAME)</span></span>
       <textarea class="field-input" id="eventSchedule" rows="4" placeholder="22:00 ARTBAT&#10;00:00 ANYMA&#10;02:00 TALE OF US" style="font-size:11px; font-family:monospace;" oninput="saveEventConfig()"></textarea>
     </div>
+    <div style="padding:4px 0;">
+      <span class="field-label">WORD LIST <span style="font-size:8px; opacity:0.3;">({random} cycles through these on beat, one per line)</span></span>
+      <textarea class="field-input" id="eventWords" rows="3" placeholder="BASS&#10;DROP&#10;TECHNO&#10;OMEN&#10;RAVE" style="font-size:11px; font-family:monospace;" oninput="saveEventConfig()"></textarea>
+    </div>
   </div>
 
   <div class="status-bar">
@@ -823,11 +827,13 @@ async function handleUpload(ab) {
 // ═══════════════════════════════════════════════════════════════
 
 function saveEventConfig() {
+  const wordsRaw = document.getElementById('eventWords')?.value || '';
   const config = {
     event: document.getElementById('eventName')?.value.trim() || '',
     dj: document.getElementById('eventDJ')?.value.trim() || '',
     countdownTo: document.getElementById('eventCountdown')?.value || null,
     schedule: parseSchedule(document.getElementById('eventSchedule')?.value || ''),
+    words: wordsRaw.split('\n').map(w => w.trim()).filter(w => w),
   };
   localStorage.setItem('omen_event', JSON.stringify(config));
   // Hot-reload to player
@@ -856,6 +862,10 @@ function loadEventConfig() {
     if (cdEl) cdEl.value = config.countdownTo || '';
     if (schEl && config.schedule) {
       schEl.value = config.schedule.map(s => s.time + ' ' + s.dj).join('\n');
+    }
+    const wordsEl = document.getElementById('eventWords');
+    if (wordsEl && config.words && config.words.length > 0) {
+      wordsEl.value = config.words.join('\n');
     }
   } catch(e) {}
 }
