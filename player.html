@@ -293,10 +293,9 @@
 <!-- ── Setup: Single start button ──────────────────── -->
 <div id="setup">
   <div class="setup-box">
-    <h1>ØMEN</h1>
-    <div class="sub">Visual Engine</div>
+    <img src="https://cdn.omenvj.com/logo.png" alt="ØMEN" style="width: min(280px, 50vw); margin-bottom: 1rem; opacity: 0.9;">
     
-    <button class="source-btn" onclick="startAudio('mic')" style="margin-top:2rem;">
+    <button class="source-btn" onclick="startAudio('mic')" style="margin-top:1.5rem;">
       <div class="label">▶ START ENGINE</div>
       <div class="desc">Default audio input (change from controller)</div>
     </button>
@@ -2431,7 +2430,6 @@ function getLogoImage(url) {
     return (cached.complete && cached.naturalWidth > 0) ? cached : null;
   }
   const img = new Image();
-  img.crossOrigin = 'anonymous';
   img._failed = false;
   img.onerror = () => { img._failed = true; console.warn('[LOGO] Failed to load:', url); };
   img.onload = () => { console.log('[LOGO] Loaded:', url, img.naturalWidth + 'x' + img.naturalHeight); };
