@@ -2425,12 +2425,19 @@ function typoOnBeat() {
 const _logoCache = {};
 function getLogoImage(url) {
   if (!url) return null;
-  if (_logoCache[url]) return _logoCache[url].complete ? _logoCache[url] : null;
+  if (_logoCache[url]) {
+    const cached = _logoCache[url];
+    if (cached._failed) return null; // load failed
+    return (cached.complete && cached.naturalWidth > 0) ? cached : null;
+  }
   const img = new Image();
   img.crossOrigin = 'anonymous';
+  img._failed = false;
+  img.onerror = () => { img._failed = true; console.warn('[LOGO] Failed to load:', url); };
+  img.onload = () => { console.log('[LOGO] Loaded:', url, img.naturalWidth + 'x' + img.naturalHeight); };
   img.src = url;
   _logoCache[url] = img;
-  return null; // loading
+  return null;
 }
 
 function renderTypo(pal) {
@@ -2480,8 +2487,8 @@ function renderTypo(pal) {
     if (img) {
       const logoSize = (preset.logoSize || 40) / 100;
       const scale = typoScale * beatPulse;
-      const imgW = Math.min(W * logoSize, img.width) * scale;
-      const imgH = imgW * (img.height / img.width);
+      const imgW = Math.min(W * logoSize, img.naturalWidth) * scale;
+      const imgH = imgW * (img.naturalHeight / img.naturalWidth);
       
       // Glow
       if (typoFlash > 0.15 && fx !== 'invert') {
@@ -2503,6 +2510,12 @@ function renderTypo(pal) {
       if (invertActive) { ctx.filter = 'invert(1)'; }
       ctx.drawImage(img, -imgW/2, -imgH/2, imgW, imgH);
       ctx.filter = 'none';
+    } else {
+      // Loading or failed — show preset name as fallback
+      ctx.font = `300 ${Math.min(W, H) * 0.05}px system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = `rgba(${rP},${gP},${bP},0.3)`;
+      ctx.fillText('loading logo...', 0, 0);
     }
     ctx.shadowBlur = 0;
     ctx.restore();
