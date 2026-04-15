@@ -448,10 +448,17 @@ let driveScale = 0.70;     // 0.0-1.0 derived from drive
 
 // Map drive 0-100 to all parameters
 function applyDrive(d) {
+  const oldScale = driveScale;
   masterDrive = d;
   const n = d / 100;
   driveScale = n;
   videoSpeedMultiplier = 0.7 + n * 1.3;
+  
+  // Instant jump fxIntensity when drive increases significantly
+  if (n > oldScale + 0.1) {
+    fxIntensity = n; // snap up immediately
+  }
+  
   updateDrivePool();
 }
 
@@ -1125,18 +1132,16 @@ function onBeatTick() {
 
 // ── Silence detection → dampen FX ─────────────────────────────
 function updateSilenceDampen() {
-  // Drive is HARD CEILING — fxIntensity can never exceed driveScale
   const target = Math.min(fxSliderValue * driveScale, driveScale);
   if (smoothVol > SILENCE_THRESHOLD) {
     silenceTimer = 0;
-    fxIntensity = fxIntensity * 0.9 + target * 0.1;
+    fxIntensity = fxIntensity * 0.75 + target * 0.25; // was 0.9/0.1 — 2.5× faster
   } else {
     silenceTimer++;
     if (silenceTimer > SILENCE_DAMPEN_AFTER) {
-      fxIntensity = fxIntensity * 0.95 + (0.15 * target) * 0.05;
+      fxIntensity = fxIntensity * 0.92 + (0.15 * target) * 0.08;
     }
   }
-  // Hard cap
   fxIntensity = Math.min(fxIntensity, driveScale);
 }
 
@@ -1863,7 +1868,9 @@ function isCamPresetLive(idx) {
 
 function getLoadedPresets() {
   return PRESETS.map((_, i) => i).filter(i => {
-    if (!presetReady[i] || !beatCutActive.has(i)) return false;
+    if (!presetReady[i]) return false;
+    if (!beatCutActive.has(i)) return false;  // user X in beat cut mode
+    if (!presetPool.has(i)) return false;     // drive auto-deselect + user X in autopilot
     const theme = getPresetTheme(PRESETS[i]);
     if (!activeThemes[theme]) return false;
     if (!isCamPresetLive(i)) return false;
@@ -3092,7 +3099,7 @@ function tick() {
     const dbg = document.getElementById('debugDisplay');
     if (dbg) {
       const cdjInfo = cdjConnected ? ` CDJ:${cdjBarBeat}/4 bar:${Math.floor((cdjBeatTotal-1)/4)%4+1}/4` : '';
-      dbg.textContent = `${PRESETS[activePreset]?.name||'?'} | ${mood} cut:${beatCutInterval}${cdjInfo}`;
+      dbg.textContent = `${PRESETS[activePreset]?.name||'?'} | ${mood} D:${masterDrive}% fx:${fxIntensity.toFixed(2)} cut:${beatCutInterval}${cdjInfo}`;
     }
     
     // Beat dots
