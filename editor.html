@@ -815,46 +815,67 @@ async function handleUpload(ab) {
 
   if (!EDITOR_WORKER) { nameInput.value = fileName; statusEl.textContent = 'manual upload'; return; }
 
-  statusEl.textContent = `0% of ${sizeMB}MB`;
+  console.log('[UPLOAD] Starting:', fileName, sizeMB + 'MB', 'to', EDITOR_WORKER);
+  statusEl.textContent = '0% of ' + sizeMB + 'MB';
   statusEl.className = 'upload-status uploading';
 
+  // Step 1: Test worker is reachable
+  try {
+    console.log('[UPLOAD] Testing worker...');
+    const test = await fetch(EDITOR_WORKER, { method: 'GET', mode: 'cors' });
+    console.log('[UPLOAD] Worker test:', test.status, await test.text());
+  } catch(e) {
+    console.error('[UPLOAD] Worker unreachable:', e);
+    statusEl.textContent = 'worker unreachable: ' + e.message;
+    statusEl.className = 'upload-status error';
+    return;
+  }
+
+  // Step 2: Upload with XHR for progress
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('PUT', EDITOR_WORKER + '/upload/' + fileName);
+    const url = EDITOR_WORKER + '/upload/' + fileName;
+    console.log('[UPLOAD] PUT', url);
+    xhr.open('PUT', url);
     xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
         const pct = Math.round(e.loaded / e.total * 100);
-        statusEl.textContent = `${pct}% of ${sizeMB}MB`;
+        statusEl.textContent = pct + '% of ' + sizeMB + 'MB';
+        console.log('[UPLOAD] Progress:', pct + '%');
       }
     };
 
     xhr.onload = () => {
+      console.log('[UPLOAD] Done:', xhr.status, xhr.responseText.slice(0, 100));
       if (xhr.status >= 200 && xhr.status < 300) {
         nameInput.value = fileName;
         statusEl.textContent = '✓ ' + sizeMB + 'MB';
         statusEl.className = 'upload-status';
       } else {
-        statusEl.textContent = 'error ' + xhr.status + ': ' + xhr.responseText.slice(0, 50);
+        statusEl.textContent = 'error ' + xhr.status;
         statusEl.className = 'upload-status error';
       }
       resolve();
     };
 
-    xhr.onerror = () => {
-      statusEl.textContent = 'network error — worker down?';
+    xhr.onerror = (e) => {
+      console.error('[UPLOAD] XHR error:', e);
+      statusEl.textContent = 'CORS/network error';
       statusEl.className = 'upload-status error';
       resolve();
     };
 
     xhr.ontimeout = () => {
-      statusEl.textContent = 'timeout — file too large?';
+      console.error('[UPLOAD] Timeout');
+      statusEl.textContent = 'timeout';
       statusEl.className = 'upload-status error';
       resolve();
     };
 
-    xhr.timeout = 300000; // 5 min timeout for large files
+    xhr.timeout = 300000;
+    console.log('[UPLOAD] Sending', file.size, 'bytes...');
     xhr.send(file);
   });
 }
