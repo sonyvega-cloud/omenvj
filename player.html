@@ -1392,6 +1392,11 @@ function updateAutopilot() {
   
   lastAutopilotMood = mood;
   
+  // When beat cut is running, DON'T switch presets directly
+  // Beat cut countdown is the MASTER of switch timing
+  // Autopilot only affects the POOL (which presets are available)
+  if (beatCutEnabled) return;
+  
   let targetCat = 2;
   switch (mood) {
     case 'AMBIENT':
@@ -1814,8 +1819,9 @@ const SWITCH_MIN_MS = 300; // minimum 300ms between switches
 function switchToPreset(idx) {
   if (!presetReady[idx]) return;
   
-  // Theme block ONLY during autopilot/beatcut — manual clicks always pass
+  // Pool + theme block during autopilot/beatcut — manual clicks always pass
   if (autopilotEnabled || beatCutEnabled) {
+    if (!presetPool.has(idx)) return; // ILLEGAL: not in drive pool
     const p = PRESETS[idx];
     const theme = getPresetTheme(p);
     if (!activeThemes[theme]) return;
@@ -3630,7 +3636,7 @@ function handleCommand(msg) {
       }
       break;
     case 'drive':
-      applyDrive(msg.value || 70);
+      applyDrive(msg.value ?? 70);
       break;
     case 'autofeature':
       if (msg.feature === 'energy') autoEnergyEnabled = !autoEnergyEnabled;
