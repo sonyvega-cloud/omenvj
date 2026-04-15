@@ -1060,24 +1060,22 @@ function onBeatTick() {
   const bar16 = beatIndex % 16;
   
   // ── FX hierarchy (iOS: fx16 > fx8 > fx4 > every beat) ──────
+  // driveScale (0.05-1.0) scales ALL visual intensity
+  const ds = driveScale;
   if (bar16 === 0) {
-    // FX16: full intensity flash + exposure + big pulse
     beatFlash = 1.0 * fxIntensity;
-    exposureOpacity = 0.4 * fxIntensity;
-    pulseScale = 1.35 + smoothBass * 0.4;
+    exposureOpacity = 0.4 * fxIntensity * ds;
+    pulseScale = 1.0 + 0.35 * ds + smoothBass * 0.4 * ds;
   } else if (bar8 === 0) {
-    // FX8: strong flash
     beatFlash = 0.75 * fxIntensity;
-    exposureOpacity = 0.2 * fxIntensity;
-    pulseScale = 1.25 + smoothBass * 0.3;
+    exposureOpacity = 0.2 * fxIntensity * ds;
+    pulseScale = 1.0 + 0.25 * ds + smoothBass * 0.3 * ds;
   } else if (bar4 === 0) {
-    // FX4: medium flash
     beatFlash = 0.5 * fxIntensity;
-    exposureOpacity = 0.08 * fxIntensity;
-    pulseScale = 1.15 + smoothBass * 0.2;
+    exposureOpacity = 0.08 * fxIntensity * ds;
+    pulseScale = 1.0 + 0.15 * ds + smoothBass * 0.2 * ds;
   } else {
-    // Every beat: subtle pulse only
-    pulseScale = 1.05 + smoothBass * 0.1;
+    pulseScale = 1.0 + 0.05 * ds + smoothBass * 0.1 * ds;
   }
   
   // ── Strobo (beat flash × envelope) ───────────────────────────
@@ -2140,7 +2138,7 @@ function render() {
   }
   
   // Decay
-  beatFlash *= 0.82;
+  beatFlash *= 0.7 + driveScale * 0.15; // drive 0%→decay 0.70 (fast), 100%→0.85 (slow)
   exposureOpacity *= 0.88;
   camPulseScale *= 0.85;
   // Smooth rotation toward target
@@ -3002,7 +3000,7 @@ function tick() {
       if (!beatClockTimer) {
         if (beat) {
           beatFlash = 1.0 * fxIntensity;
-          pulseScale = 1.25 + smoothBass * 0.3;
+          pulseScale = 1.0 + 0.25 * driveScale + smoothBass * 0.3 * driveScale;
           beatCount++;
           moodBeatCounter++;
           // Camera pulse on raw beat too
@@ -3361,19 +3359,20 @@ function connectCDJ() {
           const bar8 = beatIndex % 8;
           const bar16 = beatIndex % 16;
           
+          const ds = driveScale;
           if (bar16 === 0 || (isDownbeat && bar8 === 0)) {
             beatFlash = 1.0 * fxIntensity;
-            exposureOpacity = 0.4 * fxIntensity;
-            pulseScale = 1.35 + smoothBass * 0.4;
+            exposureOpacity = 0.4 * fxIntensity * ds;
+            pulseScale = 1.0 + 0.35 * ds + smoothBass * 0.4 * ds;
           } else if (isDownbeat) {
             beatFlash = 0.75 * fxIntensity;
-            exposureOpacity = 0.15 * fxIntensity;
-            pulseScale = 1.25 + smoothBass * 0.3;
+            exposureOpacity = 0.15 * fxIntensity * ds;
+            pulseScale = 1.0 + 0.25 * ds + smoothBass * 0.3 * ds;
           } else if (barBeat === 3) {
             beatFlash = 0.4 * fxIntensity;
-            pulseScale = 1.12 + smoothBass * 0.15;
+            pulseScale = 1.0 + 0.12 * ds + smoothBass * 0.15 * ds;
           } else {
-            pulseScale = 1.05 + smoothBass * 0.1;
+            pulseScale = 1.0 + 0.05 * ds + smoothBass * 0.1 * ds;
           }
           
           // Strobo
