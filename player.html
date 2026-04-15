@@ -450,12 +450,35 @@ let driveScale = 0.70;     // 0.0-1.0 derived from drive
 function applyDrive(d) {
   masterDrive = d;
   const n = d / 100;
-  
-  // Drive scale: 0 = ZERO, 100 = full
   driveScale = n;
-  
-  // Video speed: 0.7x at drive 0, 2.0x at drive 100
   videoSpeedMultiplier = 0.7 + n * 1.3;
+  updateDrivePool();
+}
+
+// Auto-select presets by energy category based on drive
+// User manual exclusions (X) ALWAYS have priority
+function updateDrivePool() {
+  const n = masterDrive / 100;
+  let maxCat;
+  if (n < 0.30) maxCat = 1;       // 0-30%: CAT 1 (ambient)
+  else if (n < 0.65) maxCat = 2;  // 30-65%: CAT 1+2 (ambient+building)
+  else maxCat = 3;                // 65-100%: all
+
+  const newPool = new Set();
+  PRESETS.forEach((p, i) => {
+    if (!presetReady[i]) return;
+    if (userExcludedPresets.has(i)) return; // user X = always out
+    if ((p.energy || 3) <= maxCat) newPool.add(i);
+  });
+  // Fallback: at least 1 preset
+  if (newPool.size === 0) {
+    PRESETS.forEach((p, i) => { if (presetReady[i] && !userExcludedPresets.has(i)) newPool.add(i); });
+  }
+  if (newPool.size === 0) {
+    PRESETS.forEach((p, i) => { if (presetReady[i]) newPool.add(i); });
+  }
+  presetPool = newPool;
+  updatePresetGrid();
 }
 let fxSliderValue = 1.0;   // user-set FX intensity (slider)
 let exposureOpacity = 0;   // white center glow on beat
@@ -513,6 +536,7 @@ loadPresets();
 let videoLoaded = false;
 let presetReady = new Array(PRESETS.length).fill(false);
 let presetPool = new Set(PRESETS.map((_, i) => i)); // which presets autopilot can use
+let userExcludedPresets = new Set(); // presets user manually X'd out (priority over drive)
 let activePreset = 0;
 let currentAB = 0;
 
@@ -1059,15 +1083,15 @@ function onBeatTick() {
   const ds = driveScale;
   if (bar16 === 0) {
     beatFlash = 1.0 * fxIntensity;
-    exposureOpacity = 0.4 * fxIntensity * ds;
+    exposureOpacity = 0.4 * fxIntensity;
     pulseScale = 1.0 + 0.35 * ds + smoothBass * 0.4 * ds;
   } else if (bar8 === 0) {
     beatFlash = 0.75 * fxIntensity;
-    exposureOpacity = 0.2 * fxIntensity * ds;
+    exposureOpacity = 0.2 * fxIntensity;
     pulseScale = 1.0 + 0.25 * ds + smoothBass * 0.3 * ds;
   } else if (bar4 === 0) {
     beatFlash = 0.5 * fxIntensity;
-    exposureOpacity = 0.08 * fxIntensity * ds;
+    exposureOpacity = 0.08 * fxIntensity;
     pulseScale = 1.0 + 0.15 * ds + smoothBass * 0.2 * ds;
   } else {
     pulseScale = 1.0 + 0.05 * ds + smoothBass * 0.1 * ds;
@@ -1324,10 +1348,12 @@ function updateAutopilot() {
         const wasOff = !beatCutEnabled;
         beatCutEnabled = true;
         beatCutInterval = autoInterval;
-        // If freshly enabled, start countdown at interval (no immediate cut)
-        if (wasOff) beatCutCountdown = autoInterval;
-        // If interval shortened, cap countdown
-        else beatCutCountdown = Math.min(beatCutCountdown, autoInterval);
+        if (wasOff) {
+          beatCutWaitForDownbeat = cdjConnected;
+          beatCutCountdown = autoInterval;
+        } else {
+          beatCutCountdown = Math.min(beatCutCountdown, autoInterval);
+        }
         // Pool = ready presets from active themes, respecting presetPool exclusions
         const allActive = PRESETS.map((p, i) => i).filter(i => {
           if (!presetReady[i]) return false;
@@ -1934,12 +1960,16 @@ function handlePresetClick(idx) {
   if (!presetReady[idx]) return;
   
   if (autopilotEnabled) {
-    // Toggle preset in/out of autopilot pool
+    // Toggle preset in/out of autopilot pool — track user intent
     if (presetPool.has(idx)) {
       const remaining = [...presetPool].filter(i => i !== idx);
-      if (remaining.length >= 1) presetPool.delete(idx);
+      if (remaining.length >= 1) {
+        presetPool.delete(idx);
+        userExcludedPresets.add(idx); // user explicitly excluded
+      }
     } else {
       presetPool.add(idx);
+      userExcludedPresets.delete(idx); // user explicitly included
     }
   } else if (beatCutEnabled) {
     // Toggle in/out of beat cut pool
@@ -2108,20 +2138,19 @@ function render() {
     renderVideoRings(pal);
   }
   
-  // ── Beat flash overlay (scaled by drive) ──────────────────────
-  if (beatFlash > 0.01 && driveScale > 0.05) {
+  // ── Beat flash overlay ──────────────────────────────────────
+  if (beatFlash > 0.01) {
     const [r, g, b] = hexRgb(pal[2]);
-    ctx.fillStyle = `rgba(${r},${g},${b},${beatFlash * 0.7 * driveScale})`;
+    ctx.fillStyle = `rgba(${r},${g},${b},${(beatFlash * 0.7).toFixed(3)})`;
     ctx.fillRect(0, 0, W, H);
   }
   
-  // ── Exposure glow (white center flash — scaled by drive) ─────
-  if (exposureOpacity > 0.005 && driveScale > 0.1) {
+  // ── Exposure glow ─────────────────────────────────────────
+  if (exposureOpacity > 0.005) {
     const minD = Math.min(W, H);
-    const eo = exposureOpacity * driveScale;
     const expGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, minD * 0.5);
-    expGrad.addColorStop(0, `rgba(255,255,255,${eo * 0.8})`);
-    expGrad.addColorStop(0.4, `rgba(255,255,255,${eo * 0.3})`);
+    expGrad.addColorStop(0, `rgba(255,255,255,${exposureOpacity * 0.8})`);
+    expGrad.addColorStop(0.4, `rgba(255,255,255,${exposureOpacity * 0.3})`);
     expGrad.addColorStop(1, 'transparent');
     ctx.fillStyle = expGrad;
     ctx.fillRect(0, 0, W, H);
@@ -2139,9 +2168,9 @@ function render() {
     ctx.fillRect(0, 0, W, H);
   }
   
-  // ── Strobo overlay (LAST — scaled by drive) ──
+  // ── Strobo overlay (drive already in stroboEnvelope) ──
   if (stroboFlash > 0.01) {
-    ctx.fillStyle = `rgba(255,255,255,${stroboFlash * driveScale})`;
+    ctx.fillStyle = `rgba(255,255,255,${stroboFlash})`;
     ctx.fillRect(0, 0, W, H);
   }
   
@@ -3011,11 +3040,12 @@ function tick() {
           pulseScale = 1.0 + 0.25 * driveScale + smoothBass * 0.3 * driveScale;
           beatCount++;
           moodBeatCounter++;
-          // Camera pulse on raw beat too
           if (PRESETS[activePreset]?.type === 'camera') {
             camPulseScale = 1.0;
           }
-          // TYPO: fire FX on raw beat (no TAP BPM needed)
+          // Strobo on raw beat
+          if (stroboActive) { stroboBeatToggle = !stroboBeatToggle; stroboFlash = stroboBeatToggle ? stroboEnvelope : 0; }
+          // TYPO: fire FX on raw beat
           typoFlash = 1.0;
           beatIndex++;
           typoOnBeat();
@@ -3061,7 +3091,8 @@ function tick() {
     if (moodEl) moodEl.textContent = mood;
     const dbg = document.getElementById('debugDisplay');
     if (dbg) {
-      dbg.textContent = `${PRESETS[activePreset]?.name||'?'} | ${mood} cut:${beatCutInterval}${cdjConnected ? ' CDJ:'+cdjBarBeat+'/4' : ''}`;
+      const cdjInfo = cdjConnected ? ` CDJ:${cdjBarBeat}/4 bar:${Math.floor((cdjBeatTotal-1)/4)%4+1}/4` : '';
+      dbg.textContent = `${PRESETS[activePreset]?.name||'?'} | ${mood} cut:${beatCutInterval}${cdjInfo}`;
     }
     
     // Beat dots
@@ -3091,7 +3122,8 @@ function toggleBeatCut() {
   beatCutEnabled = !beatCutEnabled;
   beatCutSequenceIdx = 0;
   if (beatCutEnabled) {
-    beatCutCountdown = beatCutInterval; // start fresh, no immediate cut
+    beatCutWaitForDownbeat = cdjConnected; // sync to downbeat if CDJ
+    beatCutCountdown = beatCutInterval;
     beatCutActive = new Set(PRESETS.map((_, i) => i).filter(i => presetReady[i]));
   }
   updatePresetGrid();
@@ -3307,7 +3339,10 @@ document.body.addEventListener('click', (e) => {
 let cdjConnected = false;
 let audioSourceName = '';
 let availableAudioDevices = [];
-let cdjBarBeat = 0; // 1-4 from CDJ (0 = no CDJ)
+let cdjBarBeat = 0;        // 1-4 from CDJ (0 = no CDJ)
+let cdjDownbeatCount = 0;  // counts downbeats since beat cut enabled
+let cdjBeatTotal = 0;      // running beat total from CDJ
+let beatCutWaitForDownbeat = false; // true = waiting to sync to downbeat
 let cdjWs = null;
 let cdjBpm = 0;
 let cdjLastBeat = 0;
@@ -3346,39 +3381,54 @@ function connectCDJ() {
         const msg = JSON.parse(e.data);
         
         if (msg.type === 'cdj_beat') {
-          // Perfect beat sync from CDJ — override beat clock
           cdjBpm = msg.bpm;
           bpm = Math.round(msg.bpm * 10) / 10;
           
-          // Use CDJ bar position (1-4) — sync our beatIndex
-          const barBeat = msg.beatInMeasure || ((beatIndex % 4) + 1);
+          // CDJ bar position (1-4)
+          const barBeat = msg.beatInMeasure || 1;
           cdjBarBeat = barBeat;
+          cdjBeatTotal = msg.beatTotal || cdjBeatTotal + 1;
           beatIndex++;
           beatCount++;
           moodBeatCounter++;
           if (camHoldBeats > 0) camHoldBeats--;
           beatFiredFrames = 5;
           
-          // FX hierarchy — use REAL bar position from CDJ
-          // barBeat: 1=downbeat(strongest), 2, 3, 4
           const isDownbeat = barBeat === 1;
-          const bar8 = beatIndex % 8;
-          const bar16 = beatIndex % 16;
           
+          // Downbeat counter (reset when beat cut enabled)
+          if (isDownbeat) cdjDownbeatCount++;
+          
+          // Bar number from CDJ beatTotal (phrase tracking)
+          const barNumber = Math.floor((cdjBeatTotal - 1) / 4);
+          const phraseBar = barNumber % 4;  // 0,1,2,3 within 4-bar phrase
+          const isPhrase4 = isDownbeat && phraseBar === 0;  // start of 4-bar phrase
+          const isPhrase2 = isDownbeat && phraseBar % 2 === 0; // start of 2-bar phrase
+          
+          // FX hierarchy — CDJ phrase-aware
           const ds = driveScale;
-          if (bar16 === 0 || (isDownbeat && bar8 === 0)) {
+          if (isPhrase4) {
+            // Beat 1 of 4-bar phrase = STRONGEST
             beatFlash = 1.0 * fxIntensity;
-            exposureOpacity = 0.4 * fxIntensity * ds;
+            exposureOpacity = 0.4 * fxIntensity;
             pulseScale = 1.0 + 0.35 * ds + smoothBass * 0.4 * ds;
+          } else if (isPhrase2) {
+            // Beat 1 of 2-bar phrase
+            beatFlash = 0.85 * fxIntensity;
+            exposureOpacity = 0.25 * fxIntensity;
+            pulseScale = 1.0 + 0.30 * ds + smoothBass * 0.35 * ds;
           } else if (isDownbeat) {
-            beatFlash = 0.75 * fxIntensity;
-            exposureOpacity = 0.15 * fxIntensity * ds;
-            pulseScale = 1.0 + 0.25 * ds + smoothBass * 0.3 * ds;
+            // Regular downbeat
+            beatFlash = 0.65 * fxIntensity;
+            exposureOpacity = 0.12 * fxIntensity;
+            pulseScale = 1.0 + 0.20 * ds + smoothBass * 0.25 * ds;
           } else if (barBeat === 3) {
-            beatFlash = 0.4 * fxIntensity;
-            pulseScale = 1.0 + 0.12 * ds + smoothBass * 0.15 * ds;
+            // Backbeat
+            beatFlash = 0.3 * fxIntensity;
+            pulseScale = 1.0 + 0.10 * ds + smoothBass * 0.12 * ds;
           } else {
-            pulseScale = 1.0 + 0.05 * ds + smoothBass * 0.1 * ds;
+            // Beats 2, 4
+            pulseScale = 1.0 + 0.04 * ds + smoothBass * 0.08 * ds;
           }
           
           // Strobo
@@ -3387,13 +3437,21 @@ function connectCDJ() {
           // Video speed sync
           if (videoLoaded) updateVideoSpeed(bpm);
           
-          // Beat cut — COUNTDOWN + BAR ALIGNED (sacred: exact timing)
+          // Beat cut — PHRASE ALIGNED (sacred rule)
           if (beatCutEnabled) {
-            beatCutCountdown--;
-            // Only cut on downbeat AND when countdown expired
-            if (beatCutCountdown <= 0 && isDownbeat) {
-              beatCutNext();
-              beatCutCountdown = beatCutInterval;
+            if (beatCutWaitForDownbeat) {
+              // Waiting to sync — start countdown on next downbeat
+              if (isDownbeat) {
+                beatCutWaitForDownbeat = false;
+                cdjDownbeatCount = 0;
+                beatCutCountdown = beatCutInterval;
+              }
+            } else {
+              beatCutCountdown--;
+              if (beatCutCountdown <= 0 && isDownbeat) {
+                beatCutNext();
+                beatCutCountdown = beatCutInterval;
+              }
             }
           }
           
@@ -3512,7 +3570,10 @@ function handleCommand(msg) {
       if (msg.enabled !== undefined) {
         beatCutEnabled = msg.enabled;
         beatCutSequenceIdx = 0;
-        if (msg.enabled) beatCutCountdown = beatCutInterval; // fresh start
+        if (msg.enabled) {
+          beatCutWaitForDownbeat = cdjConnected;
+          beatCutCountdown = beatCutInterval;
+        }
       }
       if (msg.interval) {
         beatCutInterval = msg.interval;
