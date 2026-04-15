@@ -814,11 +814,11 @@ function updateUI(s) {
   if (vhEl) vhEl.className = 'btn' + (s.videoHidden ? ' on' : '');
   
   // Drive
-  if (s.drive !== undefined) {
+  if (s.drive !== undefined && !driveDirty) {
     const driveEl = document.getElementById('masterDrive');
     const driveValEl = document.getElementById('driveVal');
     if (driveEl && !driveEl.matches(':active')) driveEl.value = s.drive;
-    if (driveValEl) driveValEl.textContent = (s.drive || 70) + '%';
+    if (driveValEl) driveValEl.textContent = s.drive + '%';
   }
   
   // Autopilot
@@ -949,7 +949,15 @@ function sendVideoHide()        { send({ type: 'videohide' }); }
 function sendHudToggle()        { send({ type: 'hudtoggle' }); }
 function sendAutopilot()        { send({ type: 'autopilot' }); }
 function sendAutoFeature(f)     { send({ type: 'autofeature', feature: f }); }
-function sendDrive(val)         { document.getElementById('driveVal').textContent = val + '%'; send({ type: 'drive', value: parseInt(val) }); }
+function sendDrive(val)         { 
+  document.getElementById('driveVal').textContent = val + '%'; 
+  send({ type: 'drive', value: parseInt(val) }); 
+  driveDirty = true; 
+  clearTimeout(driveDirtyTimer); 
+  driveDirtyTimer = setTimeout(() => { driveDirty = false; }, 2000); 
+}
+let driveDirty = false;
+let driveDirtyTimer = null;
 function sendSpeed(val)         { send({ type: 'speed', value: val }); }
 function sendFx(val)            { send({ type: 'fx', value: val }); }
 function sendPinch(val)         { send({ type: 'pinch', value: val }); }
