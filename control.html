@@ -311,6 +311,13 @@
   <div class="btn-row" style="margin-bottom:6px;">
     <div class="btn" id="autoBtn" onclick="sendAutopilot()" style="flex:1; text-align:center; letter-spacing:0.3rem;">AUTOPILOT</div>
   </div>
+  <div style="padding:4px 4px 10px; border-bottom:1px solid rgba(255,255,255,0.06); margin-bottom:8px;">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="font-size:9px; letter-spacing:0.15em; color:rgba(255,255,255,0.4); white-space:nowrap;">DRIVE</span>
+      <input type="range" id="masterDrive" min="0" max="100" value="70" style="flex:1; accent-color:#ff2200;" oninput="sendDrive(this.value)">
+      <span id="driveVal" style="font-size:10px; color:#ff2200; min-width:28px; text-align:right;">70%</span>
+    </div>
+  </div>
   <div id="autoFeatures" style="padding-left:4px;">
     <div class="auto-item" onclick="sendAutoFeature('energy')">
       <div class="auto-check" id="af_energy">✓</div>
@@ -806,6 +813,14 @@ function updateUI(s) {
   if (stEl) stEl.className = 'btn' + (s.stroboActive ? ' on' : '');
   if (vhEl) vhEl.className = 'btn' + (s.videoHidden ? ' on' : '');
   
+  // Drive
+  if (s.drive !== undefined) {
+    const driveEl = document.getElementById('masterDrive');
+    const driveValEl = document.getElementById('driveVal');
+    if (driveEl && !driveEl.matches(':active')) driveEl.value = s.drive;
+    if (driveValEl) driveValEl.textContent = (s.drive || 70) + '%';
+  }
+  
   // Autopilot
   const autoEl = document.getElementById('autoBtn');
   if (autoEl) autoEl.className = 'btn' + (s.autopilotEnabled ? ' on' : '');
@@ -934,6 +949,7 @@ function sendVideoHide()        { send({ type: 'videohide' }); }
 function sendHudToggle()        { send({ type: 'hudtoggle' }); }
 function sendAutopilot()        { send({ type: 'autopilot' }); }
 function sendAutoFeature(f)     { send({ type: 'autofeature', feature: f }); }
+function sendDrive(val)         { document.getElementById('driveVal').textContent = val + '%'; send({ type: 'drive', value: parseInt(val) }); }
 function sendSpeed(val)         { send({ type: 'speed', value: val }); }
 function sendFx(val)            { send({ type: 'fx', value: val }); }
 function sendPinch(val)         { send({ type: 'pinch', value: val }); }

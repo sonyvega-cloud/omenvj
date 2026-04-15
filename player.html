@@ -443,6 +443,21 @@ let compassTarget = 0;
 
 // ── FX state (iOS port) ───────────────────────────────────────
 let fxIntensity = 1.0;     // global FX multiplier
+let masterDrive = 70;      // 0-100 master drive
+
+// Map drive 0-100 to all parameters
+function applyDrive(d) {
+  masterDrive = d;
+  const n = d / 100; // 0.0 - 1.0
+  
+  // FX intensity: 0.05 at drive 0, 1.0 at drive 100
+  fxIntensity = 0.05 + n * 0.95;
+  
+  // Video speed: 0.5x at drive 0, 2.0x at drive 100
+  videoSpeedMultiplier = 0.5 + n * 1.5;
+  
+  // Beat cut interval is handled by getAutoBeatCutInterval() using masterDrive
+}
 let fxSliderValue = 1.0;   // user-set FX intensity (slider)
 let exposureOpacity = 0;   // white center glow on beat
 let silenceTimer = 0;      // frames since last significant audio
@@ -1196,6 +1211,8 @@ function weightedPresetPick(candidates) {
 
 // Map normEnergy to beat cut interval
 function getAutoBeatCutInterval() {
+  const driveN = masterDrive / 100; // 0.0-1.0
+  
   let interval;
   if (normEnergy < 0.25) interval = 8;
   else if (normEnergy < 0.50) interval = 4;
@@ -1205,14 +1222,19 @@ function getAutoBeatCutInterval() {
   // Mood override
   if (mood === 'AMBIENT' || mood === 'LISTENING') return 0; // beat cut OFF
   if (mood === 'BUILDING') interval = Math.max(interval, 4);
-  if (mood === 'DROP') interval = 2; // fast but not every beat
+  if (mood === 'DROP') interval = 2;
   
-  // Hi-hat boost: one step faster (min 2)
+  // Hi-hat boost
   if (smoothHigh > 0.25 && interval > 2) {
     interval = interval === 8 ? 4 : 2;
   }
   
-  return Math.max(interval, 2); // never faster than 2 beats
+  // DRIVE scaling: low drive → slower, high drive → faster
+  if (driveN < 0.25) interval = Math.max(interval * 2, 16); // half speed, max 16
+  else if (driveN < 0.45) interval = Math.max(interval, 8);  // cap at 8
+  else if (driveN > 0.85) interval = Math.max(Math.floor(interval / 2), 2); // double speed
+  
+  return Math.max(Math.min(interval, 16), 2);
 }
 
 function updateAutopilot() {
@@ -3535,6 +3557,9 @@ function handleCommand(msg) {
         lastAutopilotMood = '';
       }
       break;
+    case 'drive':
+      applyDrive(msg.value || 70);
+      break;
     case 'autofeature':
       if (msg.feature === 'energy') autoEnergyEnabled = !autoEnergyEnabled;
       if (msg.feature === 'fx') autoFxEnabled = !autoFxEnabled;
@@ -3738,6 +3763,7 @@ function broadcastState() {
       autoSpeedEnabled: !!autoSpeedEnabled,
       cdjConnected: !!cdjConnected,
       cdjBarBeat,
+      drive: masterDrive,
       cdjTrackTitle: cdjTrackTitle || '',
       audioSource: audioSourceName || '',
       audioDevices: availableAudioDevices || [],
