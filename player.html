@@ -40,11 +40,14 @@
     height: 100vh;
     object-fit: cover;
     opacity: 0;
+    z-index: 0;
     backface-visibility: hidden;
+    pointer-events: none;
   }
   #videoLayer video.active {
     opacity: 1;
-    will-change: transform, opacity;
+    z-index: 1;
+    will-change: transform;
   }
 
   /* ── Vignette over video ─────────────────────────────── */
@@ -1195,14 +1198,36 @@ function onBeatTick() {
     updateVideoSpeed(bpm);
   }
   
-  // Beat cut — COUNTDOWN guarantees exact hold time (sacred rule)
+  // Beat cut — COUNTDOWN with organic variation
   if (beatCutEnabled) {
     beatCutCountdown--;
     if (beatCutCountdown <= 0) {
       beatCutNext();
-      beatCutCountdown = beatCutInterval; // reset: hold for exactly N beats
+      beatCutCountdown = getOrganicInterval();
     }
   }
+}
+
+// Organic beat cut: base interval + human variation
+function getOrganicInterval() {
+  const base = beatCutInterval;
+  const energy = normEnergy || 0;
+  
+  // High energy (>0.7): precise, ±0-1 beat variation
+  // Mid energy (0.3-0.7): ±1-2 beat variation
+  // Low energy (<0.3): ±2 beats + 25% chance of double hold
+  
+  let variation = 0;
+  if (energy > 0.7) {
+    variation = Math.random() < 0.3 ? 1 : 0; // 30% chance +1 beat
+  } else if (energy > 0.3) {
+    variation = Math.floor(Math.random() * 3) - 1; // -1, 0, or +1
+  } else {
+    variation = Math.floor(Math.random() * 3); // 0, 1, or 2
+    if (Math.random() < 0.25) variation = base; // 25% double hold
+  }
+  
+  return Math.max(2, base + variation);
 }
 
 // ── Silence detection → dampen FX ─────────────────────────────
@@ -1809,25 +1834,19 @@ function updateVideoVisibility() {
   
   // ── Video A/B toggle (only when preset or AB changes) ──
   if (activePreset !== _lastActivePreset || currentAB !== _lastAB) {
-    // Deactivate + PAUSE previous (release GPU decode)
+    // Deactivate previous (just hide, keep playing for instant switch)
     if (_lastActivePreset >= 0 && _lastActivePreset !== activePreset) {
       const pA = document.getElementById(`vid${_lastActivePreset}a`);
       const pB = document.getElementById(`vid${_lastActivePreset}b`);
-      if (pA) { pA.classList.remove('active'); pA.pause(); }
-      if (pB) { pB.classList.remove('active'); pB.pause(); }
+      if (pA) pA.classList.remove('active');
+      if (pB) pB.classList.remove('active');
     }
-    // Activate current — SEEK to correct timecode BEFORE showing
+    // Activate current — videos are ALREADY playing at correct timecode
     if (presetReady[activePreset] && PRESETS[activePreset]?.videoA) {
       const cA = document.getElementById(`vid${activePreset}a`);
       const cB = document.getElementById(`vid${activePreset}b`);
-      // Calculate correct position from AB clock
-      const elapsed = performance.now() - abClockStart;
-      const syncTime = ((elapsed * videoSpeed / 1000) % VIDEO_DURATION_S) || 0;
-      // Seek FIRST, then play, then show (no flash of wrong timecode)
-      if (cA && cA.readyState >= 2) { cA.currentTime = syncTime; cA.playbackRate = videoSpeed; }
-      if (cB && cB.readyState >= 2) { cB.currentTime = syncTime; cB.playbackRate = videoSpeed; }
-      if (cA) { cA.play().catch(()=>{}); cA.style.transform = _lastVideoTransform; cA.classList.toggle('active', currentAB === 0); }
-      if (cB) { cB.play().catch(()=>{}); cB.style.transform = _lastVideoTransform; cB.classList.toggle('active', currentAB === 1); }
+      if (cA) { cA.style.transform = _lastVideoTransform; cA.classList.toggle('active', currentAB === 0); }
+      if (cB) { cB.style.transform = _lastVideoTransform; cB.classList.toggle('active', currentAB === 1); }
     }
     _lastActivePreset = activePreset;
     _lastAB = currentAB;
@@ -2019,31 +2038,30 @@ function beatCutNext() {
   // Filter: avoid current preset
   let others = loaded.filter(i => i !== activePreset);
   
-  // After camera: prefer non-camera. Never switch remote→remote camera (same stream)
+  // After camera: prefer non-camera
   if (currentIsCamera) {
     const nonCam = others.filter(i => PRESETS[i]?.type !== 'camera');
     if (nonCam.length > 0) {
       others = nonCam;
     } else {
-      // Only cameras left — don't switch between same source
-      others = others.filter(i => {
-        const src = PRESETS[i]?.camSource || 'remote';
-        return src !== currentCamSource;
-      });
-      if (others.length === 0) return; // all same source, skip
+      others = others.filter(i => (PRESETS[i]?.camSource || 'remote') !== currentCamSource);
+      if (others.length === 0) return;
     }
   }
   
-  const pick = others.length > 0 ? pickByThemeWeight(others) : null;
+  // ── Energy-aware: prefer presets matching mood category ──
+  let targetCat = 3;
+  if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
+  else if (mood === 'BUILDING') targetCat = 2;
+  
+  const energyMatched = others.filter(i => (PRESETS[i]?.energy || 3) === targetCat);
+  // Use energy-matched if available (70% chance), otherwise any
+  const pool = (energyMatched.length > 0 && Math.random() < 0.7) ? energyMatched : others;
+  
+  const pick = pickByThemeWeight(pool);
   if (pick === null) return;
   
-  // If switching TO camera from non-camera, no extra cooldown needed
-  // Nuclear visibility fix ensures only one source shows
-  
-  // Camera minimum hold: stay on camera for 8 beats
-  if (PRESETS[pick]?.type === 'camera') {
-    camHoldBeats = 8;
-  }
+  if (PRESETS[pick]?.type === 'camera') camHoldBeats = 8;
   
   switchToPreset(pick);
 }
@@ -2081,9 +2099,30 @@ function handlePresetClick(idx) {
   updatePresetGrid();
 }
 
+let _videoSyncCounter = 0;
+
 function updateVideoLayer() {
   const currentPreset = PRESETS[activePreset];
   const hasVideo = currentPreset && currentPreset.videoA != null;
+  
+  // ── Periodic video timecode sync (every 30 frames ≈ 0.5s) ──
+  // Keeps ALL videos at same phase so beat cut has no timecode jump
+  _videoSyncCounter++;
+  if (_videoSyncCounter >= 30) {
+    _videoSyncCounter = 0;
+    const masterTime = ((performance.now() - abClockStart) * videoSpeed / 1000) % VIDEO_DURATION_S;
+    PRESETS.forEach((p, i) => {
+      if (!p.videoA || i === activePreset) return; // skip active (already playing correctly)
+      const vA = document.getElementById(`vid${i}a`);
+      const vB = document.getElementById(`vid${i}b`);
+      if (vA && vA.readyState >= 2 && Math.abs(vA.currentTime - masterTime) > 1.0) {
+        vA.currentTime = masterTime;
+      }
+      if (vB && vB.readyState >= 2 && Math.abs(vB.currentTime - masterTime) > 1.0) {
+        vB.currentTime = masterTime;
+      }
+    });
+  }
   
   // ── Auto-rotation — friction-based (never accumulates forever) ──
   const drift = (smoothBass * 0.003 - smoothMid * 0.001) * driveScale;
@@ -3645,20 +3684,19 @@ function connectCDJ() {
           // Phrase detection — BEFORE beat cut (may reset countdown)
           updatePhraseOnBeat();
           
-          // Beat cut — PHRASE ALIGNED (sacred rule)
+          // Beat cut — PHRASE ALIGNED + organic variation
           if (beatCutEnabled) {
             if (beatCutWaitForDownbeat) {
-              // Waiting to sync — start countdown on next downbeat
               if (isDownbeat) {
                 beatCutWaitForDownbeat = false;
                 cdjDownbeatCount = 0;
-                beatCutCountdown = beatCutInterval;
+                beatCutCountdown = getOrganicInterval();
               }
             } else {
               beatCutCountdown--;
               if (beatCutCountdown <= 0 && isDownbeat) {
                 beatCutNext();
-                beatCutCountdown = beatCutInterval;
+                beatCutCountdown = getOrganicInterval();
               }
             }
           }
