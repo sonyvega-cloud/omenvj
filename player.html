@@ -1490,10 +1490,9 @@ function updateAutopilot() {
       // AMBIENT → beat cut OFF
       if (beatCutEnabled) { beatCutEnabled = false; updatePresetGrid(); }
     } else {
-      // Enable beat cut + set interval
-      if (!beatCutEnabled || beatCutInterval !== autoInterval) {
-        const wasOff = !beatCutEnabled;
-        beatCutEnabled = true;
+      const wasOff = !beatCutEnabled;
+      beatCutEnabled = true;
+      if (beatCutInterval !== autoInterval) {
         beatCutInterval = autoInterval;
         if (wasOff) {
           beatCutWaitForDownbeat = cdjConnected;
@@ -1501,10 +1500,12 @@ function updateAutopilot() {
         } else {
           beatCutCountdown = Math.min(beatCutCountdown, autoInterval);
         }
-        // Pool = ready presets from active themes, respecting presetPool exclusions
+      }
+      // Only rebuild pool + refresh grid when beat cut first turns ON
+      if (wasOff) {
         const allActive = PRESETS.map((p, i) => i).filter(i => {
           if (!presetReady[i]) return false;
-          if (!presetPool.has(i)) return false; // user excluded
+          if (!presetPool.has(i)) return false;
           const theme = getPresetTheme(PRESETS[i]);
           if (!activeThemes[theme]) return false;
           if (!isCamPresetLive(i)) return false;
@@ -1876,28 +1877,19 @@ function updateVideoVisibility() {
   
   // ── Video A/B toggle (only when preset or AB changes) ──
   if (activePreset !== _lastActivePreset || currentAB !== _lastAB) {
-    // Deactivate previous — hide FIRST, pause after delay (no stale frame)
+    // Deactivate previous — just hide, video keeps playing for clean future cut
     if (_lastActivePreset >= 0 && _lastActivePreset !== activePreset) {
-      const oldIdx = _lastActivePreset;
-      const pA = document.getElementById(`vid${oldIdx}a`);
-      const pB = document.getElementById(`vid${oldIdx}b`);
+      const pA = document.getElementById(`vid${_lastActivePreset}a`);
+      const pB = document.getElementById(`vid${_lastActivePreset}b`);
       if (pA) pA.classList.remove('active');
       if (pB) pB.classList.remove('active');
-      // Pause after 200ms (release decode resources, but don't flash)
-      setTimeout(() => {
-        if (activePreset !== oldIdx) { // still not active
-          if (pA) pA.pause();
-          if (pB) pB.pause();
-        }
-      }, 200);
     }
-    // Activate current — pre-seeked by preSyncVideo, already at correct timecode
+    // Activate current
     if (presetReady[activePreset] && PRESETS[activePreset]?.videoA) {
       const cA = document.getElementById(`vid${activePreset}a`);
       const cB = document.getElementById(`vid${activePreset}b`);
-      // Ensure playing (preSyncVideo started it, but safety)
-      if (cA) { cA.play().catch(()=>{}); cA.style.transform = _lastVideoTransform; cA.classList.toggle('active', currentAB === 0); }
-      if (cB) { cB.play().catch(()=>{}); cB.style.transform = _lastVideoTransform; cB.classList.toggle('active', currentAB === 1); }
+      if (cA) { cA.style.transform = _lastVideoTransform; cA.classList.toggle('active', currentAB === 0); }
+      if (cB) { cB.style.transform = _lastVideoTransform; cB.classList.toggle('active', currentAB === 1); }
     }
     _lastActivePreset = activePreset;
     _lastAB = currentAB;
@@ -1968,14 +1960,6 @@ const SWITCH_MIN_MS = 300; // minimum 300ms between switches
 
 function switchToPreset(idx) {
   if (!presetReady[idx]) return;
-  
-  // Pool + theme block during autopilot/beatcut — manual clicks always pass
-  if (autopilotEnabled || beatCutEnabled) {
-    if (!presetPool.has(idx)) return; // ILLEGAL: not in drive pool
-    const p = PRESETS[idx];
-    const theme = getPresetTheme(p);
-    if (!activeThemes[theme]) return;
-  }
   
   // Throttle beat cut (not manual clicks)
   const now = performance.now();
@@ -3934,6 +3918,17 @@ function handleCommand(msg) {
         autoColorEnabled = true;
         autoSpeedEnabled = true;
         lastAutopilotMood = '';
+      } else {
+        // Clean state: autopilot OFF → stop auto beat cut + strobo
+        if (autoBeatCutEnabled) { beatCutEnabled = false; }
+        if (autoStroboEnabled && !manualStrobo) { stroboActive = false; stroboFlash = 0; }
+        autoEnergyEnabled = false;
+        autoFxEnabled = false;
+        autoBeatCutEnabled = false;
+        autoStroboEnabled = false;
+        autoColorEnabled = false;
+        autoSpeedEnabled = false;
+        updatePresetGrid();
       }
       break;
     case 'drive':
@@ -3942,8 +3937,14 @@ function handleCommand(msg) {
     case 'autofeature':
       if (msg.feature === 'energy') autoEnergyEnabled = !autoEnergyEnabled;
       if (msg.feature === 'fx') autoFxEnabled = !autoFxEnabled;
-      if (msg.feature === 'beatcut') autoBeatCutEnabled = !autoBeatCutEnabled;
-      if (msg.feature === 'strobo') autoStroboEnabled = !autoStroboEnabled;
+      if (msg.feature === 'beatcut') {
+        autoBeatCutEnabled = !autoBeatCutEnabled;
+        if (!autoBeatCutEnabled) { beatCutEnabled = false; updatePresetGrid(); }
+      }
+      if (msg.feature === 'strobo') {
+        autoStroboEnabled = !autoStroboEnabled;
+        if (!autoStroboEnabled && !manualStrobo) { stroboActive = false; stroboFlash = 0; }
+      }
       if (msg.feature === 'color') autoColorEnabled = !autoColorEnabled;
       if (msg.feature === 'speed') autoSpeedEnabled = !autoSpeedEnabled;
       autopilotEnabled = autoEnergyEnabled || autoFxEnabled || autoBeatCutEnabled || autoStroboEnabled || autoColorEnabled || autoSpeedEnabled;
