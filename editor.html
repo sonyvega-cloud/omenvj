@@ -260,6 +260,7 @@ function saveToStorage() {
     gfx: s.gfx,
     energy: s.energy,
     videoA: s.type === 'video' ? s.videoA : null,
+    videoJump: !!s.videoJump,
     type: s.type || 'video',
     themeId: s.themeId || 'omen',
     camSource: s.camSource || null,
@@ -401,6 +402,14 @@ function buildEditorFields() {
   html += '<span class="field-label">ENERGY</span><select class="field-select" id="editEnergy">';
   html += '<option value="1">CAT 1 — ambient</option><option value="2">CAT 2 — building</option><option value="3">CAT 3 — groove</option></select>';
 
+  if (theme.type === 'video') {
+    html += '<span class="field-label">VIDEO JUMP</span>';
+    html += '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;">';
+    html += '<input type="checkbox" id="editVideoJump" style="accent-color:#ff2200;">';
+    html += '<span style="font-size:10px; opacity:0.6;">Scale jump on downbeat + kicks (TYPO-like)</span>';
+    html += '</label>';
+  }
+
   if (theme.type === 'camera') {
     html += '<span class="field-label">SOURCE</span><select class="field-select" id="editCamSource" onchange="onCamSourceChange()">';
     html += '<option value="remote">REMOTE (phone via relay)</option>';
@@ -526,6 +535,8 @@ function editScene(idx) {
   document.getElementById('editName').value = s.name;
   document.getElementById('editGfx').value = s.gfx;
   document.getElementById('editEnergy').value = s.energy;
+  const vjEl = document.getElementById('editVideoJump');
+  if (vjEl) vjEl.checked = !!s.videoJump;
   onGfxChange(); // show/hide text fields
   if (s.gfx === 'text_overlay') {
     const tf = document.getElementById('editGfxText');
@@ -709,6 +720,7 @@ function saveScene() {
     themeId: activeTheme,
     type: sceneType,
     videoA: theme.type === 'video' ? (document.getElementById('editVideoA')?.value.trim() || null) : null,
+    videoJump: theme.type === 'video' ? !!document.getElementById('editVideoJump')?.checked : false,
     camSource: theme.type === 'camera' ? (document.getElementById('editCamSource')?.value || 'remote') : null,
     deviceId: theme.type === 'camera' ? (document.getElementById('editDeviceId')?.value || null) : null,
     deviceLabel: theme.type === 'camera' ? (document.getElementById('editDeviceLabel')?.value || null) : null,
@@ -946,7 +958,7 @@ function exportPresetsJS() {
   lines.push('const PRESETS_DATA = [');
   scenes.forEach((s, i) => {
     const va = s.type === 'video' && s.videoA ? 'CDN+"' + s.videoA + '"' : 'null';
-    const extra = s.type === 'camera' ? ', "type": "camera"' : '';
+    const extra = s.type === 'camera' ? ', "type": "camera"' : (s.videoJump ? ', "videoJump": true' : '');
     const comma = i < scenes.length - 1 ? ',' : '';
     lines.push('  { "name": "' + s.name + '", "videoA": ' + va + ', "gfx": "' + s.gfx + '", "energy": ' + s.energy + extra + ' }' + comma);
   });
