@@ -1224,7 +1224,7 @@ let themeWeights = { omen: 80, camera: 20, voyager: 0, typo: 30 };
 let _themeCheckCounter = 0;
 let autoEnergyEnabled = true;       // sub: energy-based preset switch
 let autoFxEnabled = true;           // sub: FX amount driven by volume
-let autoBeatCutEnabled = true;      // sub: beat cut interval by energy
+let autoBeatCutEnabled = false;     // sub: auto manages beat cut (default OFF — user controls manually)
 let autoStroboEnabled = true;       // sub: strobo on cymbal/crash detect
 let autoColorEnabled = true;        // sub: color palette by mood
 let autoSpeedEnabled = true;        // sub: video speed by energy
@@ -3745,7 +3745,7 @@ function handleCommand(msg) {
       if (autopilotEnabled) {
         autoEnergyEnabled = true;
         autoFxEnabled = true;
-        autoBeatCutEnabled = true;
+        // autoBeatCutEnabled NOT auto-enabled — user must check it manually
         autoStroboEnabled = true;
         autoColorEnabled = true;
         autoSpeedEnabled = true;
