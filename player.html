@@ -459,63 +459,11 @@ function applyDrive(d) {
   
   // Instant jump fxIntensity when drive increases significantly
   if (n > oldScale + 0.1) {
-    fxIntensity = n; // snap up immediately
+    fxIntensity = n;
   }
-  
-  updateDrivePool();
+  // Drive controls VISUAL INTENSITY only, NOT preset pool
 }
 
-// Auto-select presets by energy category based on drive
-// User manual exclusions (X) ALWAYS have priority
-function updateDrivePool() {
-  const n = masterDrive / 100;
-  
-  // 5 tiers — smooth progression, not binary flip
-  // Drive 0-15%:   CAT 1 only (ambient)
-  // Drive 15-35%:  CAT 1 + CAT 2
-  // Drive 35-60%:  CAT 1 + CAT 2 + 50% CAT 3
-  // Drive 60-85%:  all
-  // Drive 85-100%: prefer CAT 2+3 (exclude CAT 1 if enough others)
-
-  const newPool = new Set();
-  PRESETS.forEach((p, i) => {
-    if (!presetReady[i]) return;
-    if (userExcludedPresets.has(i)) return;
-    const cat = p.energy || 2; // DEFAULT 2 (medium) not 3!
-    
-    if (n < 0.15) {
-      if (cat <= 1) newPool.add(i);
-    } else if (n < 0.35) {
-      if (cat <= 2) newPool.add(i);
-    } else if (n < 0.60) {
-      if (cat <= 2) newPool.add(i);
-      else if (Math.random() < 0.5) newPool.add(i); // 50% chance CAT 3
-    } else if (n < 0.85) {
-      newPool.add(i); // all
-    } else {
-      // High drive: prefer 2+3, include CAT 1 only if needed
-      if (cat >= 2) newPool.add(i);
-    }
-  });
-  
-  // Fallback: at least 2 presets
-  if (newPool.size < 2) {
-    PRESETS.forEach((p, i) => { if (presetReady[i] && !userExcludedPresets.has(i)) newPool.add(i); });
-  }
-  if (newPool.size < 2) {
-    PRESETS.forEach((p, i) => { if (presetReady[i]) newPool.add(i); });
-  }
-  
-  presetPool = newPool;
-  
-  // Sync beatCutActive with pool (remove presets no longer in pool)
-  if (beatCutEnabled) {
-    const updated = new Set([...beatCutActive].filter(i => presetPool.has(i)));
-    if (updated.size >= 2) beatCutActive = updated;
-  }
-  
-  updatePresetGrid();
-}
 let fxSliderValue = 1.0;   // user-set FX intensity (slider)
 let exposureOpacity = 0;   // white center glow on beat
 let silenceTimer = 0;      // frames since last significant audio
@@ -831,7 +779,6 @@ async function startAudio(source) {
 
     // Start render loop
     initPresets();
-    updateDrivePool(); // apply drive-based pool filter immediately
     requestAnimationFrame(tick);
     
   } catch (err) {
