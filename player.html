@@ -314,76 +314,27 @@
   </div>
 </div>
 
-<!-- ── HUD ───────────────────────────────────────────── -->
-<div id="hud" class="hidden">
+<!-- ── HUD (HIDDEN — all control via controller.html) ────── -->
+<div id="hud" style="display:none;">
   <div class="bpm" id="bpmDisplay">— BPM</div>
-  
-  <!-- 16 beat dots -->
-  <div id="beatDots" style="display:flex; gap:2px; margin-top:8px;">
-    <div class="bdot" id="bd0"></div><div class="bdot" id="bd1"></div>
-    <div class="bdot" id="bd2"></div><div class="bdot" id="bd3"></div>
-    <div style="width:4px;"></div>
-    <div class="bdot" id="bd4"></div><div class="bdot" id="bd5"></div>
-    <div class="bdot" id="bd6"></div><div class="bdot" id="bd7"></div>
-    <div style="width:4px;"></div>
-    <div class="bdot" id="bd8"></div><div class="bdot" id="bd9"></div>
-    <div class="bdot" id="bd10"></div><div class="bdot" id="bd11"></div>
-    <div style="width:4px;"></div>
-    <div class="bdot" id="bd12"></div><div class="bdot" id="bd13"></div>
-    <div class="bdot" id="bd14"></div><div class="bdot" id="bd15"></div>
-  </div>
-  
+  <div id="beatDots"></div>
   <div class="energy-bar"><div class="energy-fill" id="energyFill"></div></div>
-  
-  <!-- Preset buttons (generated dynamically from PRESETS array) -->
-  <div id="presetBtns" style="display:flex; gap:3px; margin-top:8px; flex-wrap:wrap; pointer-events:auto;"></div>
-  
-  <!-- Beat cut controls -->
-  <div style="display:flex; gap:3px; margin-top:4px; pointer-events:auto;">
-    <div class="pgrid" id="bcToggle" style="font-size:7px; width:auto; padding:0 6px; cursor:pointer;" onclick="toggleBeatCut()">CUT</div>
-    <div class="pgrid" id="bci1" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(1)">1</div>
-    <div class="pgrid" id="bci2" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(2)">2</div>
-    <div class="pgrid" id="bci4" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(4)">4</div>
-    <div class="pgrid" id="bci8" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(8)">8</div>
-  </div>
-  
-  <!-- Color palette -->
-  <div style="display:flex; gap:3px; margin-top:6px; pointer-events:auto;">
-    <div class="cdot" id="cd0" style="background:#FF2200;" onclick="handleColorClick(0)"></div>
-    <div class="cdot" id="cd1" style="background:#2244FF;" onclick="handleColorClick(1)"></div>
-    <div class="cdot" id="cd2" style="background:#22FF44;" onclick="handleColorClick(2)"></div>
-    <div class="cdot" id="cd3" style="background:#FFCC00;" onclick="handleColorClick(3)"></div>
-    <div class="cdot" id="cd4" style="background:#CCCCCC;" onclick="handleColorClick(4)"></div>
-  </div>
-  
-  <!-- FX controls -->
-  <div style="display:flex; gap:3px; margin-top:6px; align-items:center; pointer-events:auto;">
-    <div class="pgrid" id="strbBtn" onclick="toggleStrobo()" style="font-size:7px; width:auto; padding:0 6px; cursor:pointer;">STRB</div>
-    <div class="pgrid" id="vhidBtn" onclick="toggleVideoHide()" style="font-size:7px; width:auto; padding:0 6px; cursor:pointer;">VHID</div>
-    <div style="width:4px;"></div>
-    <div style="font-size:7px; color:rgba(255,255,255,0.2); letter-spacing:1px;">FX</div>
-    <input type="range" id="fxSlider" min="0" max="200" value="100" 
-      oninput="fxSliderValue = this.value / 100" 
-      style="width:60px; height:2px; accent-color:#ff2200; cursor:pointer;">
-  </div>
-  
-  <!-- Video speed -->
-  <div style="display:flex; gap:3px; margin-top:4px; pointer-events:auto;">
-    <div style="font-size:7px; color:rgba(255,255,255,0.2); letter-spacing:1px; margin-right:2px;">SPD</div>
-    <div class="pgrid" id="spd05" onclick="setVideoSpeed(0.5)" style="font-size:7px; cursor:pointer;">½×</div>
-    <div class="pgrid active" id="spd10" onclick="setVideoSpeed(1.0)" style="font-size:7px; cursor:pointer;">1×</div>
-    <div class="pgrid" id="spd20" onclick="setVideoSpeed(2.0)" style="font-size:7px; cursor:pointer;">2×</div>
-  </div>
-  
-  <div class="mood" id="moodDisplay">LISTENING...</div>
-  <div class="source-label" id="sourceLabel"></div>
-  <div class="source-label" id="debugDisplay" style="margin-top:8px; font-family:monospace; font-size:10px; color:rgba(255,255,255,0.3);"></div>
+  <div id="presetBtns"></div>
+  <div id="bcToggle"></div>
+  <div id="bci1"></div><div id="bci2"></div><div id="bci4"></div><div id="bci8"></div>
+  <div id="cd0"></div><div id="cd1"></div><div id="cd2"></div><div id="cd3"></div><div id="cd4"></div>
+  <div id="strbBtn"></div><div id="vhidBtn"></div>
+  <input type="range" id="fxSlider" min="0" max="200" value="100">
+  <div id="spd05"></div><div id="spd10"></div><div id="spd20"></div>
+  <div class="mood" id="moodDisplay"></div>
+  <div id="sourceLabel"></div>
+  <div id="debugDisplay"></div>
 </div>
 
-<div id="controls-hint" class="hidden">
-  SPACE = tap/sync &nbsp;&nbsp; Q/W/E = preset &nbsp;&nbsp; B = beat cut &nbsp;&nbsp; S = strobo &nbsp;&nbsp; V = video hide &nbsp;&nbsp; 2/4/8 = interval &nbsp;&nbsp; F = fullscreen
-</div>
-<div id="pinDisplay" style="display:none; position:fixed; top:12px; right:16px; z-index:999; font-family:monospace; font-size:11px; color:rgba(255,255,255,0.4);">
+<div id="controls-hint" style="display:none;"></div>
+
+<!-- PIN — visible in corner for pairing -->
+<div id="pinDisplay" style="display:none; position:fixed; top:12px; right:16px; z-index:999; font-family:monospace; font-size:11px; color:rgba(255,255,255,0.4); pointer-events:none;">
   PIN: <span id="pinCode" style="color:#ff2200; font-size:14px; letter-spacing:0.2em;">----</span>
 </div>
 
@@ -2010,6 +1961,18 @@ function updatePresetGrid() {
     else if (mood === 'GROOVE' || mood === 'DROP' || mood === 'PEAK') targetCat = 3;
   }
   
+  // Fallback: if target CAT has < 2 OMEN presets, expand to include nearest CAT
+  const allowedCats = new Set();
+  if (targetCat !== null) {
+    allowedCats.add(targetCat);
+    const omenInCat = PRESETS.filter(p => (p.type === 'video' || p.type === 'gfx') && (p.energy || 2) === targetCat).length;
+    if (omenInCat < 2) {
+      // Add nearest CATs
+      if (targetCat > 1) allowedCats.add(targetCat - 1);
+      if (targetCat < 3) allowedCats.add(targetCat + 1);
+    }
+  }
+  
   PRESETS.forEach((preset, i) => {
     const el = document.getElementById('pg' + i);
     if (!el) return;
@@ -2017,9 +1980,8 @@ function updatePresetGrid() {
     const userExcluded = autopilotEnabled && !presetPool.has(i);
     const cat = preset.energy || 2;
     const type = preset.type || 'video';
-    // CAT filter applies ONLY to OMEN video/gfx presets (not camera/text)
     const isOmenType = (type === 'video' || type === 'gfx');
-    const catExcluded = isOmenType && (targetCat !== null) && (cat !== targetCat);
+    const catExcluded = isOmenType && (targetCat !== null) && !allowedCats.has(cat);
     
     if (userExcluded || catExcluded) {
       el.classList.add('excluded');
