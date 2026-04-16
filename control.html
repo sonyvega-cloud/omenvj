@@ -71,6 +71,7 @@
   }
   .bd.on { background: rgba(255,255,255,0.6); }
   .bd.down { background: #ff2200; }
+  .bd.past { background: rgba(255,255,255,0.15); }
 
   /* Sections */
   .section {
@@ -301,8 +302,6 @@
     <div class="btn" id="bci2" onclick="sendBeatCutInterval(2)">2</div>
     <div class="btn" id="bci4" onclick="sendBeatCutInterval(4)">4</div>
     <div class="btn" id="bci8" onclick="sendBeatCutInterval(8)">8</div>
-    <div style="flex:1;"></div>
-    <div class="btn" id="abLabel" style="pointer-events:none;">A</div>
   </div>
 </div>
 
@@ -755,22 +754,21 @@ function updateUI(s) {
     });
   }
   
-  // Beat dots
-  if (s.beatJustFired && s.bar16 !== lastBar16) {
+  // Beat dots — progressive 1-16 trail (synced with player phraseCounter)
+  if (s.bar16 !== undefined && s.bar16 !== lastBar16) {
     lastBar16 = s.bar16;
     for (let i = 0; i < 16; i++) {
       const dot = document.getElementById('cbd' + i);
       if (!dot) continue;
       dot.className = 'bd';
-      if (i === s.bar16) dot.classList.add(i % 4 === 0 ? 'down' : 'on');
-    }
-    if (beatDotTimer) clearTimeout(beatDotTimer);
-    beatDotTimer = setTimeout(() => {
-      for (let i = 0; i < 16; i++) {
-        const d = document.getElementById('cbd' + i);
-        if (d) d.className = 'bd';
+      if (i === s.bar16) {
+        // Current beat: downbeats (0,4,8,12) red, others white
+        dot.classList.add(i % 4 === 0 ? 'down' : 'on');
+      } else if (i < s.bar16) {
+        // Past beats: dim trail
+        dot.classList.add('past');
       }
-    }, 120);
+    }
   }
   
   // Energy + mood
@@ -797,10 +795,6 @@ function updateUI(s) {
     }
     if (el.className !== cls) el.className = cls;
   });
-  
-  // A/B
-  const abEl = document.getElementById('abLabel');
-  if (abEl) abEl.textContent = s.currentAB === 0 ? 'A' : 'B';
   
   // Beat cut
   const bcEl = document.getElementById('bcToggle');

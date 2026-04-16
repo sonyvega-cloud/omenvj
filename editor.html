@@ -245,12 +245,11 @@ function getDefaults() {
       themeId: 'omen',
       type: p.videoA ? 'video' : 'gfx',
       videoA: p.videoA ? p.videoA.replace(EDITOR_CDN, '') : null,
-      videoB: p.videoB ? p.videoB.replace(EDITOR_CDN, '') : null,
       deviceId: null,
       deviceLabel: null,
     }));
   }
-  return [{ name: 'OMEN1', gfx: 'omen1_full', energy: 1, themeId: 'omen', type: 'gfx', videoA: null, videoB: null, deviceId: null, deviceLabel: null }];
+  return [{ name: 'OMEN1', gfx: 'omen1_full', energy: 1, themeId: 'omen', type: 'gfx', videoA: null, deviceId: null, deviceLabel: null }];
 }
 
 function saveToStorage() {
@@ -261,7 +260,6 @@ function saveToStorage() {
     gfx: s.gfx,
     energy: s.energy,
     videoA: s.type === 'video' ? s.videoA : null,
-    videoB: s.type === 'video' ? s.videoB : null,
     type: s.type || 'video',
     themeId: s.themeId || 'omen',
     camSource: s.camSource || null,
@@ -326,7 +324,7 @@ function renderThemeContent() {
   } else if (theme.type === 'text') {
     html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>TEXT</span><span>FX</span><span>ENERGY</span><span></span></div>';
   } else {
-    html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>VIDEO A</span><span>ENERGY</span><span>VIDEO B</span><span></span></div>';
+    html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>VIDEO</span><span>ENERGY</span><span></span><span></span></div>';
   }
 
   // Scenes
@@ -352,11 +350,7 @@ function renderThemeContent() {
 
     html += '<span class="energy-badge ' + eClass + '">' + eLabel + '</span>';
 
-    if (theme.type === 'video') {
-      html += '<span class="scene-source">' + (s.videoB || '') + '</span>';
-    } else {
-      html += '<span></span>';
-    }
+    html += '<span></span>';
 
     html += '<div class="scene-actions">';
     html += '<button class="icon-btn" onclick="editScene(' + s._idx + ')" title="Edit">✎</button>';
@@ -482,17 +476,11 @@ function buildEditorFields() {
     // Preview — full width, taller
     html += '<div id="typoPreview" style="margin-top:12px; padding:24px 8px; background:#000; overflow:hidden; text-align:center; border:1px solid #222; min-height:80px;"></div>';
   } else {
-    html += '<span class="field-label">VIDEO A</span><div class="upload-row">';
+    html += '<span class="field-label">VIDEO</span><div class="upload-row">';
     html += '<input class="field-input" id="editVideoA" style="max-width:180px">';
     html += '<input type="file" id="fileA" accept="video/mp4" style="display:none" onchange="handleUpload(\'A\')">';
     html += '<button class="upload-btn" onclick="document.getElementById(\'fileA\').click()">UPLOAD</button>';
     html += '<span class="upload-status" id="statusA"></span></div>';
-
-    html += '<span class="field-label">VIDEO B</span><div class="upload-row">';
-    html += '<input class="field-input" id="editVideoB" style="max-width:180px">';
-    html += '<input type="file" id="fileB" accept="video/mp4" style="display:none" onchange="handleUpload(\'B\')">';
-    html += '<button class="upload-btn" onclick="document.getElementById(\'fileB\').click()">UPLOAD</button>';
-    html += '<span class="upload-status" id="statusB"></span></div>';
   }
 
   fields.innerHTML = html;
@@ -580,7 +568,6 @@ function editScene(idx) {
     updateTypoPreview();
   } else {
     document.getElementById('editVideoA').value = s.videoA || '';
-    document.getElementById('editVideoB').value = s.videoB || '';
   }
 
   document.getElementById('editorPanel').classList.add('open');
@@ -722,7 +709,6 @@ function saveScene() {
     themeId: activeTheme,
     type: sceneType,
     videoA: theme.type === 'video' ? (document.getElementById('editVideoA')?.value.trim() || null) : null,
-    videoB: theme.type === 'video' ? (document.getElementById('editVideoB')?.value.trim() || null) : null,
     camSource: theme.type === 'camera' ? (document.getElementById('editCamSource')?.value || 'remote') : null,
     deviceId: theme.type === 'camera' ? (document.getElementById('editDeviceId')?.value || null) : null,
     deviceLabel: theme.type === 'camera' ? (document.getElementById('editDeviceLabel')?.value || null) : null,
@@ -960,10 +946,9 @@ function exportPresetsJS() {
   lines.push('const PRESETS_DATA = [');
   scenes.forEach((s, i) => {
     const va = s.type === 'video' && s.videoA ? 'CDN+"' + s.videoA + '"' : 'null';
-    const vb = s.type === 'video' && s.videoB ? 'CDN+"' + s.videoB + '"' : 'null';
     const extra = s.type === 'camera' ? ', "type": "camera"' : '';
     const comma = i < scenes.length - 1 ? ',' : '';
-    lines.push('  { "name": "' + s.name + '", "videoA": ' + va + ', "videoB": ' + vb + ', "gfx": "' + s.gfx + '", "energy": ' + s.energy + extra + ' }' + comma);
+    lines.push('  { "name": "' + s.name + '", "videoA": ' + va + ', "gfx": "' + s.gfx + '", "energy": ' + s.energy + extra + ' }' + comma);
   });
   lines.push('];');
   downloadFile('presets.js', lines.join('\n'));

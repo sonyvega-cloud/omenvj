@@ -338,10 +338,8 @@
   <!-- Preset buttons (generated dynamically from PRESETS array) -->
   <div id="presetBtns" style="display:flex; gap:3px; margin-top:8px; flex-wrap:wrap; pointer-events:auto;"></div>
   
-  <!-- Beat cut + A/B -->
+  <!-- Beat cut controls -->
   <div style="display:flex; gap:3px; margin-top:4px; pointer-events:auto;">
-    <div class="pgrid" id="abIndicator" style="font-size:7px; width:auto; padding:0 6px;">A</div>
-    <div style="width:2px;"></div>
     <div class="pgrid" id="bcToggle" style="font-size:7px; width:auto; padding:0 6px; cursor:pointer;" onclick="toggleBeatCut()">CUT</div>
     <div class="pgrid" id="bci1" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(1)">1</div>
     <div class="pgrid" id="bci2" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(2)">2</div>
@@ -494,7 +492,6 @@ function loadPresets() {
         PRESETS = parsed.map(p => ({
           ...p,
           videoA: p.type === 'video' && p.videoA && !p.videoA.startsWith('http') ? cdn + p.videoA : (p.type === 'video' ? p.videoA : null),
-          videoB: p.type === 'video' && p.videoB && !p.videoB.startsWith('http') ? cdn + p.videoB : (p.type === 'video' ? p.videoB : null),
         }));
         console.log('[PRESETS] Loaded ' + PRESETS.length + ' from scenes');
         return;
@@ -510,7 +507,6 @@ function loadPresets() {
         PRESETS = parsed.map(p => ({
           ...p,
           videoA: p.videoA && !p.videoA.startsWith('http') ? cdn + p.videoA : p.videoA,
-          videoB: p.videoB && !p.videoB.startsWith('http') ? cdn + p.videoB : p.videoB,
         }));
         console.log('[PRESETS] Loaded ' + PRESETS.length + ' from presets');
         return;
@@ -539,8 +535,6 @@ let presetReady = new Array(PRESETS.length).fill(false);
 let presetPool = new Set(PRESETS.map((_, i) => i)); // which presets autopilot can use
 let userExcludedPresets = new Set(); // presets user manually X'd out (priority over drive)
 let activePreset = 0;
-let currentAB = 0;
-
 // Beat cut (iOS-style with active set)
 let beatCutEnabled = false;
 let beatCutInterval = 4;
@@ -563,6 +557,9 @@ const PHRASE_RESET_COOLDOWN = 16; // beats
 
 // Called every frame from tick() — works even when CDJ sends no beats
 function updatePhraseAudio() {
+  // Phrase detection only with autopilot (user-specified)
+  if (!autopilotEnabled) { phraseState = 'NORMAL'; return; }
+  
   switch (phraseState) {
     case 'NORMAL':
       if (smoothVol < BREAKDOWN_THRESHOLD) {
@@ -634,11 +631,6 @@ const VIDEO_BASE_SCALE = 1.0; // web: 1.0 = viewport fill (iOS was 0.375 due to 
 let videoSpeed = 1.0;
 let videoCompassAngle = 0;
 let _lastVideoTransform = 'translate(-50%,-50%)';
-
-// A/B monotonic clock
-let abClockStart = 0;
-let abBaseLoops = 0;
-let abLastSpeed = 1.0;
 
 // ── Color palettes (from iOS) ──────────────────────────────────
 const palettes = [
@@ -1027,9 +1019,6 @@ function handleTap() {
     beatIndex = 0;
     beatFlash = 1.0;
     beatCount++;
-    abClockStart = performance.now();
-    abBaseLoops = 0;
-    abLastSpeed = videoSpeed;
     startBeatClock(bpm);
     if (videoLoaded) updateVideoSpeed(bpm);
     return;
@@ -1199,8 +1188,10 @@ function onBeatTick() {
   }
 }
 
-// Organic beat cut: human variation around base interval
+// Autopilot = organic variation. Manual = exact interval.
 function getOrganicInterval() {
+  if (!autopilotEnabled) return beatCutInterval; // manual = exact
+  
   const base = beatCutInterval;
   const variation = Math.floor(Math.random() * 3) - 1; // -1, 0, or +1
   return Math.max(2, base + variation);
@@ -1590,19 +1581,16 @@ function initPresets() {
   document.getElementById('videoVignette').style.background = 
     'radial-gradient(circle closest-side, transparent 0%, transparent 40%, rgba(0,0,0,0.08) 52%, rgba(0,0,0,0.25) 62%, rgba(0,0,0,0.50) 72%, rgba(0,0,0,0.75) 82%, rgba(0,0,0,0.92) 92%, rgba(0,0,0,1.0) 100%)';
   
-  // ── Generate video elements ─────────────────────────────────
+  // ── Generate video elements (ONE per preset, no A/B) ────────
   const videoLayer = document.getElementById('videoLayer');
   videoLayer.innerHTML = '';
   PRESETS.forEach((preset, i) => {
     if (!preset.videoA) return; // GFX-only preset (OMEN1)
-    const vidA = document.createElement('video');
-    const vidB = document.createElement('video');
-    [vidA, vidB].forEach((v, j) => {
-      v.id = `vid${i}${j === 0 ? 'a' : 'b'}`;
-      v.loop = true; v.muted = true; v.playsInline = true;
-      v.setAttribute('playsinline', '');
-      videoLayer.appendChild(v);
-    });
+    const v = document.createElement('video');
+    v.id = `vid${i}`;
+    v.loop = true; v.muted = true; v.playsInline = true;
+    v.setAttribute('playsinline', '');
+    videoLayer.appendChild(v);
   });
   
   // ── Generate preset buttons ─────────────────────────────────
@@ -1623,36 +1611,22 @@ function initPresets() {
   
   // ── Load videos ─────────────────────────────────────────────
   PRESETS.forEach((preset, i) => {
-    // GFX-only or camera preset → mark ready immediately
     if (!preset.videoA || preset.type === 'camera') {
       presetReady[i] = true;
       return;
     }
     
-    const vidA = document.getElementById(`vid${i}a`);
-    const vidB = document.getElementById(`vid${i}b`);
+    const vid = document.getElementById(`vid${i}`);
+    if (!vid) return;
+    vid.src = preset.videoA;
     
-    vidA.src = preset.videoA;
-    vidB.src = preset.videoB;
-    
-    let aReady = false, bReady = false;
-    
-    vidA.oncanplaythrough = () => {
-      if (aReady) return;
-      aReady = true;
-      vidA.play().catch(() => {});
+    vid.oncanplaythrough = () => {
+      if (presetReady[i]) return;
+      vid.play().catch(() => {});
       checkPresetReady(i);
     };
-    vidB.oncanplaythrough = () => {
-      if (bReady) return;
-      bReady = true;
-      vidB.play().catch(() => {});
-    };
+    vid.onerror = () => { console.warn(`${preset.videoA} not found`); checkPresetReady(i); };
     
-    vidA.onerror = () => { console.warn(`${preset.videoA} not found`); checkPresetReady(i); };
-    vidB.onerror = () => { console.warn(`${preset.videoB} not found`); checkPresetReady(i); };
-    
-    // Timeout fallback — if video hasn't loaded in 8s, mark ready anyway (GFX works without video)
     setTimeout(() => {
       if (!presetReady[i]) {
         console.warn(`${preset.name} video timeout — marking ready (GFX only)`);
@@ -1660,8 +1634,7 @@ function initPresets() {
       }
     }, 8000);
     
-    vidA.load();
-    vidB.load();
+    vid.load();
   });
 }
 
@@ -1669,16 +1642,11 @@ function checkPresetReady(idx) {
   presetReady[idx] = true;
   videoLoaded = true;
   
-  if (abClockStart === 0) {
-    abClockStart = performance.now();
-    abLastSpeed = videoSpeed;
-  }
-  
   updateVideoVisibility();
   updatePresetGrid();
 }
 
-// BPM → playback speed: 24s video synced to 48 beats
+// BPM → playback speed: video synced to beats
 function updateVideoSpeed(newBpm) {
   if (newBpm <= 0) return;
   
@@ -1686,34 +1654,13 @@ function updateVideoSpeed(newBpm) {
   const speed = Math.min(Math.max((VIDEO_DURATION_S / targetSeconds) * videoSpeedMultiplier, 0.1), 8.0);
   
   if (Math.abs(speed - videoSpeed) < 0.01) return;
-  
-  // Resync A/B clock
-  const elapsed = performance.now() - abClockStart;
-  const durationMs = VIDEO_DURATION_S * 1000;
-  if (abLastSpeed > 0 && durationMs > 0) {
-    abBaseLoops += Math.floor(elapsed * abLastSpeed / durationMs);
-  }
-  abClockStart = performance.now();
-  abLastSpeed = speed;
   videoSpeed = speed;
   
-  // Apply to all video elements
   PRESETS.forEach((preset, i) => {
-    if (!preset.videoA) return; // GFX-only, no video elements
-    const a = document.getElementById(`vid${i}a`);
-    const b = document.getElementById(`vid${i}b`);
-    if (a && a.readyState >= 2) a.playbackRate = speed;
-    if (b && b.readyState >= 2) b.playbackRate = speed;
+    if (!preset.videoA) return;
+    const v = document.getElementById(`vid${i}`);
+    if (v && v.readyState >= 2) v.playbackRate = speed;
   });
-}
-
-// A/B: monotonic clock, even=A odd=B
-function getCurrentAB() {
-  if (videoSpeed <= 0) return 0;
-  const elapsed = performance.now() - abClockStart;
-  const durationMs = VIDEO_DURATION_S * 1000;
-  const loopIndex = abBaseLoops + Math.floor(elapsed * videoSpeed / durationMs);
-  return loopIndex % 2 === 0 ? 0 : 1;
 }
 
 // Camera CSS filters (static — defined once)
@@ -1727,10 +1674,9 @@ const CAM_FILTERS = [
 
 // Cached DOM refs (set once)
 let _vlEl = null, _clEl = null, _coEl = null, _vigEl = null;
-let _lastActivePreset = -1, _lastAB = -1;
+let _lastActivePreset = -1;
 
 function updateVideoVisibility() {
-  currentAB = getCurrentAB();
   const currentPreset = PRESETS[activePreset];
   const currentPresetHasVideo = currentPreset?.videoA != null;
   const currentPresetIsCamera = currentPreset?.type === 'camera';
@@ -1798,24 +1744,23 @@ function updateVideoVisibility() {
     applyVideoColor();
   }
   
-  // ── Video A/B toggle (only when preset or AB changes) ──
-  if (activePreset !== _lastActivePreset || currentAB !== _lastAB) {
-    // Deactivate previous — just hide, video keeps playing for clean future cut
+  // ── Video toggle (only when preset changes) ──
+  if (activePreset !== _lastActivePreset) {
+    // Deactivate previous — hide only, keep playing
     if (_lastActivePreset >= 0 && _lastActivePreset !== activePreset) {
-      const pA = document.getElementById(`vid${_lastActivePreset}a`);
-      const pB = document.getElementById(`vid${_lastActivePreset}b`);
-      if (pA) pA.classList.remove('active');
-      if (pB) pB.classList.remove('active');
+      const prev = document.getElementById(`vid${_lastActivePreset}`);
+      if (prev) prev.classList.remove('active');
     }
-    // Activate current
+    // Activate current + ensure playing
     if (presetReady[activePreset] && PRESETS[activePreset]?.videoA) {
-      const cA = document.getElementById(`vid${activePreset}a`);
-      const cB = document.getElementById(`vid${activePreset}b`);
-      if (cA) { cA.style.transform = _lastVideoTransform; cA.classList.toggle('active', currentAB === 0); }
-      if (cB) { cB.style.transform = _lastVideoTransform; cB.classList.toggle('active', currentAB === 1); }
+      const cur = document.getElementById(`vid${activePreset}`);
+      if (cur) {
+        cur.style.transform = _lastVideoTransform;
+        if (cur.paused) cur.play().catch(()=>{});
+        cur.classList.add('active');
+      }
     }
     _lastActivePreset = activePreset;
-    _lastAB = currentAB;
   }
 }
 
@@ -1898,17 +1843,13 @@ function switchToPreset(idx) {
     openLocalCam(idx, preset?.deviceId || null);
   }
   
-  // Seek video presets to current loop position
-  if (preset && preset.videoA && preset.type !== 'camera' && abClockStart > 0 && videoSpeed > 0) {
-    const elapsed = performance.now() - abClockStart;
-    const durationMs = VIDEO_DURATION_S * 1000;
-    const posInLoop = (elapsed * videoSpeed / durationMs) % 1.0;
-    const seekTime = posInLoop * VIDEO_DURATION_S;
-    
-    const vidA = document.getElementById(`vid${idx}a`);
-    const vidB = document.getElementById(`vid${idx}b`);
-    if (vidA && vidA.readyState >= 2) { vidA.currentTime = seekTime; vidA.playbackRate = videoSpeed; }
-    if (vidB && vidB.readyState >= 2) { vidB.currentTime = seekTime; vidB.playbackRate = videoSpeed; }
+  // Ensure video is playing (playbackRate set elsewhere)
+  if (preset && preset.videoA && preset.type !== 'camera') {
+    const v = document.getElementById(`vid${idx}`);
+    if (v) {
+      v.playbackRate = videoSpeed || 1;
+      if (v.paused) v.play().catch(()=>{});
+    }
   }
   
   updateVideoVisibility();
@@ -2007,17 +1948,23 @@ function beatCutNext() {
     }
   }
   
-  // ── Energy-aware: prefer presets matching mood category ──
-  let targetCat = 3;
-  if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
-  else if (mood === 'BUILDING') targetCat = 2;
+  let pick;
   
-  const energyMatched = others.filter(i => (PRESETS[i]?.energy || 2) === targetCat);
-  // Use energy-matched if available (70% chance), otherwise any
-  const pool = (energyMatched.length > 0 && Math.random() < 0.7) ? energyMatched : others;
+  if (autopilotEnabled) {
+    // AUTOPILOT = organic energy-aware selection
+    let targetCat = 3;
+    if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
+    else if (mood === 'BUILDING') targetCat = 2;
+    
+    const energyMatched = others.filter(i => (PRESETS[i]?.energy || 2) === targetCat);
+    const pool = (energyMatched.length > 0 && Math.random() < 0.7) ? energyMatched : others;
+    pick = pickByThemeWeight(pool);
+  } else {
+    // MANUAL beat cut = equal random cut on all presets in beatCutActive
+    pick = others[Math.floor(Math.random() * others.length)];
+  }
   
-  const pick = pickByThemeWeight(pool);
-  if (pick === null) return;
+  if (pick === null || pick === undefined) return;
   
   if (PRESETS[pick]?.type === 'camera') camHoldBeats = 8;
   
@@ -2084,10 +2031,8 @@ function updateVideoLayer() {
   updateVideoVisibility();
   
   // Apply transform AFTER visibility toggle (no flash of old transform)
-  const vidA = document.getElementById(`vid${activePreset}a`);
-  const vidB = document.getElementById(`vid${activePreset}b`);
-  if (vidA) vidA.style.transform = transform;
-  if (vidB) vidB.style.transform = transform;
+  const vid = document.getElementById(`vid${activePreset}`);
+  if (vid) vid.style.transform = transform;
   
   // Vignette scales WITH video
   if (!_vigEl) _vigEl = document.getElementById('videoVignette');
@@ -2111,8 +2056,6 @@ function updatePresetGrid() {
       el.classList.add('loaded');
     }
   });
-  
-  document.getElementById('abIndicator').textContent = currentAB === 0 ? 'A' : 'B';
   
   const bcEl = document.getElementById('bcToggle');
   bcEl.textContent = beatCutEnabled ? 'CUT ON' : 'CUT OFF';
@@ -4012,10 +3955,10 @@ function broadcastState() {
       type: 'state',
       bpm: bpm || 0,
       beatIndex: beatIndex || 0,
-      bar16: (beatIndex || 0) % 16,
+      bar16: (phraseCounter || 0) % 16,  // 0-15 position within 16-beat phrase
+      phraseCounter: phraseCounter || 0,
       beatJustFired: beatFiredFrames > 0,
       activePreset: activePreset || 0,
-      currentAB: currentAB || 0,
       energy: normEnergy || 0,
       mood: mood || 'LISTENING',
       beatCutEnabled: !!beatCutEnabled,
