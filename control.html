@@ -777,9 +777,10 @@ function updateUI(s) {
   if (eFill) eFill.style.width = ((s.energy || 0) * 100) + '%';
   if (mLabel) mLabel.textContent = s.mood || '—';
   
-  // Presets (with pool exclusion + energy CAT filter during autopilot)
+  // Presets (with pool exclusion + energy CAT filter during autopilot for OMEN presets only)
   const pool = s.presetPool || [];
   const energies = s.presetEnergies || [];
+  const types = s.presetTypes || [];
   // Calculate target CAT from mood when autopilot ON
   let targetCat = null;
   if (s.autopilotEnabled) {
@@ -793,7 +794,10 @@ function updateUI(s) {
     let cls = 'btn';
     const userExcluded = s.autopilotEnabled && !pool.includes(i);
     const cat = energies[i] || 2;
-    const catExcluded = (targetCat !== null) && (cat !== targetCat);
+    const type = types[i] || 'video';
+    // CAT filter applies ONLY to OMEN video/gfx presets (not camera/text)
+    const isOmenType = (type === 'video' || type === 'gfx');
+    const catExcluded = isOmenType && (targetCat !== null) && (cat !== targetCat);
     if (userExcluded || catExcluded) {
       cls += ' excluded';
     } else if (i === s.activePreset) {

@@ -2016,8 +2016,10 @@ function updatePresetGrid() {
     el.className = 'pgrid';
     const userExcluded = autopilotEnabled && !presetPool.has(i);
     const cat = preset.energy || 2;
-    // During autopilot: non-target CAT presets = excluded visually
-    const catExcluded = (targetCat !== null) && (cat !== targetCat);
+    const type = preset.type || 'video';
+    // CAT filter applies ONLY to OMEN video/gfx presets (not camera/text)
+    const isOmenType = (type === 'video' || type === 'gfx');
+    const catExcluded = isOmenType && (targetCat !== null) && (cat !== targetCat);
     
     if (userExcluded || catExcluded) {
       el.classList.add('excluded');
@@ -3952,6 +3954,7 @@ function broadcastState() {
       presetReady: presetReady ? [...presetReady] : [],
       presetPool: [...presetPool],
       presetEnergies: PRESETS.map(p => p.energy || 2),
+      presetTypes: PRESETS.map(p => p.type || 'video'),
       pinchScale: pinchScale || 1,
       autopilotEnabled: !!autopilotEnabled,
       autoEnergyEnabled: !!autoEnergyEnabled,
