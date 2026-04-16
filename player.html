@@ -1068,6 +1068,23 @@ function onBeatTick() {
   moodBeatCounter++; // watchdog counter
   beatFiredFrames = 5;
   
+  // Phrase detection (breakdown → drop alignment) — increment FIRST so beat cut aligns
+  updatePhraseOnBeat();
+  
+  // Beat cut countdown — PHRASE-ALIGNED for intervals ≥ 1
+  if (beatCutEnabled && beatCutInterval >= 1) {
+    const phraseBeat = phraseCounter;
+    const effectiveInterval = Math.floor(getOrganicInterval());
+    if (phraseBeat > 0 && phraseBeat % effectiveInterval === 0) {
+      beatCutNext();
+    }
+  }
+  
+  // Sub-beat support: interval < 1 = multiple cuts per beat
+  if (beatCutEnabled && beatCutInterval < 1 && beatCutInterval > 0) {
+    scheduleSubBeatCuts();
+  }
+  
   // Camera hold countdown (per beat, not per cut)
   if (camHoldBeats > 0) camHoldBeats--;
   
@@ -1087,9 +1104,6 @@ function onBeatTick() {
   
   // Typo beat hook
   typoOnBeat();
-  
-  // Phrase detection (breakdown → drop alignment)
-  updatePhraseOnBeat();
   
   const bar4 = beatIndex % 4;
   const bar8 = beatIndex % 8;
@@ -1129,15 +1143,37 @@ function onBeatTick() {
   if (videoLoaded && bpm > 0) {
     updateVideoSpeed(bpm);
   }
+}
+
+// Fractional intervals: 0.5 = cut twice per beat (offbeat + downbeat)
+// Uses setTimeout to fire at beat/2 point
+let _subBeatTimeout = null;
+function scheduleSubBeatCuts() {
+  if (_subBeatTimeout) clearTimeout(_subBeatTimeout);
+  if (!beatCutEnabled || beatCutInterval >= 1 || bpm <= 0) return;
   
-  // Beat cut — simple countdown
-  if (beatCutEnabled) {
-    beatCutCountdown--;
-    if (beatCutCountdown <= 0) {
-      beatCutNext();
-      beatCutCountdown = getOrganicInterval();
-    }
-  }
+  const beatMs = 60000 / bpm;
+  // For 0.5 interval = 2 cuts per beat: fire 1 extra cut at half-beat
+  // For 0.25 interval = 4 cuts per beat: fire 3 extra cuts at quarter-beat intervals
+  const cutsPerBeat = Math.round(1 / beatCutInterval);
+  
+  // Fire cuts at 1/cutsPerBeat, 2/cutsPerBeat, ... (skip 0 = onbeat handled above)
+  const msBetween = beatMs / cutsPerBeat;
+  
+  let fired = 0;
+  const total = cutsPerBeat - 1; // 0.5 → 1 extra, 0.25 → 3 extra
+  
+  // Fire the onbeat cut NOW (since this is called from onBeatTick, onbeat already past)
+  beatCutNext();
+  
+  const fireNext = () => {
+    if (!beatCutEnabled || beatCutInterval >= 1) return; // user changed interval
+    if (fired >= total) return;
+    fired++;
+    beatCutNext();
+    _subBeatTimeout = setTimeout(fireNext, msBetween);
+  };
+  _subBeatTimeout = setTimeout(fireNext, msBetween);
 }
 
 // Autopilot = organic variation. Manual = exact interval.
@@ -1145,6 +1181,9 @@ function getOrganicInterval() {
   if (!autopilotEnabled) return beatCutInterval; // manual = exact
   
   const base = beatCutInterval;
+  // Only vary intervals >= 2 (smaller ones are already fast)
+  if (base < 2) return base;
+  
   const variation = Math.floor(Math.random() * 3) - 1; // -1, 0, or +1
   return Math.max(2, base + variation);
 }
@@ -1998,10 +2037,10 @@ function updatePresetGrid() {
   bcEl.textContent = beatCutEnabled ? 'CUT ON' : 'CUT OFF';
   bcEl.className = 'pgrid' + (beatCutEnabled ? ' cut-on' : '');
   
-  // Highlight active interval button
+  // Highlight active interval button (HUD is hidden; safe null checks)
   [1, 2, 4, 8].forEach(n => {
     const el = document.getElementById('bci' + n);
-    el.className = 'pgrid' + (beatCutInterval === n ? ' active' : '');
+    if (el) el.className = 'pgrid' + (beatCutInterval === n ? ' active' : '');
   });
   
   updateColorDots();
@@ -3499,21 +3538,23 @@ function connectCDJ() {
           // Phrase detection — BEFORE beat cut (may reset countdown)
           updatePhraseOnBeat();
           
-          // Beat cut — PRE-SEEK + PHRASE ALIGNED
-          if (beatCutEnabled) {
+          // Beat cut — PHRASE-ALIGNED (matches local beat clock)
+          if (beatCutEnabled && beatCutInterval >= 1) {
             if (beatCutWaitForDownbeat) {
               if (isDownbeat) {
                 beatCutWaitForDownbeat = false;
                 cdjDownbeatCount = 0;
-                beatCutCountdown = getOrganicInterval();
               }
             } else {
-              beatCutCountdown--;
-              if (beatCutCountdown <= 0 && isDownbeat) {
+              const effectiveInterval = Math.floor(getOrganicInterval());
+              if (phraseCounter > 0 && phraseCounter % effectiveInterval === 0) {
                 beatCutNext();
-                beatCutCountdown = getOrganicInterval();
               }
             }
+          }
+          // Sub-beat (interval < 1)
+          if (beatCutEnabled && beatCutInterval < 1 && beatCutInterval > 0) {
+            scheduleSubBeatCuts();
           }
           
           // TYPO FX on CDJ beat

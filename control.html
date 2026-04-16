@@ -296,12 +296,15 @@
 <!-- Beat Cut -->
 <div class="section">
   <div class="section-label">Beat Cut</div>
-  <div class="btn-row">
+  <div class="btn-row" style="flex-wrap:wrap;">
     <div class="btn" id="bcToggle" onclick="sendBeatCutToggle()">CUT</div>
+    <div class="btn" id="bci05" onclick="sendBeatCutInterval(0.5)">½</div>
     <div class="btn" id="bci1" onclick="sendBeatCutInterval(1)">1</div>
     <div class="btn" id="bci2" onclick="sendBeatCutInterval(2)">2</div>
     <div class="btn" id="bci4" onclick="sendBeatCutInterval(4)">4</div>
     <div class="btn" id="bci8" onclick="sendBeatCutInterval(8)">8</div>
+    <div class="btn" id="bci16" onclick="sendBeatCutInterval(16)">16</div>
+    <div class="btn" id="bci32" onclick="sendBeatCutInterval(32)">32</div>
   </div>
 </div>
 
@@ -788,6 +791,20 @@ function updateUI(s) {
     else if (s.mood === 'BUILDING') targetCat = 2;
     else if (s.mood === 'GROOVE' || s.mood === 'DROP' || s.mood === 'PEAK') targetCat = 3;
   }
+  // Fallback: if target CAT has < 2 OMEN presets, expand to include nearest
+  const allowedCats = new Set();
+  if (targetCat !== null) {
+    allowedCats.add(targetCat);
+    let omenInCat = 0;
+    for (let j = 0; j < energies.length; j++) {
+      const t = types[j] || 'video';
+      if ((t === 'video' || t === 'gfx') && (energies[j] || 2) === targetCat) omenInCat++;
+    }
+    if (omenInCat < 2) {
+      if (targetCat > 1) allowedCats.add(targetCat - 1);
+      if (targetCat < 3) allowedCats.add(targetCat + 1);
+    }
+  }
   presetNames.forEach((_, i) => {
     const el = document.getElementById('cpg' + i);
     if (!el) return;
@@ -795,9 +812,8 @@ function updateUI(s) {
     const userExcluded = s.autopilotEnabled && !pool.includes(i);
     const cat = energies[i] || 2;
     const type = types[i] || 'video';
-    // CAT filter applies ONLY to OMEN video/gfx presets (not camera/text)
     const isOmenType = (type === 'video' || type === 'gfx');
-    const catExcluded = isOmenType && (targetCat !== null) && (cat !== targetCat);
+    const catExcluded = isOmenType && (targetCat !== null) && !allowedCats.has(cat);
     if (userExcluded || catExcluded) {
       cls += ' excluded';
     } else if (i === s.activePreset) {
@@ -813,7 +829,20 @@ function updateUI(s) {
   // Beat cut
   const bcEl = document.getElementById('bcToggle');
   if (bcEl) { bcEl.textContent = s.beatCutEnabled ? 'CUT ON' : 'CUT'; bcEl.className = 'btn' + (s.beatCutEnabled ? ' on' : ''); }
-  [1, 2, 4, 8].forEach(n => { const el = document.getElementById('bci' + n); if (el) el.className = 'btn' + (s.beatCutInterval === n ? ' active' : ''); });
+  // Interval highlight (½ = id bci05, others = bci<N>)
+  const intervalButtons = [
+    { id: 'bci05', value: 0.5 },
+    { id: 'bci1', value: 1 },
+    { id: 'bci2', value: 2 },
+    { id: 'bci4', value: 4 },
+    { id: 'bci8', value: 8 },
+    { id: 'bci16', value: 16 },
+    { id: 'bci32', value: 32 },
+  ];
+  intervalButtons.forEach(({ id, value }) => {
+    const el = document.getElementById(id);
+    if (el) el.className = 'btn' + (s.beatCutInterval === value ? ' active' : '');
+  });
   
   // Strobo + VHID
   const stEl = document.getElementById('strbBtn');
