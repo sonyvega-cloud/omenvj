@@ -507,6 +507,13 @@ function updateDrivePool() {
   }
   
   presetPool = newPool;
+  
+  // Sync beatCutActive with pool (remove presets no longer in pool)
+  if (beatCutEnabled) {
+    const updated = new Set([...beatCutActive].filter(i => presetPool.has(i)));
+    if (updated.size >= 2) beatCutActive = updated;
+  }
+  
   updatePresetGrid();
 }
 let fxSliderValue = 1.0;   // user-set FX intensity (slider)
@@ -561,6 +568,18 @@ function loadPresets() {
   console.log('[PRESETS] Loaded ' + PRESETS.length + ' from presets.js');
 }
 loadPresets();
+
+// Auto-assign energy category if not set in editor
+// First third = CAT 1 (ambient), middle = CAT 2, last third = CAT 3 (groove)
+PRESETS.forEach((p, i) => {
+  if (!p.energy) {
+    const pos = PRESETS.length > 1 ? i / (PRESETS.length - 1) : 0.5;
+    if (pos < 0.33) p.energy = 1;
+    else if (pos < 0.66) p.energy = 2;
+    else p.energy = 3;
+  }
+});
+console.log('[ENERGY]', PRESETS.map((p,i) => p.name + ':CAT' + p.energy).join(', '));
 
 let videoLoaded = false;
 let presetReady = new Array(PRESETS.length).fill(false);
@@ -812,6 +831,7 @@ async function startAudio(source) {
 
     // Start render loop
     initPresets();
+    updateDrivePool(); // apply drive-based pool filter immediately
     requestAnimationFrame(tick);
     
   } catch (err) {
@@ -3440,7 +3460,7 @@ function toggleBeatCut() {
   if (beatCutEnabled) {
     beatCutWaitForDownbeat = cdjConnected; // sync to downbeat if CDJ
     beatCutCountdown = beatCutInterval;
-    beatCutActive = new Set(PRESETS.map((_, i) => i).filter(i => presetReady[i]));
+    beatCutActive = new Set(PRESETS.map((_, i) => i).filter(i => presetReady[i] && presetPool.has(i)));
   }
   updatePresetGrid();
 }
