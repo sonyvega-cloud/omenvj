@@ -1325,9 +1325,27 @@ function getAutoBeatCutInterval() {
 function updateAutopilot() {
   if (!autopilotEnabled) return;
   
-  // ── SILENCE GUARD: no audio = kill beat cut + strobo only ──
-  // Don't force mood change — user's selected preset stays visible
+  // ── SILENCE GUARD: no audio = AMBIENT mood + kill beat cut/strobo ──
   if (smoothVol < 0.008) {
+    if (mood !== 'AMBIENT') {
+      mood = 'AMBIENT';
+      moodCandidate = 'AMBIENT';
+      lastAutopilotMood = '';
+      autopilotCooldown = 0;
+      updatePresetGrid();
+      
+      // Switch to CAT 1 preset if current isn't CAT 1 (only OMEN video/gfx presets)
+      const curType = PRESETS[activePreset]?.type || 'video';
+      const curIsOmen = (curType === 'video' || curType === 'gfx');
+      const curCat = PRESETS[activePreset]?.energy || 2;
+      if (curIsOmen && curCat !== 1) {
+        const cat1 = PRESETS.map((p, i) => ({ p, i }))
+          .filter(x => (x.p.type === 'video' || x.p.type === 'gfx') && (x.p.energy || 2) === 1 && presetReady[x.i]);
+        if (cat1.length > 0) {
+          switchToPreset(cat1[0].i);
+        }
+      }
+    }
     if (beatCutEnabled && autoBeatCutEnabled) { beatCutEnabled = false; updatePresetGrid(); }
     if (stroboActive && !manualStrobo) { stroboActive = false; stroboFlash = 0; }
     return;
