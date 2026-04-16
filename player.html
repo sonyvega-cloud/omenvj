@@ -877,8 +877,16 @@ function updateEnergy() {
   // ── Candidate mood from floating thresholds ─────────────────
   let candidateMood = 'GROOVE';
   
+  // Silence → AMBIENT (hard override)
   if (smoothVol < 0.008) {
     candidateMood = 'AMBIENT';
+  }
+  // KICK-FORWARD DETECT: strong pulse = upgrade mood beyond floating score
+  // This ensures ambient-style techno with occasional kicks doesn't stay AMBIENT
+  else if (pulseRatio > 2.5 && smoothBass > 0.08) {
+    // Very strong kick (punchy) + audible bass = upgrade based on current state
+    if (mood === 'AMBIENT' || mood === 'LISTENING') candidateMood = 'BUILDING';
+    else candidateMood = 'GROOVE';
   }
   else if (driveScore < threshAmbient) {
     candidateMood = 'AMBIENT';
@@ -1301,13 +1309,14 @@ function getAutoBeatCutInterval() {
   const driveN = masterDrive / 100;
   
   let interval = 4;
-  if (mood === 'AMBIENT' || mood === 'LISTENING') return 0; // beat cut OFF
+  if (mood === 'LISTENING') return 0; // beat cut OFF only for LISTENING (startup state)
+  if (mood === 'AMBIENT') interval = 16; // slow cut once per phrase
   if (mood === 'BUILDING') interval = 8;
   if (mood === 'GROOVE') interval = 4;
   if (mood === 'DROP' || mood === 'PEAK') interval = 2;
   
   // Drive only scales up/down subtly
-  if (driveN < 0.3) interval = Math.min(interval * 2, 16);
+  if (driveN < 0.3) interval = Math.min(interval * 2, 32);
   else if (driveN > 0.8) interval = Math.max(Math.floor(interval / 2), 2);
   
   return interval;
