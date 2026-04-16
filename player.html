@@ -554,6 +554,78 @@ let beatCutCountdown = 4;  // countdown to next cut (beats remaining)
 let beatCutSequenceIdx = 0;
 let beatCutActive = new Set(PRESETS.map((_, i) => i));
 
+// ── Phrase detection (breakdown → drop alignment) ──────────────
+// Two parts:
+//   updatePhraseAudio() — every frame — detects breakdown/return from audio
+//   updatePhraseOnBeat() — on beat events — increments counter + fires reset
+let phraseState = 'NORMAL';       // NORMAL | BREAKDOWN | DROP_EXPECTED
+let phraseCounter = 0;            // beats since last phrase reset
+let phraseResetCooldown = 0;      // prevents double-fire (beats)
+let breakdownFrames = 0;          // frames of sustained low energy
+const BREAKDOWN_THRESHOLD = 0.02; // smoothVol below this = "silence"
+const BREAKDOWN_RETURN = 0.04;    // smoothVol above this = "returning"
+const BREAKDOWN_MIN_FRAMES = 120; // ~2 seconds at 60fps (≈ 8 beats at 128bpm)
+const PHRASE_RESET_COOLDOWN = 16; // beats
+
+// Called every frame from tick() — works even when CDJ sends no beats
+function updatePhraseAudio() {
+  switch (phraseState) {
+    case 'NORMAL':
+      if (smoothVol < BREAKDOWN_THRESHOLD) {
+        breakdownFrames++;
+        if (breakdownFrames >= BREAKDOWN_MIN_FRAMES) {
+          phraseState = 'BREAKDOWN';
+          console.log('[PHRASE] Breakdown detected (silence for', (breakdownFrames / 60).toFixed(1) + 's)');
+        }
+      } else {
+        breakdownFrames = 0;
+      }
+      break;
+      
+    case 'BREAKDOWN':
+      if (smoothVol >= BREAKDOWN_RETURN) {
+        phraseState = 'DROP_EXPECTED';
+        breakdownFrames = 0;
+        console.log('[PHRASE] Energy returning, waiting for kick...');
+      }
+      break;
+      
+    case 'DROP_EXPECTED':
+      breakdownFrames++;
+      // Kick detected = PHRASE RESET
+      const kickDetected = bassPulse > bassPulseAvg * 1.5 || smoothBass > 0.15;
+      if (kickDetected && phraseResetCooldown === 0) {
+        phraseReset('kick');
+      }
+      // Safety: 3 seconds without kick → soft reset
+      if (phraseState === 'DROP_EXPECTED' && breakdownFrames > 180) {
+        phraseReset('timeout');
+      }
+      break;
+  }
+}
+
+function phraseReset(reason) {
+  const oldCounter = phraseCounter;
+  phraseCounter = 0;
+  breakdownFrames = 0;
+  phraseResetCooldown = PHRASE_RESET_COOLDOWN;
+  phraseState = 'NORMAL';
+  
+  if (beatCutEnabled) {
+    beatCutCountdown = beatCutInterval;
+    console.log('[PHRASE] ★ RESET (' + reason + ')! Cut realigned. Was at beat', oldCounter);
+  } else {
+    console.log('[PHRASE] Reset (' + reason + ') at beat', oldCounter);
+  }
+}
+
+// Called on beat events — just increments counter + cooldown
+function updatePhraseOnBeat() {
+  phraseCounter++;
+  if (phraseResetCooldown > 0) phraseResetCooldown--;
+}
+
 // Video specs — FIXED: 600 frames, 25fps, 48-beat sync
 const VIDEO_FRAMES = 600;
 const VIDEO_FPS = 25;
@@ -1080,6 +1152,9 @@ function onBeatTick() {
   
   // Typo beat hook
   typoOnBeat();
+  
+  // Phrase detection (breakdown → drop alignment)
+  updatePhraseOnBeat();
   
   const bar4 = beatIndex % 4;
   const bar8 = beatIndex % 8;
@@ -1741,12 +1816,18 @@ function updateVideoVisibility() {
       if (pA) { pA.classList.remove('active'); pA.pause(); }
       if (pB) { pB.classList.remove('active'); pB.pause(); }
     }
-    // Activate current — set transform BEFORE adding .active (no snap)
+    // Activate current — SEEK to correct timecode BEFORE showing
     if (presetReady[activePreset] && PRESETS[activePreset]?.videoA) {
       const cA = document.getElementById(`vid${activePreset}a`);
       const cB = document.getElementById(`vid${activePreset}b`);
-      if (cA) { cA.style.transform = _lastVideoTransform; cA.play().catch(()=>{}); cA.classList.toggle('active', currentAB === 0); }
-      if (cB) { cB.style.transform = _lastVideoTransform; cB.play().catch(()=>{}); cB.classList.toggle('active', currentAB === 1); }
+      // Calculate correct position from AB clock
+      const elapsed = performance.now() - abClockStart;
+      const syncTime = ((elapsed * videoSpeed / 1000) % VIDEO_DURATION_S) || 0;
+      // Seek FIRST, then play, then show (no flash of wrong timecode)
+      if (cA && cA.readyState >= 2) { cA.currentTime = syncTime; cA.playbackRate = videoSpeed; }
+      if (cB && cB.readyState >= 2) { cB.currentTime = syncTime; cB.playbackRate = videoSpeed; }
+      if (cA) { cA.play().catch(()=>{}); cA.style.transform = _lastVideoTransform; cA.classList.toggle('active', currentAB === 0); }
+      if (cB) { cB.play().catch(()=>{}); cB.style.transform = _lastVideoTransform; cB.classList.toggle('active', currentAB === 1); }
     }
     _lastActivePreset = activePreset;
     _lastAB = currentAB;
@@ -3168,6 +3249,7 @@ function tick() {
           typoFlash = 1.0;
           beatIndex++;
           typoOnBeat();
+          updatePhraseOnBeat();
         }
       } else {
         if (beat) autoCorrectBpm();
@@ -3176,6 +3258,9 @@ function tick() {
     
     updateEnergy();
     updateSilenceDampen();
+    
+    // Phrase detection: audio-side (runs every frame, even during CDJ breakdown)
+    updatePhraseAudio();
     
     updateAutopilot();
     
@@ -3211,7 +3296,8 @@ function tick() {
     const dbg = document.getElementById('debugDisplay');
     if (dbg) {
       const cdjInfo = cdjConnected ? ` CDJ:${cdjBarBeat}/4 bar:${Math.floor((cdjBeatTotal-1)/4)%4+1}/4` : '';
-      dbg.textContent = `${PRESETS[activePreset]?.name||'?'} | ${mood} D:${masterDrive}% fx:${fxIntensity.toFixed(2)} cut:${beatCutInterval}${cdjInfo}`;
+      const phraseInfo = phraseState !== 'NORMAL' ? ` [${phraseState}]` : ` P:${phraseCounter}`;
+      dbg.textContent = `${PRESETS[activePreset]?.name||'?'} | ${mood} D:${masterDrive}% cut:${beatCutInterval}${phraseInfo}${cdjInfo}`;
     }
     
     // Beat dots
@@ -3555,6 +3641,9 @@ function connectCDJ() {
           
           // Video speed sync
           if (videoLoaded) updateVideoSpeed(bpm);
+          
+          // Phrase detection — BEFORE beat cut (may reset countdown)
+          updatePhraseOnBeat();
           
           // Beat cut — PHRASE ALIGNED (sacred rule)
           if (beatCutEnabled) {
