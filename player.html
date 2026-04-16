@@ -1440,10 +1440,13 @@ function updateAutopilot() {
       
       const progress = 1.0 - (stroboAutoFrames / Math.max(stroboMaxFrames, 1));
       if (progress < 0.6) {
-        stroboEnvelope = 0.85 * driveScale; // SCALED by drive
+        stroboEnvelope = 0.85 * driveScale;
       } else {
         stroboEnvelope = 0.85 * driveScale * (1.0 - (progress - 0.6) / 0.4);
       }
+      // Auto strobo: set flash DIRECTLY per frame (don't wait for onBeatTick)
+      stroboBeatToggle = !stroboBeatToggle;
+      stroboFlash = stroboBeatToggle ? stroboEnvelope : 0;
     } else {
       if (stroboActive && !manualStrobo) {
         stroboActive = false;
