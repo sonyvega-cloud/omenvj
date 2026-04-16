@@ -351,6 +351,11 @@
       <div class="auto-label">SPEED</div>
       <div class="auto-desc">2× on drop/peak</div>
     </div>
+    <div class="auto-item" onclick="sendAutoFeature('videojump')">
+      <div class="auto-check" id="af_videojump">✓</div>
+      <div class="auto-label">VIDEO JUMP</div>
+      <div class="auto-desc">Scale pop on downbeat + kicks</div>
+    </div>
   </div>
   <div style="padding:6px 4px 2px; font-size:9px; letter-spacing:0.15em; color:rgba(255,255,255,0.3); margin-top:6px; border-top:1px solid rgba(255,255,255,0.06);">THEME MIX</div>
   <div id="themeMix" style="padding-left:4px;">
@@ -873,6 +878,8 @@ function updateUI(s) {
   if (afC) { afC.className = 'auto-check' + (s.autoColorEnabled ? ' on' : ''); afC.textContent = s.autoColorEnabled ? '✓' : ''; }
   const afSp = document.getElementById('af_speed');
   if (afSp) { afSp.className = 'auto-check' + (s.autoSpeedEnabled ? ' on' : ''); afSp.textContent = s.autoSpeedEnabled ? '✓' : ''; }
+  const afVJ = document.getElementById('af_videojump');
+  if (afVJ) { afVJ.className = 'auto-check' + (s.videoJumpEnabled ? ' on' : ''); afVJ.textContent = s.videoJumpEnabled ? '✓' : ''; }
   
   // FX slider: show realtime value, disable when autopilot controls it
   const fxSl = document.getElementById('fxSlider');
