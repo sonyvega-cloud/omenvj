@@ -964,7 +964,8 @@ function updateEnergy() {
   if (moodHoldFrames >= holdRequired) {
     if (mood !== candidateMood) {
       mood = candidateMood;
-      moodBeatCounter = 0; // reset watchdog on mood change
+      moodBeatCounter = 0;
+      if (autopilotEnabled && beatCutEnabled) updatePresetGrid(); // refresh energy highlight
     }
   }
   
@@ -1441,17 +1442,14 @@ function updateAutopilot() {
     }
   }
   
-  // ── Sub-feature: ENERGY preset switch (gated by cooldown) ───
+  // ── Sub-feature: ENERGY preset switch ───
+  // ONLY active when beat cut is running
   if (!autoEnergyEnabled) return;
+  if (!beatCutEnabled) return; // NO preset switching without beat cut
   if (autopilotCooldown > 0) { autopilotCooldown--; return; }
   
   if (mood === lastAutopilotMood) return;
-  
   lastAutopilotMood = mood;
-  
-  // When beat cut is running, DON'T switch presets directly
-  // Beat cut countdown is the MASTER of switch timing
-  // But AUTO COLOR still fires on mood change!
   
   // ── Sub-feature: AUTO COLOR (change palette on mood switch) ──
   if (autoColorEnabled) {
@@ -1475,38 +1473,8 @@ function updateAutopilot() {
     }
   }
   
-  if (beatCutEnabled) return; // block preset switch only, color already handled
-
-  let targetCat = 2;
-  switch (mood) {
-    case 'AMBIENT':
-    case 'LISTENING':
-      targetCat = 1; break;
-    case 'BUILDING':
-      targetCat = 2; break;
-    case 'GROOVE':
-    case 'DROP':
-    case 'PEAK':
-      targetCat = 3; break;
-  }
-  
-  let candidates = getPresetsByEnergy(targetCat);
-  if (candidates.length === 0 && targetCat > 1) {
-    candidates = getPresetsByEnergy(targetCat - 1 >= 2 ? targetCat - 1 : targetCat + 1);
-  }
-  if (candidates.length === 0) candidates = getPresetsByEnergy(targetCat + 1);
-  // Last resort: any preset from active themes
-  if (candidates.length === 0) candidates = getActiveThemePresets();
-  if (candidates.length === 0) return;
-  
-  // Weighted random pick (theme weight × avoid current preset)
-  const filtered = candidates.filter(p => p.idx !== activePreset);
-  const pool = filtered.length > 0 ? filtered : candidates;
-  const pick = weightedPresetPick(pool);
-  if (!pick) return;
-  
-  switchToPreset(pick.idx);
-  
+  // Beat cut does the preset switching via beatCutNext()
+  // Color is handled above, nothing else to do here
   updatePresetGrid();
   autopilotCooldown = AUTOPILOT_MIN_INTERVAL;
 }
@@ -1951,13 +1919,18 @@ function beatCutNext() {
   let pick;
   
   if (autopilotEnabled) {
-    // AUTOPILOT = organic energy-aware selection
+    // AUTOPILOT = STRICT energy filter (only target category)
     let targetCat = 3;
     if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
     else if (mood === 'BUILDING') targetCat = 2;
     
     const energyMatched = others.filter(i => (PRESETS[i]?.energy || 2) === targetCat);
-    const pool = (energyMatched.length > 0 && Math.random() < 0.7) ? energyMatched : others;
+    // If no presets in target CAT, fallback to nearest
+    let pool = energyMatched;
+    if (pool.length === 0) {
+      pool = others.filter(i => Math.abs((PRESETS[i]?.energy || 2) - targetCat) === 1);
+    }
+    if (pool.length === 0) pool = others; // last resort
     pick = pickByThemeWeight(pool);
   } else {
     // MANUAL beat cut = equal random cut on all presets in beatCutActive
@@ -2040,18 +2013,32 @@ function updateVideoLayer() {
 }
 
 function updatePresetGrid() {
+  // During autopilot + beatCut: calculate target energy category
+  let targetCat = null;
+  if (autopilotEnabled && beatCutEnabled) {
+    if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
+    else if (mood === 'BUILDING') targetCat = 2;
+    else if (mood === 'GROOVE' || mood === 'DROP' || mood === 'PEAK') targetCat = 3;
+  }
+  
   PRESETS.forEach((preset, i) => {
     const el = document.getElementById('pg' + i);
     if (!el) return;
     el.className = 'pgrid';
     const excluded = autopilotEnabled && !presetPool.has(i);
+    const cat = preset.energy || 2;
     
     if (excluded) {
       el.classList.add('excluded');
     } else if (i === activePreset) {
       el.classList.add('active');
     } else if (beatCutEnabled && beatCutActive.has(i) && presetReady[i]) {
-      el.classList.add('bc-active');
+      // Autopilot + beatCut: show only target CAT as active, others dim
+      if (targetCat !== null && cat !== targetCat) {
+        el.classList.add('bc-dim');
+      } else {
+        el.classList.add('bc-active');
+      }
     } else if (presetReady[i]) {
       el.classList.add('loaded');
     }
@@ -3204,7 +3191,8 @@ function tick() {
     if (dbg) {
       const cdjInfo = cdjConnected ? ` CDJ:${cdjBarBeat}/4 bar:${Math.floor((cdjBeatTotal-1)/4)%4+1}/4` : '';
       const phraseInfo = phraseState !== 'NORMAL' ? ` [${phraseState}]` : ` P:${phraseCounter}`;
-      dbg.textContent = `${PRESETS[activePreset]?.name||'?'} | ${mood} D:${masterDrive}% cut:${beatCutInterval}${phraseInfo}${cdjInfo}`;
+      const flags = `AP:${autopilotEnabled?'1':'0'} BC:${beatCutEnabled?'1':'0'} E:${autoEnergyEnabled?'1':'0'} ABC:${autoBeatCutEnabled?'1':'0'}`;
+      dbg.textContent = `${PRESETS[activePreset]?.name||'?'} | ${mood} D:${masterDrive}% cut:${beatCutInterval} ${flags}${phraseInfo}${cdjInfo}`;
     }
     
     // Beat dots — synced to phrase (not arbitrary beatIndex)
