@@ -843,8 +843,8 @@ function updateEnergy() {
     const now = performance.now();
     if (kickDetect && (now - _lastKickJump) > 80) { // debounce 80ms
       _lastKickJump = now;
-      let jumpScale = 1.15;
-      if (mood === 'DROP' || mood === 'PEAK') jumpScale = 1.30;
+      let jumpScale = 1.25;
+      if (mood === 'DROP' || mood === 'PEAK') jumpScale = 1.45;
       // Only bump if stronger than current
       if (jumpScale > videoJumpScale) videoJumpScale = jumpScale;
       
@@ -854,7 +854,7 @@ function updateEnergy() {
         const delta = now - _prevKickTime;
         // Half-beat at BPM range 110-140 = ~215-275ms between kicks
         if (delta > 200 && delta < 350 && (mood === 'DROP' || mood === 'PEAK')) {
-          videoJumpScale = Math.max(videoJumpScale, 1.25);
+          videoJumpScale = Math.max(videoJumpScale, 1.35);
         }
       }
       _prevKickTime = now;
@@ -909,7 +909,7 @@ function updateEnergy() {
   let candidateMood = 'GROOVE';
   
   // Silence → AMBIENT (hard override)
-  if (smoothVol < 0.008) {
+  if (smoothVol < 0.03) {
     candidateMood = 'AMBIENT';
   }
   // KICK-FORWARD DETECT: strong pulse = upgrade mood beyond floating score
@@ -1153,9 +1153,9 @@ function onBeatTick() {
   if (curPresetVJ && videoJumpEnabled) {
     // Mood-based scale: GROOVE = medium (1.15), DROP/PEAK = aggressive (1.3)
     // BUILDING/AMBIENT = subtle (1.08)
-    let jumpScale = 1.08;
-    if (mood === 'GROOVE') jumpScale = 1.15;
-    else if (mood === 'DROP' || mood === 'PEAK') jumpScale = 1.30;
+    let jumpScale = 1.15;
+    if (mood === 'GROOVE') jumpScale = 1.25;
+    else if (mood === 'DROP' || mood === 'PEAK') jumpScale = 1.45;
     
     // Instant jump on downbeats (bar4 === 0 means downbeat)
     if (bar4 === 0) {
@@ -1375,7 +1375,7 @@ function updateAutopilot() {
   if (!autopilotEnabled) return;
   
   // ── SILENCE GUARD: no audio = AMBIENT mood + kill beat cut/strobo ──
-  if (smoothVol < 0.008) {
+  if (smoothVol < 0.03) {
     if (mood !== 'AMBIENT') {
       mood = 'AMBIENT';
       moodCandidate = 'AMBIENT';
@@ -1727,7 +1727,7 @@ function updateVideoVisibility() {
   if (currentPresetIsCamera && !videoHidden) {
     const camSource = currentPreset?.camSource || 'remote';
     const camFilter = CAM_FILTERS[colorIndex] || CAM_FILTERS[0];
-    const isSilence = smoothVol < 0.008;
+    const isSilence = smoothVol < 0.03;
     const t = performance.now() / 1000;
     
     let rot = 0;
