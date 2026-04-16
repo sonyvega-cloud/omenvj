@@ -3387,14 +3387,21 @@ function tick() {
       dbg.textContent = `${PRESETS[activePreset]?.name||'?'} | ${mood} D:${masterDrive}% cut:${beatCutInterval}${phraseInfo}${cdjInfo}`;
     }
     
-    // Beat dots
-    const bar16 = beatIndex % 16;
+    // Beat dots — synced to phrase (not arbitrary beatIndex)
+    const pos16 = phraseCounter % 16;
     for (let i = 0; i < 16; i++) {
       const dot = document.getElementById('bd' + i);
       if (!dot) continue;
-      dot.className = 'bdot';
-      if (i === bar16 && beatFlash > 0.3) {
-        dot.classList.add(i % 4 === 0 ? 'downbeat' : 'on');
+      if (i === pos16 && beatFlash > 0.3) {
+        // Current beat: downbeats (0,4,8,12) = RED, others = white
+        dot.className = 'bdot ' + (i % 4 === 0 ? 'downbeat' : 'on');
+      } else if (i < pos16) {
+        // Passed beats: dim trail
+        dot.className = 'bdot';
+        dot.style.background = 'rgba(255,255,255,0.15)';
+      } else {
+        dot.className = 'bdot';
+        dot.style.background = '';
       }
     }
   } catch (err) {
