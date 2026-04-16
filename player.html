@@ -1326,15 +1326,9 @@ function getAutoBeatCutInterval() {
 function updateAutopilot() {
   if (!autopilotEnabled) return;
   
-  // ── SILENCE GUARD: no audio = ambient mood, kill beat cut/strobo ──
+  // ── SILENCE GUARD: no audio = kill beat cut + strobo only ──
+  // Don't force mood change — user's selected preset stays visible
   if (smoothVol < 0.008) {
-    if (mood !== 'AMBIENT') {
-      mood = 'AMBIENT';
-      moodCandidate = 'AMBIENT';
-      lastAutopilotMood = '';
-      autopilotCooldown = 0;
-    }
-    // Kill beat cut + strobo in silence (no forced preset switch)
     if (beatCutEnabled && autoBeatCutEnabled) { beatCutEnabled = false; updatePresetGrid(); }
     if (stroboActive && !manualStrobo) { stroboActive = false; stroboFlash = 0; }
     return;
