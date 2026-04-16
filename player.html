@@ -1198,14 +1198,72 @@ function onBeatTick() {
     updateVideoSpeed(bpm);
   }
   
-  // Beat cut — COUNTDOWN with organic variation
+  // Beat cut — PRE-SEEK 2 beats early for glitch-free cuts
   if (beatCutEnabled) {
     beatCutCountdown--;
+    
+    // 2 beats before cut: pre-pick + pre-seek next video
+    if (beatCutCountdown === 2) {
+      _preCutPreset = pickNextBeatCutPreset();
+      if (_preCutPreset >= 0) {
+        preSyncVideo(_preCutPreset);
+      }
+    }
+    
+    // CUT: video already seeked and playing at correct timecode
     if (beatCutCountdown <= 0) {
-      beatCutNext();
+      if (_preCutPreset >= 0 && presetReady[_preCutPreset]) {
+        switchToPreset(_preCutPreset);
+      } else {
+        beatCutNext(); // fallback
+      }
+      _preCutPreset = -1;
       beatCutCountdown = getOrganicInterval();
     }
   }
+}
+
+// Pre-seek: start playing next video at correct timecode BEFORE the cut
+let _preCutPreset = -1;
+
+function preSyncVideo(idx) {
+  const p = PRESETS[idx];
+  if (!p || !p.videoA) return;
+  const ab = getCurrentAB();
+  const vid = document.getElementById(`vid${idx}${ab === 0 ? 'a' : 'b'}`);
+  if (!vid || vid.readyState < 2) return;
+  
+  // Calculate where the active video is NOW
+  const activeAB = getCurrentAB();
+  const activeVid = document.getElementById(`vid${activePreset}${activeAB === 0 ? 'a' : 'b'}`);
+  const syncTime = activeVid ? activeVid.currentTime : 0;
+  
+  vid.currentTime = syncTime;
+  vid.playbackRate = videoSpeed;
+  vid.play().catch(() => {});
+}
+
+// Pick next preset without switching (for pre-seek)
+function pickNextBeatCutPreset() {
+  const loaded = getLoadedPresets();
+  if (loaded.length < 2) return -1;
+  
+  let others = loaded.filter(i => i !== activePreset);
+  
+  const currentIsCamera = PRESETS[activePreset]?.type === 'camera';
+  if (currentIsCamera) {
+    const nonCam = others.filter(i => PRESETS[i]?.type !== 'camera');
+    if (nonCam.length > 0) others = nonCam;
+  }
+  
+  // Energy-aware
+  let targetCat = 3;
+  if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
+  else if (mood === 'BUILDING') targetCat = 2;
+  const energyMatched = others.filter(i => (PRESETS[i]?.energy || 3) === targetCat);
+  const pool = (energyMatched.length > 0 && Math.random() < 0.7) ? energyMatched : others;
+  
+  return pickByThemeWeight(pool) ?? -1;
 }
 
 // Organic beat cut: base interval + human variation
@@ -1834,19 +1892,28 @@ function updateVideoVisibility() {
   
   // ── Video A/B toggle (only when preset or AB changes) ──
   if (activePreset !== _lastActivePreset || currentAB !== _lastAB) {
-    // Deactivate previous (just hide, keep playing for instant switch)
+    // Deactivate previous — hide FIRST, pause after delay (no stale frame)
     if (_lastActivePreset >= 0 && _lastActivePreset !== activePreset) {
-      const pA = document.getElementById(`vid${_lastActivePreset}a`);
-      const pB = document.getElementById(`vid${_lastActivePreset}b`);
+      const oldIdx = _lastActivePreset;
+      const pA = document.getElementById(`vid${oldIdx}a`);
+      const pB = document.getElementById(`vid${oldIdx}b`);
       if (pA) pA.classList.remove('active');
       if (pB) pB.classList.remove('active');
+      // Pause after 200ms (release decode resources, but don't flash)
+      setTimeout(() => {
+        if (activePreset !== oldIdx) { // still not active
+          if (pA) pA.pause();
+          if (pB) pB.pause();
+        }
+      }, 200);
     }
-    // Activate current — videos are ALREADY playing at correct timecode
+    // Activate current — pre-seeked by preSyncVideo, already at correct timecode
     if (presetReady[activePreset] && PRESETS[activePreset]?.videoA) {
       const cA = document.getElementById(`vid${activePreset}a`);
       const cB = document.getElementById(`vid${activePreset}b`);
-      if (cA) { cA.style.transform = _lastVideoTransform; cA.classList.toggle('active', currentAB === 0); }
-      if (cB) { cB.style.transform = _lastVideoTransform; cB.classList.toggle('active', currentAB === 1); }
+      // Ensure playing (preSyncVideo started it, but safety)
+      if (cA) { cA.play().catch(()=>{}); cA.style.transform = _lastVideoTransform; cA.classList.toggle('active', currentAB === 0); }
+      if (cB) { cB.play().catch(()=>{}); cB.style.transform = _lastVideoTransform; cB.classList.toggle('active', currentAB === 1); }
     }
     _lastActivePreset = activePreset;
     _lastAB = currentAB;
@@ -2104,25 +2171,6 @@ let _videoSyncCounter = 0;
 function updateVideoLayer() {
   const currentPreset = PRESETS[activePreset];
   const hasVideo = currentPreset && currentPreset.videoA != null;
-  
-  // ── Periodic video timecode sync (every 30 frames ≈ 0.5s) ──
-  // Keeps ALL videos at same phase so beat cut has no timecode jump
-  _videoSyncCounter++;
-  if (_videoSyncCounter >= 30) {
-    _videoSyncCounter = 0;
-    const masterTime = ((performance.now() - abClockStart) * videoSpeed / 1000) % VIDEO_DURATION_S;
-    PRESETS.forEach((p, i) => {
-      if (!p.videoA || i === activePreset) return; // skip active (already playing correctly)
-      const vA = document.getElementById(`vid${i}a`);
-      const vB = document.getElementById(`vid${i}b`);
-      if (vA && vA.readyState >= 2 && Math.abs(vA.currentTime - masterTime) > 1.0) {
-        vA.currentTime = masterTime;
-      }
-      if (vB && vB.readyState >= 2 && Math.abs(vB.currentTime - masterTime) > 1.0) {
-        vB.currentTime = masterTime;
-      }
-    });
-  }
   
   // ── Auto-rotation — friction-based (never accumulates forever) ──
   const drift = (smoothBass * 0.003 - smoothMid * 0.001) * driveScale;
@@ -3684,7 +3732,7 @@ function connectCDJ() {
           // Phrase detection — BEFORE beat cut (may reset countdown)
           updatePhraseOnBeat();
           
-          // Beat cut — PHRASE ALIGNED + organic variation
+          // Beat cut — PRE-SEEK + PHRASE ALIGNED
           if (beatCutEnabled) {
             if (beatCutWaitForDownbeat) {
               if (isDownbeat) {
@@ -3694,8 +3742,20 @@ function connectCDJ() {
               }
             } else {
               beatCutCountdown--;
+              
+              // Pre-seek 2 beats early
+              if (beatCutCountdown === 2) {
+                _preCutPreset = pickNextBeatCutPreset();
+                if (_preCutPreset >= 0) preSyncVideo(_preCutPreset);
+              }
+              
               if (beatCutCountdown <= 0 && isDownbeat) {
-                beatCutNext();
+                if (_preCutPreset >= 0 && presetReady[_preCutPreset]) {
+                  switchToPreset(_preCutPreset);
+                } else {
+                  beatCutNext();
+                }
+                _preCutPreset = -1;
                 beatCutCountdown = getOrganicInterval();
               }
             }
