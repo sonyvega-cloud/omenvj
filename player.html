@@ -3951,6 +3951,7 @@ function broadcastState() {
       smoothHigh: smoothHigh || 0,
       presetReady: presetReady ? [...presetReady] : [],
       presetPool: [...presetPool],
+      presetEnergies: PRESETS.map(p => p.energy || 2),
       pinchScale: pinchScale || 1,
       autopilotEnabled: !!autopilotEnabled,
       autoEnergyEnabled: !!autoEnergyEnabled,
