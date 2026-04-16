@@ -217,6 +217,11 @@
     border-color: rgba(255,34,0,0.4);
     color: rgba(255,34,0,0.8);
   }
+  .pgrid.bc-dim {
+    background: rgba(255,34,0,0.05);
+    border-color: rgba(255,34,0,0.15);
+    color: rgba(255,34,0,0.3);
+  }
   .pgrid.cut-on {
     background: rgba(255,34,0,0.2);
     border-color: rgba(255,34,0,0.4);
@@ -2187,17 +2192,27 @@ function updateVideoLayer() {
 }
 
 function updatePresetGrid() {
+  // Current mood's target energy category
+  let targetCat = 2;
+  if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
+  else if (mood === 'BUILDING') targetCat = 2;
+  else if (mood === 'GROOVE' || mood === 'DROP' || mood === 'PEAK') targetCat = 3;
+  
   PRESETS.forEach((preset, i) => {
     const el = document.getElementById('pg' + i);
     if (!el) return;
     el.className = 'pgrid';
     const excluded = autopilotEnabled && !presetPool.has(i);
-    if (excluded) {
+    const userExcluded = userExcludedPresets.has(i);
+    
+    if (excluded || userExcluded) {
       el.classList.add('excluded');
     } else if (i === activePreset) {
       el.classList.add('active');
     } else if (beatCutEnabled && beatCutActive.has(i) && presetReady[i]) {
-      el.classList.add('bc-active');
+      // Energy match: bright. Non-match: dim.
+      const cat = preset.energy || 2;
+      el.classList.add(cat === targetCat ? 'bc-active' : 'bc-dim');
     } else if (presetReady[i]) {
       el.classList.add('loaded');
     }
@@ -3388,8 +3403,10 @@ function tick() {
 function toggleBeatCut() {
   beatCutEnabled = !beatCutEnabled;
   beatCutSequenceIdx = 0;
+  // Manual toggle → sync autopilot flag so it doesn't fight
+  if (!beatCutEnabled) autoBeatCutEnabled = false;
   if (beatCutEnabled) {
-    beatCutWaitForDownbeat = cdjConnected; // sync to downbeat if CDJ
+    beatCutWaitForDownbeat = cdjConnected;
     beatCutCountdown = beatCutInterval;
     beatCutActive = new Set(PRESETS.map((_, i) => i).filter(i => presetReady[i] && presetPool.has(i)));
   }
@@ -3868,6 +3885,8 @@ function handleCommand(msg) {
       if (msg.enabled !== undefined) {
         beatCutEnabled = msg.enabled;
         beatCutSequenceIdx = 0;
+        // Manual OFF → stop autopilot from re-enabling
+        if (!msg.enabled) autoBeatCutEnabled = false;
         if (msg.enabled) {
           beatCutWaitForDownbeat = cdjConnected;
           beatCutCountdown = beatCutInterval;
