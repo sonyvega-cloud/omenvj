@@ -387,7 +387,7 @@ function buildEditorFields() {
   // Collect GFX options
   const allGfx = new Set(GFX_REGISTRY.map(g => g.id));
   scenes.forEach(s => { if (s.gfx) allGfx.add(s.gfx); });
-  const gfxOptions = [...allGfx].map(id => {
+  const gfxOptions = '<option value="none">none (video only)</option>' + [...allGfx].map(id => {
     const reg = GFX_REGISTRY.find(g => g.id === id);
     return '<option value="' + id + '">' + id + (reg ? ' (' + reg.name + ')' : '') + '</option>';
   }).join('');
