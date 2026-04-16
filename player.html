@@ -965,7 +965,7 @@ function updateEnergy() {
     if (mood !== candidateMood) {
       mood = candidateMood;
       moodBeatCounter = 0;
-      if (autopilotEnabled && beatCutEnabled) updatePresetGrid(); // refresh energy highlight
+      if (autopilotEnabled) updatePresetGrid(); // refresh grid on mood change
     }
   }
   
@@ -1326,7 +1326,7 @@ function getAutoBeatCutInterval() {
 function updateAutopilot() {
   if (!autopilotEnabled) return;
   
-  // ── SILENCE GUARD: no audio = ambient only, skip everything ──
+  // ── SILENCE GUARD: no audio = ambient mood, kill beat cut/strobo ──
   if (smoothVol < 0.008) {
     if (mood !== 'AMBIENT') {
       mood = 'AMBIENT';
@@ -1334,15 +1334,10 @@ function updateAutopilot() {
       lastAutopilotMood = '';
       autopilotCooldown = 0;
     }
-    // Force CAT1 preset if not already
-    const cat1 = getPresetsByEnergy(1);
-    if (cat1.length > 0 && PRESETS[activePreset]?.energy !== 1) {
-      switchToPreset(cat1[0].idx);
-    }
-    // Kill beat cut + strobo + camera hold in silence
-    if (beatCutEnabled) { beatCutEnabled = false; updatePresetGrid(); }
+    // Kill beat cut + strobo in silence (no forced preset switch)
+    if (beatCutEnabled && autoBeatCutEnabled) { beatCutEnabled = false; updatePresetGrid(); }
     if (stroboActive && !manualStrobo) { stroboActive = false; stroboFlash = 0; }
-    return; // skip all other autopilot
+    return;
   }
   
   // ── Sub-feature: FX AMOUNT (runs every frame) ───────────────
@@ -2013,9 +2008,9 @@ function updateVideoLayer() {
 }
 
 function updatePresetGrid() {
-  // During autopilot + beatCut: calculate target energy category
+  // During autopilot: calculate target energy category from mood
   let targetCat = null;
-  if (autopilotEnabled && beatCutEnabled) {
+  if (autopilotEnabled) {
     if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
     else if (mood === 'BUILDING') targetCat = 2;
     else if (mood === 'GROOVE' || mood === 'DROP' || mood === 'PEAK') targetCat = 3;
@@ -2025,20 +2020,17 @@ function updatePresetGrid() {
     const el = document.getElementById('pg' + i);
     if (!el) return;
     el.className = 'pgrid';
-    const excluded = autopilotEnabled && !presetPool.has(i);
+    const userExcluded = autopilotEnabled && !presetPool.has(i);
     const cat = preset.energy || 2;
+    // During autopilot: non-target CAT presets = excluded visually
+    const catExcluded = (targetCat !== null) && (cat !== targetCat);
     
-    if (excluded) {
+    if (userExcluded || catExcluded) {
       el.classList.add('excluded');
     } else if (i === activePreset) {
       el.classList.add('active');
     } else if (beatCutEnabled && beatCutActive.has(i) && presetReady[i]) {
-      // Autopilot + beatCut: show only target CAT as active, others dim
-      if (targetCat !== null && cat !== targetCat) {
-        el.classList.add('bc-dim');
-      } else {
-        el.classList.add('bc-active');
-      }
+      el.classList.add('bc-active');
     } else if (presetReady[i]) {
       el.classList.add('loaded');
     }
