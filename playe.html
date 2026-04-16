@@ -1,0 +1,4169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500&display=swap" rel="stylesheet">
+<title>ØMEN Player</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  html, body {
+    background: #000;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    height: 100%;
+    width: 100%;
+  }
+  body {
+    color: #fff;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  /* ── Video layer ─────────────────────────────────────── */
+  #videoLayer {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 0;
+    overflow: hidden;
+    background: #000;
+  }
+  #videoLayer video {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100vh;
+    height: 100vh;
+    object-fit: cover;
+    opacity: 0;
+    z-index: 0;
+    backface-visibility: hidden;
+    pointer-events: none;
+  }
+  #videoLayer video.active {
+    opacity: 1;
+    z-index: 1;
+    will-change: transform;
+  }
+
+  /* ── Vignette over video ─────────────────────────────── */
+  #videoVignette {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 1;
+    pointer-events: none;
+    background: radial-gradient(circle closest-side,
+      transparent 0%,
+      transparent 40%,
+      rgba(0,0,0,0.08) 52%,
+      rgba(0,0,0,0.25) 62%,
+      rgba(0,0,0,0.50) 72%,
+      rgba(0,0,0,0.75) 82%,
+      rgba(0,0,0,0.92) 92%,
+      rgba(0,0,0,1.0) 100%
+    );
+  }
+
+  /* ── Edge mask — guarantees solid black edges on any aspect ratio ── */
+  #edgeMask {
+    position: fixed;
+    top: -50px; left: -50px;
+    width: calc(100vw + 100px); height: calc(100vh + 100px);
+    z-index: 3;
+    pointer-events: none;
+    box-shadow: inset 0 0 80px 40px #000;
+  }
+
+  /* ── Fullscreen canvas (GFX over vignette) ─────────── */
+  #canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  /* ── Setup overlay ─────────────────────────────────── */
+  #setup {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 100;
+    background: rgba(0,0,0,0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.5s;
+  }
+  #setup.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .setup-box {
+    text-align: center;
+    max-width: 400px;
+    padding: 40px;
+  }
+  .setup-box h1 {
+    font-size: 2.5rem;
+    letter-spacing: 1rem;
+    font-weight: 100;
+    margin-bottom: 0.3rem;
+    color: #fff;
+  }
+  .setup-box .sub {
+    font-size: 0.65rem;
+    letter-spacing: 0.4rem;
+    color: rgba(255,255,255,0.2);
+    margin-bottom: 3rem;
+    text-transform: uppercase;
+  }
+  .source-btn {
+    display: block;
+    width: 100%;
+    padding: 14px 20px;
+    margin-bottom: 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    color: rgba(255,255,255,0.6);
+    font-size: 0.8rem;
+    letter-spacing: 0.15rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+  }
+  .source-btn:hover {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.15);
+    color: #fff;
+  }
+  .source-btn .label {
+    font-size: 0.85rem;
+    letter-spacing: 0.1rem;
+  }
+  .source-btn .desc {
+    font-size: 0.6rem;
+    color: rgba(255,255,255,0.25);
+    margin-top: 4px;
+    letter-spacing: 0.05rem;
+  }
+
+  /* ── HUD overlay ───────────────────────────────────── */
+  #hud {
+    position: fixed;
+    top: 20px; left: 20px;
+    z-index: 100;
+    font-size: 0.65rem;
+    letter-spacing: 0.15rem;
+    color: rgba(255,255,255,0.3);
+    transition: opacity 0.3s;
+  }
+  #hud.hidden { opacity: 0; pointer-events: none; }
+  #hud .bpm {
+    font-size: 1.8rem;
+    font-weight: 100;
+    letter-spacing: 0.3rem;
+    color: rgba(255,255,255,0.5);
+    line-height: 1;
+  }
+  .bdot {
+    width: 7px;
+    height: 7px;
+    border-radius: 1px;
+    background: rgba(255,255,255,0.08);
+    transition: background 0.05s;
+  }
+  .bdot.on {
+    background: rgba(255,255,255,0.7);
+  }
+  .bdot.downbeat {
+    background: #ff2200;
+  }
+  .pgrid {
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.2);
+    font-size: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    cursor: pointer;
+    user-select: none;
+  }
+  .pgrid:hover {
+    border-color: rgba(255,255,255,0.25);
+  }
+  .pgrid.active {
+    background: rgba(255,34,0,0.25);
+    border-color: rgba(255,34,0,0.5);
+    color: #ff2200;
+  }
+  .pgrid.loaded {
+    border-color: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.4);
+  }
+  .pgrid.bc-active {
+    background: rgba(255,34,0,0.15);
+    border-color: rgba(255,34,0,0.4);
+    color: rgba(255,34,0,0.8);
+  }
+  .pgrid.cut-on {
+    background: rgba(255,34,0,0.2);
+    border-color: rgba(255,34,0,0.4);
+    color: #ff2200;
+  }
+  .pgrid.excluded {
+    opacity: 0.2;
+  }
+  .cdot {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .cdot.active {
+    border-color: rgba(255,255,255,0.5);
+    box-shadow: 0 0 4px rgba(255,255,255,0.2);
+  }
+  .cdot.excluded {
+    opacity: 0.2;
+  }
+  #hud .energy-bar {
+    width: 120px;
+    height: 2px;
+    background: rgba(255,255,255,0.06);
+    margin-top: 8px;
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  #hud .energy-fill {
+    height: 100%;
+    background: #ff2200;
+    transition: width 0.15s;
+    border-radius: 1px;
+  }
+  #hud .mood {
+    margin-top: 4px;
+    font-size: 0.55rem;
+    letter-spacing: 0.2rem;
+    text-transform: uppercase;
+  }
+  #hud .source-label {
+    margin-top: 12px;
+    font-size: 0.5rem;
+    letter-spacing: 0.1rem;
+    color: rgba(255,255,255,0.15);
+  }
+
+  /* ── Controls hint ─────────────────────────────────── */
+  #controls-hint {
+    position: fixed;
+    bottom: 20px;
+    left: 0; right: 0;
+    text-align: center;
+    z-index: 50;
+    font-size: 0.5rem;
+    letter-spacing: 0.15rem;
+    color: rgba(255,255,255,0.12);
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  #controls-hint.hidden { opacity: 0; }
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<!-- ── Video layer (generated dynamically) ────────────── -->
+<div id="videoLayer"></div>
+<canvas id="cameraLayer" style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:100vh; height:100vh; z-index:0; display:none;"></canvas>
+<div id="camColorOverlay" style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:100vh; height:100vh; z-index:0; pointer-events:none; mix-blend-mode:multiply; display:none;"></div>
+<div id="videoVignette"></div>
+<div id="edgeMask"></div>
+
+<!-- ── Setup: Single start button ──────────────────── -->
+<div id="setup">
+  <div class="setup-box">
+    <img src="https://cdn.omenvj.com/logo.png" alt="ØMEN" style="width: min(280px, 50vw); margin-bottom: 1rem; opacity: 0.9;">
+    
+    <button class="source-btn" onclick="startAudio('mic')" style="margin-top:1.5rem;">
+      <div class="label">▶ START ENGINE</div>
+      <div class="desc">Default audio input (change from controller)</div>
+    </button>
+    
+    <div style="font-size:0.45rem; color:rgba(255,255,255,0.12); letter-spacing:0.1em; margin-top:1.5rem;">
+      Press S for System Audio capture
+    </div>
+  </div>
+</div>
+
+<!-- ── HUD ───────────────────────────────────────────── -->
+<div id="hud" class="hidden">
+  <div class="bpm" id="bpmDisplay">— BPM</div>
+  
+  <!-- 16 beat dots -->
+  <div id="beatDots" style="display:flex; gap:2px; margin-top:8px;">
+    <div class="bdot" id="bd0"></div><div class="bdot" id="bd1"></div>
+    <div class="bdot" id="bd2"></div><div class="bdot" id="bd3"></div>
+    <div style="width:4px;"></div>
+    <div class="bdot" id="bd4"></div><div class="bdot" id="bd5"></div>
+    <div class="bdot" id="bd6"></div><div class="bdot" id="bd7"></div>
+    <div style="width:4px;"></div>
+    <div class="bdot" id="bd8"></div><div class="bdot" id="bd9"></div>
+    <div class="bdot" id="bd10"></div><div class="bdot" id="bd11"></div>
+    <div style="width:4px;"></div>
+    <div class="bdot" id="bd12"></div><div class="bdot" id="bd13"></div>
+    <div class="bdot" id="bd14"></div><div class="bdot" id="bd15"></div>
+  </div>
+  
+  <div class="energy-bar"><div class="energy-fill" id="energyFill"></div></div>
+  
+  <!-- Preset buttons (generated dynamically from PRESETS array) -->
+  <div id="presetBtns" style="display:flex; gap:3px; margin-top:8px; flex-wrap:wrap; pointer-events:auto;"></div>
+  
+  <!-- Beat cut + A/B -->
+  <div style="display:flex; gap:3px; margin-top:4px; pointer-events:auto;">
+    <div class="pgrid" id="abIndicator" style="font-size:7px; width:auto; padding:0 6px;">A</div>
+    <div style="width:2px;"></div>
+    <div class="pgrid" id="bcToggle" style="font-size:7px; width:auto; padding:0 6px; cursor:pointer;" onclick="toggleBeatCut()">CUT</div>
+    <div class="pgrid" id="bci1" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(1)">1</div>
+    <div class="pgrid" id="bci2" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(2)">2</div>
+    <div class="pgrid" id="bci4" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(4)">4</div>
+    <div class="pgrid" id="bci8" style="font-size:7px; cursor:pointer;" onclick="setBeatCutInterval(8)">8</div>
+  </div>
+  
+  <!-- Color palette -->
+  <div style="display:flex; gap:3px; margin-top:6px; pointer-events:auto;">
+    <div class="cdot" id="cd0" style="background:#FF2200;" onclick="handleColorClick(0)"></div>
+    <div class="cdot" id="cd1" style="background:#2244FF;" onclick="handleColorClick(1)"></div>
+    <div class="cdot" id="cd2" style="background:#22FF44;" onclick="handleColorClick(2)"></div>
+    <div class="cdot" id="cd3" style="background:#FFCC00;" onclick="handleColorClick(3)"></div>
+    <div class="cdot" id="cd4" style="background:#CCCCCC;" onclick="handleColorClick(4)"></div>
+  </div>
+  
+  <!-- FX controls -->
+  <div style="display:flex; gap:3px; margin-top:6px; align-items:center; pointer-events:auto;">
+    <div class="pgrid" id="strbBtn" onclick="toggleStrobo()" style="font-size:7px; width:auto; padding:0 6px; cursor:pointer;">STRB</div>
+    <div class="pgrid" id="vhidBtn" onclick="toggleVideoHide()" style="font-size:7px; width:auto; padding:0 6px; cursor:pointer;">VHID</div>
+    <div style="width:4px;"></div>
+    <div style="font-size:7px; color:rgba(255,255,255,0.2); letter-spacing:1px;">FX</div>
+    <input type="range" id="fxSlider" min="0" max="200" value="100" 
+      oninput="fxSliderValue = this.value / 100" 
+      style="width:60px; height:2px; accent-color:#ff2200; cursor:pointer;">
+  </div>
+  
+  <!-- Video speed -->
+  <div style="display:flex; gap:3px; margin-top:4px; pointer-events:auto;">
+    <div style="font-size:7px; color:rgba(255,255,255,0.2); letter-spacing:1px; margin-right:2px;">SPD</div>
+    <div class="pgrid" id="spd05" onclick="setVideoSpeed(0.5)" style="font-size:7px; cursor:pointer;">½×</div>
+    <div class="pgrid active" id="spd10" onclick="setVideoSpeed(1.0)" style="font-size:7px; cursor:pointer;">1×</div>
+    <div class="pgrid" id="spd20" onclick="setVideoSpeed(2.0)" style="font-size:7px; cursor:pointer;">2×</div>
+  </div>
+  
+  <div class="mood" id="moodDisplay">LISTENING...</div>
+  <div class="source-label" id="sourceLabel"></div>
+  <div class="source-label" id="debugDisplay" style="margin-top:8px; font-family:monospace; font-size:10px; color:rgba(255,255,255,0.3);"></div>
+</div>
+
+<div id="controls-hint" class="hidden">
+  SPACE = tap/sync &nbsp;&nbsp; Q/W/E = preset &nbsp;&nbsp; B = beat cut &nbsp;&nbsp; S = strobo &nbsp;&nbsp; V = video hide &nbsp;&nbsp; 2/4/8 = interval &nbsp;&nbsp; F = fullscreen
+</div>
+<div id="pinDisplay" style="display:none; position:fixed; top:12px; right:16px; z-index:999; font-family:monospace; font-size:11px; color:rgba(255,255,255,0.4);">
+  PIN: <span id="pinCode" style="color:#ff2200; font-size:14px; letter-spacing:0.2em;">----</span>
+</div>
+
+<script src="presets.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// ØMEN Web Engine — Sprint 1
+// ═══════════════════════════════════════════════════════════════
+
+// ── Audio state ────────────────────────────────────────────────
+let audioCtx = null;
+let analyser = null;
+let freqData = null;
+let timeData = null;
+const FFT_SIZE = 2048;
+
+// ── Audio bands ────────────────────────────────────────────────
+let bass = 0, mid = 0, high = 0, volume = 0;
+let smoothBass = 0, smoothMid = 0, smoothHigh = 0, smoothVol = 0;
+
+// ── Beat detection ─────────────────────────────────────────────
+let bpm = 0;
+let beatIndex = 0;
+let lastBeatTime = 0;
+let beatThreshold = 0.12;
+let beatCooldown = 180; // ms min between beats
+let bassHistory = [];
+const BASS_HISTORY_LEN = 60; // ~1 second
+
+// ── BPM tap ────────────────────────────────────────────────────
+let tapTimes = [];
+const TAP_TIMEOUT = 2500;
+
+// ── Energy & Mood ──────────────────────────────────────────────
+let energy = 0;
+let normEnergy = 0;
+let mood = 'LISTENING';
+let moodCandidate = 'LISTENING';
+let moodHoldFrames = 0;
+let prevBass = 0;
+let bassPulse = 0;
+let bassPulseAvg = 0;
+let volAvg = 0;
+let bassRunningAvg = 0;
+let driveHistory = [];
+const DRIVE_HISTORY_LEN = 3600;  // ~60 seconds at 60fps — full track dynamic range
+let _threshAmbient = 0.65;
+let _threshBuilding = 1.02;
+let _threshPeak = 1.40;
+let moodBeatCounter = 0;
+const MOOD_MAX_BEATS = 32;
+let driveRecalcCounter = 0;
+let watchdogLockedMood = '';  // mood that watchdog forced away from
+let watchdogLockFrames = 0;   // frames remaining where locked mood is blocked
+let energyHistory = [];
+const ENERGY_HISTORY_LEN = 360; // 6 seconds at 60fps — enough for breakdown detection
+
+// ── Visual state ───────────────────────────────────────────────
+let beatFlash = 0;
+let pulseScale = 1.0;
+let compassAngle = 0;
+let compassTarget = 0;
+
+// ── FX state (iOS port) ───────────────────────────────────────
+let fxIntensity = 1.0;     // global FX multiplier
+let masterDrive = 70;      // 0-100 master drive
+let driveScale = 0.70;     // 0.0-1.0 derived from drive
+
+// Map drive 0-100 to all parameters
+function applyDrive(d) {
+  const oldScale = driveScale;
+  masterDrive = d;
+  const n = d / 100;
+  driveScale = n;
+  videoSpeedMultiplier = 0.7 + n * 1.3;
+  
+  // Instant jump fxIntensity when drive increases significantly
+  if (n > oldScale + 0.1) {
+    fxIntensity = n;
+  }
+  // Drive controls VISUAL INTENSITY only, NOT preset pool
+}
+
+let fxSliderValue = 1.0;   // user-set FX intensity (slider)
+let exposureOpacity = 0;   // white center glow on beat
+let silenceTimer = 0;      // frames since last significant audio
+let stroboActive = false;
+let manualStrobo = false;
+let stroboFlash = 0;           // final strobo opacity 0-1
+let stroboEnvelope = 0.85;     // brightness envelope (auto fade)
+let stroboBeatToggle = false;  // flicker toggle per beat
+let stroboMaxFrames = 0;
+let videoSpeedMultiplier = 1.0; // ½×, 1×, 2×
+const SILENCE_THRESHOLD = 0.05;
+const SILENCE_DAMPEN_AFTER = 90;
+
+// ── Preset Registry (localStorage from editor → presets.js fallback) ──
+let PRESETS = [];
+function loadPresets() {
+  const scenes = localStorage.getItem('omen_scenes');
+  if (scenes) {
+    try {
+      const parsed = JSON.parse(scenes);
+      if (parsed.length > 0) {
+        const cdn = typeof CDN !== 'undefined' ? CDN : '';
+        PRESETS = parsed.map(p => ({
+          ...p,
+          videoA: p.type === 'video' && p.videoA && !p.videoA.startsWith('http') ? cdn + p.videoA : (p.type === 'video' ? p.videoA : null),
+          videoB: p.type === 'video' && p.videoB && !p.videoB.startsWith('http') ? cdn + p.videoB : (p.type === 'video' ? p.videoB : null),
+        }));
+        console.log('[PRESETS] Loaded ' + PRESETS.length + ' from scenes');
+        return;
+      }
+    } catch(e) {}
+  }
+  const saved = localStorage.getItem('omen_presets');
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed.length > 0) {
+        const cdn = typeof CDN !== 'undefined' ? CDN : '';
+        PRESETS = parsed.map(p => ({
+          ...p,
+          videoA: p.videoA && !p.videoA.startsWith('http') ? cdn + p.videoA : p.videoA,
+          videoB: p.videoB && !p.videoB.startsWith('http') ? cdn + p.videoB : p.videoB,
+        }));
+        console.log('[PRESETS] Loaded ' + PRESETS.length + ' from presets');
+        return;
+      }
+    } catch(e) {}
+  }
+  PRESETS = typeof PRESETS_DATA !== 'undefined' ? PRESETS_DATA : [];
+  console.log('[PRESETS] Loaded ' + PRESETS.length + ' from presets.js');
+}
+loadPresets();
+
+// Auto-assign energy category if not set in editor
+// First third = CAT 1 (ambient), middle = CAT 2, last third = CAT 3 (groove)
+PRESETS.forEach((p, i) => {
+  if (!p.energy) {
+    const pos = PRESETS.length > 1 ? i / (PRESETS.length - 1) : 0.5;
+    if (pos < 0.33) p.energy = 1;
+    else if (pos < 0.66) p.energy = 2;
+    else p.energy = 3;
+  }
+});
+console.log('[ENERGY]', PRESETS.map((p,i) => p.name + ':CAT' + p.energy).join(', '));
+
+let videoLoaded = false;
+let presetReady = new Array(PRESETS.length).fill(false);
+let presetPool = new Set(PRESETS.map((_, i) => i)); // which presets autopilot can use
+let userExcludedPresets = new Set(); // presets user manually X'd out (priority over drive)
+let activePreset = 0;
+let currentAB = 0;
+
+// Beat cut (iOS-style with active set)
+let beatCutEnabled = false;
+let beatCutInterval = 4;
+let beatCutCountdown = 4;  // countdown to next cut (beats remaining)
+let beatCutSequenceIdx = 0;
+let beatCutActive = new Set(PRESETS.map((_, i) => i));
+
+// ── Phrase detection (breakdown → drop alignment) ──────────────
+// Two parts:
+//   updatePhraseAudio() — every frame — detects breakdown/return from audio
+//   updatePhraseOnBeat() — on beat events — increments counter + fires reset
+let phraseState = 'NORMAL';       // NORMAL | BREAKDOWN | DROP_EXPECTED
+let phraseCounter = 0;            // beats since last phrase reset
+let phraseResetCooldown = 0;      // prevents double-fire (beats)
+let breakdownFrames = 0;          // frames of sustained low energy
+const BREAKDOWN_THRESHOLD = 0.02; // smoothVol below this = "silence"
+const BREAKDOWN_RETURN = 0.04;    // smoothVol above this = "returning"
+const BREAKDOWN_MIN_FRAMES = 120; // ~2 seconds at 60fps (≈ 8 beats at 128bpm)
+const PHRASE_RESET_COOLDOWN = 16; // beats
+
+// Called every frame from tick() — works even when CDJ sends no beats
+function updatePhraseAudio() {
+  switch (phraseState) {
+    case 'NORMAL':
+      if (smoothVol < BREAKDOWN_THRESHOLD) {
+        breakdownFrames++;
+        if (breakdownFrames >= BREAKDOWN_MIN_FRAMES) {
+          phraseState = 'BREAKDOWN';
+          console.log('[PHRASE] Breakdown detected (silence for', (breakdownFrames / 60).toFixed(1) + 's)');
+        }
+      } else {
+        breakdownFrames = 0;
+      }
+      break;
+      
+    case 'BREAKDOWN':
+      if (smoothVol >= BREAKDOWN_RETURN) {
+        phraseState = 'DROP_EXPECTED';
+        breakdownFrames = 0;
+        console.log('[PHRASE] Energy returning, waiting for kick...');
+      }
+      break;
+      
+    case 'DROP_EXPECTED':
+      breakdownFrames++;
+      // Kick detected = PHRASE RESET
+      const kickDetected = bassPulse > bassPulseAvg * 1.5 || smoothBass > 0.15;
+      if (kickDetected && phraseResetCooldown === 0) {
+        phraseReset('kick');
+      }
+      // Safety: 3 seconds without kick → soft reset
+      if (phraseState === 'DROP_EXPECTED' && breakdownFrames > 180) {
+        phraseReset('timeout');
+      }
+      break;
+  }
+}
+
+function phraseReset(reason) {
+  const oldCounter = phraseCounter;
+  phraseCounter = 0;
+  breakdownFrames = 0;
+  phraseResetCooldown = PHRASE_RESET_COOLDOWN;
+  phraseState = 'NORMAL';
+  
+  if (beatCutEnabled) {
+    beatCutCountdown = beatCutInterval;
+    console.log('[PHRASE] ★ RESET (' + reason + ')! Cut realigned. Was at beat', oldCounter);
+  } else {
+    console.log('[PHRASE] Reset (' + reason + ') at beat', oldCounter);
+  }
+}
+
+// Called on beat events — just increments counter + cooldown
+function updatePhraseOnBeat() {
+  phraseCounter++;
+  if (phraseResetCooldown > 0) phraseResetCooldown--;
+}
+
+// Video specs — FIXED: 600 frames, 25fps, 48-beat sync
+const VIDEO_FRAMES = 600;
+const VIDEO_FPS = 25;
+const VIDEO_DURATION_S = VIDEO_FRAMES / VIDEO_FPS;
+const VIDEO_SYNC_BEATS = 48;
+
+// Scale — web: CSS object-fit:cover fills viewport, we just need margin for rotation
+const SQRT2 = 1.41421356;
+const VIDEO_BASE_SCALE = 1.0; // web: 1.0 = viewport fill (iOS was 0.375 due to different chain)
+
+// Speed
+let videoSpeed = 1.0;
+let videoCompassAngle = 0;
+let _lastVideoTransform = 'translate(-50%,-50%)';
+
+// A/B monotonic clock
+let abClockStart = 0;
+let abBaseLoops = 0;
+let abLastSpeed = 1.0;
+
+// ── Color palettes (from iOS) ──────────────────────────────────
+const palettes = [
+  ['#1A0000','#8B0000','#FF2200','#FF6644'], // red
+  ['#0A0A1A','#1A1A8B','#2244FF','#44AAFF'], // blue
+  ['#001A00','#008B00','#22FF44','#88FF66'], // green
+  ['#1A1A00','#8B8B00','#FFCC00','#FFEE44'], // yellow
+  ['#1A1A1A','#666666','#CCCCCC','#FFFFFF'], // white/mono
+];
+let colorIndex = 0;
+let colorPool = new Set([0, 1, 2, 3, 4]); // which colors autopilot can use
+
+// ── Canvas ─────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H, CX, CY;
+
+function resize() {
+  W = canvas.width = window.innerWidth * devicePixelRatio;
+  H = canvas.height = window.innerHeight * devicePixelRatio;
+  CX = W / 2;
+  CY = H / 2;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  W /= devicePixelRatio;
+  H /= devicePixelRatio;
+  CX = W / 2;
+  CY = H / 2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ═══════════════════════════════════════════════════════════════
+// Audio Init
+// ═══════════════════════════════════════════════════════════════
+
+function showDevicePicker(devices) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    
+    const panel = document.createElement('div');
+    panel.style.cssText = 'background:#141414;border:1px solid #333;padding:20px;max-width:400px;width:90%;font-family:monospace;';
+    
+    const title = document.createElement('div');
+    title.textContent = 'SELECT AUDIO INPUT';
+    title.style.cssText = 'font-size:11px;letter-spacing:0.2em;color:#ff2200;margin-bottom:16px;';
+    panel.appendChild(title);
+    
+    devices.forEach(d => {
+      const btn = document.createElement('button');
+      btn.textContent = d.label || 'Audio Device ' + d.deviceId.slice(0, 8);
+      btn.style.cssText = 'display:block;width:100%;padding:10px;margin-bottom:6px;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;font-family:monospace;font-size:11px;cursor:pointer;text-align:left;';
+      btn.onmouseover = () => { btn.style.borderColor = '#ff2200'; };
+      btn.onmouseout = () => { btn.style.borderColor = '#2a2a2a'; };
+      btn.onclick = () => { overlay.remove(); resolve(d.deviceId); };
+      panel.appendChild(btn);
+    });
+    
+    const cancel = document.createElement('button');
+    cancel.textContent = 'CANCEL';
+    cancel.style.cssText = 'display:block;width:100%;padding:8px;margin-top:8px;background:none;border:1px solid #2a2a2a;color:#666;font-family:monospace;font-size:10px;cursor:pointer;letter-spacing:0.15em;';
+    cancel.onclick = () => { overlay.remove(); resolve(null); };
+    panel.appendChild(cancel);
+    
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+  });
+}
+
+async function startAudio(source) {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = FFT_SIZE;
+    analyser.smoothingTimeConstant = 0.5;  // less smoothing = sharper transients
+    analyser.minDecibels = -90;
+    analyser.maxDecibels = -10;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    timeData = new Uint8Array(analyser.fftSize);
+
+    let stream;
+    let sourceLabel = '';
+
+    if (source === 'system') {
+      // System audio via getDisplayMedia
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        audio: true,
+        video: true // required but we discard it
+      });
+      // Remove video track — we only want audio
+      stream.getVideoTracks().forEach(t => t.stop());
+      sourceLabel = 'SYSTEM AUDIO';
+    }
+    else if (source === 'linein') {
+      // Get permission first
+      const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      tempStream.getTracks().forEach(t => t.stop());
+      
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(d => d.kind === 'audioinput');
+      
+      // Broadcast available devices for controller picker
+      availableAudioDevices = audioInputs.map(d => ({ deviceId: d.deviceId, label: d.label || 'Audio ' + d.deviceId.slice(0, 8) }));
+      
+      if (deviceId) {
+        // Specific device from controller
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { exact: deviceId } }
+        });
+        const picked = audioInputs.find(d => d.deviceId === deviceId);
+        sourceLabel = 'LINE-IN: ' + (picked?.label || 'Audio Device');
+      } else {
+        // Auto-pick first device (no popup on player)
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        sourceLabel = 'LINE-IN: ' + (audioInputs[0]?.label || 'Default');
+      }
+    }
+    else {
+      // Mic fallback
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      sourceLabel = 'MICROPHONE';
+    }
+
+    const audioSource = audioCtx.createMediaStreamSource(stream);
+    // Gain boost — system audio often comes in low
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = 2.5;
+    audioSource.connect(gainNode);
+    gainNode.connect(analyser);
+    // Don't connect to destination — no feedback loop
+
+    // UI
+    document.getElementById('setup').classList.add('hidden');
+    document.getElementById('hud').classList.remove('hidden');
+    document.getElementById('controls-hint').classList.remove('hidden');
+    document.getElementById('sourceLabel').textContent = sourceLabel;
+    audioSourceName = sourceLabel;
+
+    // Reinit preset arrays (presets.json already loaded at page load)
+    presetReady = new Array(PRESETS.length).fill(false);
+    presetPool = new Set(PRESETS.map((_, i) => i));
+    beatCutActive = new Set(PRESETS.map((_, i) => i));
+
+    // Start render loop
+    initPresets();
+    requestAnimationFrame(tick);
+    
+  } catch (err) {
+    console.error('Audio init failed:', err);
+    alert('Audio access denied or not available.\n\n' + err.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FFT Analysis
+// ═══════════════════════════════════════════════════════════════
+
+function analyseAudio() {
+  analyser.getByteFrequencyData(freqData);
+  analyser.getByteTimeDomainData(timeData);
+  
+  const binCount = analyser.frequencyBinCount;
+  const nyquist = audioCtx.sampleRate / 2;
+  
+  // Frequency band boundaries
+  const bassEnd = Math.floor(150 / nyquist * binCount);   // 0-150 Hz
+  const midEnd = Math.floor(2000 / nyquist * binCount);    // 150-2000 Hz
+  const highEnd = Math.floor(8000 / nyquist * binCount);   // 2000-8000 Hz
+  
+  // Raw band averages (0-1)
+  let bassSum = 0, midSum = 0, highSum = 0, volSum = 0;
+  
+  for (let i = 0; i < bassEnd; i++) bassSum += freqData[i];
+  for (let i = bassEnd; i < midEnd; i++) midSum += freqData[i];
+  for (let i = midEnd; i < highEnd; i++) highSum += freqData[i];
+  for (let i = 0; i < binCount; i++) volSum += freqData[i];
+  
+  bass = (bassSum / bassEnd / 255) || 0;
+  mid = (midSum / (midEnd - bassEnd) / 255) || 0;
+  high = (highSum / (highEnd - midEnd) / 255) || 0;
+  volume = (volSum / binCount / 255) || 0;
+  
+  // Smoothing (EMA) — bass less smoothed for punch
+  smoothBass = smoothBass * 0.70 + bass * 0.30;
+  smoothMid = smoothMid * 0.82 + mid * 0.18;
+  smoothHigh = smoothHigh * 0.75 + high * 0.25;
+  smoothVol = smoothVol * 0.80 + volume * 0.20;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Beat Detection (from bass transients)
+// ═══════════════════════════════════════════════════════════════
+
+function detectBeat() {
+  bassHistory.push(bass);
+  if (bassHistory.length > BASS_HISTORY_LEN) bassHistory.shift();
+  
+  if (bassHistory.length < 10) return false;
+  
+  const avg = bassHistory.reduce((a, b) => a + b) / bassHistory.length;
+  const now = performance.now();
+  
+  if (bass > avg * 1.2 + beatThreshold && 
+      now - lastBeatTime > beatCooldown) {
+    lastBeatTime = now;
+    // beatIndex NOT incremented here — caller handles it
+    return true;
+  }
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Energy & Mood Detection
+// ═══════════════════════════════════════════════════════════════
+
+function updateEnergy() {
+  const bpmFactor = bpm > 0 ? Math.min(bpm / 150, 1.0) : 0.5;
+  const rawEnergy = (smoothBass * 0.4 + smoothVol * 0.3 + bpmFactor * 0.3);
+  energy = energy * 0.95 + rawEnergy * 0.05;
+  
+  energyHistory.push(energy);
+  if (energyHistory.length > ENERGY_HISTORY_LEN) energyHistory.shift();
+  
+  // ── Bass PULSE detection (kick vs pad) ──────────────────────
+  const bassDelta = Math.abs(smoothBass - prevBass);
+  prevBass = smoothBass;
+  
+  // Fast pulse tracker (~1s)
+  bassPulse = bassPulse * 0.95 + bassDelta * 0.05;
+  
+  // Very slow baseline — remembers "normal kick energy" for 30+ seconds
+  // Only updates UPWARD fast, downward very slow (ratchet effect)
+  if (bassPulse > bassPulseAvg) {
+    bassPulseAvg = bassPulseAvg * 0.99 + bassPulse * 0.01; // rises in ~2s
+  } else {
+    bassPulseAvg = bassPulseAvg * 0.9998 + bassPulse * 0.0002; // falls in ~30s
+  }
+  
+  // Also track volume baseline (same ratchet)
+  if (smoothVol > volAvg) {
+    volAvg = volAvg * 0.99 + smoothVol * 0.01;
+  } else {
+    volAvg = volAvg * 0.9998 + smoothVol * 0.0002;
+  }
+  
+  const pulseRatio = bassPulseAvg > 0.0003 ? bassPulse / bassPulseAvg : 1.0;
+  const volRatio = volAvg > 0.005 ? smoothVol / volAvg : 1.0;
+  
+  if (energyHistory.length < 60) { mood = 'LISTENING'; return; }
+  
+  // ── Adaptive normalization ──────────────────────────────────
+  let histMin = Infinity, histMax = -Infinity;
+  for (let i = 0; i < energyHistory.length; i++) {
+    if (energyHistory[i] < histMin) histMin = energyHistory[i];
+    if (energyHistory[i] > histMax) histMax = energyHistory[i];
+  }
+  const range = histMax - histMin;
+  normEnergy = range > 0.02 ? (energy - histMin) / range : 0.5;
+  
+  // ── Bass average (slow ratchet for ratio) ────────────────────
+  if (smoothBass > bassRunningAvg) {
+    bassRunningAvg = bassRunningAvg * 0.99 + smoothBass * 0.01;
+  } else {
+    bassRunningAvg = bassRunningAvg * 0.9998 + smoothBass * 0.0002;
+  }
+  const bassRatio = bassRunningAvg > 0.003 ? smoothBass / bassRunningAvg : 1.0;
+  
+  // ── DRIVE SCORE: single number combining all signals ─────────
+  const driveScore = (pulseRatio * 0.4) + (volRatio * 0.3) + (bassRatio * 0.3);
+  
+  // ── Drive score history for floating thresholds ─────────────
+  driveHistory.push(driveScore);
+  if (driveHistory.length > DRIVE_HISTORY_LEN) driveHistory.shift();
+  
+  // ── Floating thresholds from percentiles (recalc every 60 frames = 1s) ──
+  driveRecalcCounter++;
+  if (driveHistory.length >= 180 && driveRecalcCounter >= 60) {
+    driveRecalcCounter = 0;
+    const sorted = [...driveHistory].sort((a, b) => a - b);
+    const len = sorted.length;
+    _threshAmbient = sorted[Math.floor(len * 0.20)];   // P20
+    _threshBuilding = sorted[Math.floor(len * 0.50)];  // P50 (median)
+    _threshPeak = sorted[Math.floor(len * 0.85)];      // P85
+    
+    // Safety: minimum separation
+    if (_threshBuilding < _threshAmbient + 0.05) _threshBuilding = _threshAmbient + 0.05;
+    if (_threshPeak < _threshBuilding + 0.05) _threshPeak = _threshBuilding + 0.05;
+  }
+  const threshAmbient = _threshAmbient;
+  const threshBuilding = _threshBuilding;
+  const threshPeak = _threshPeak;
+  
+  // ── Candidate mood from floating thresholds ─────────────────
+  let candidateMood = 'GROOVE';
+  
+  if (smoothVol < 0.008) {
+    candidateMood = 'AMBIENT';
+  }
+  else if (driveScore < threshAmbient) {
+    candidateMood = 'AMBIENT';
+  }
+  else if (driveScore < threshBuilding) {
+    candidateMood = 'BUILDING';
+  }
+  else if (pulseRatio > 1.8 && (mood === 'BUILDING' || mood === 'AMBIENT')) {
+    candidateMood = 'DROP';
+  }
+  else if (driveScore > threshPeak && normEnergy > 0.7) {
+    candidateMood = 'PEAK';
+  }
+  
+  // Watchdog lock: can't revert to locked mood for 3 seconds
+  if (watchdogLockFrames > 0 && candidateMood === watchdogLockedMood) {
+    candidateMood = 'GROOVE'; // safe default
+  }
+  
+  // ── Hysteresis ──────────────────────────────────────────────
+  if (candidateMood !== moodCandidate) {
+    moodCandidate = candidateMood;
+    moodHoldFrames = 0;
+  } else {
+    moodHoldFrames++;
+  }
+  
+  const holdRequired = candidateMood === 'AMBIENT' ? 120
+                     : candidateMood === 'DROP' ? 3
+                     : candidateMood === 'PEAK' ? 60
+                     : candidateMood === 'BUILDING' ? 120
+                     : 30;
+  
+  if (moodHoldFrames >= holdRequired) {
+    if (mood !== candidateMood) {
+      mood = candidateMood;
+      moodBeatCounter = 0; // reset watchdog on mood change
+    }
+  }
+  
+  // ── Watchdog: force mood rotation after MOOD_MAX_BEATS ──────
+  // Prevents getting stuck in any one mood forever
+  // Skip during silence — AMBIENT is correct when no audio
+  if (moodBeatCounter >= MOOD_MAX_BEATS && autopilotEnabled && smoothVol >= 0.008) {
+    const prevMood = mood;
+    // Force next mood in cycle
+    if (mood === 'AMBIENT') mood = 'BUILDING';
+    else if (mood === 'BUILDING') mood = 'GROOVE';
+    else if (mood === 'GROOVE') mood = 'PEAK';
+    else if (mood === 'PEAK') mood = 'GROOVE';
+    else if (mood === 'DROP') mood = 'GROOVE';
+    moodBeatCounter = 0;
+    moodCandidate = mood;
+    moodHoldFrames = 999; // skip hysteresis for forced mood
+    watchdogLockedMood = prevMood; // can't go back to this
+    watchdogLockFrames = 180; // 3 seconds lock
+  }
+  
+  // Decay watchdog lock
+  if (watchdogLockFrames > 0) watchdogLockFrames--;
+  
+  // Store for debug
+  _dbgPulseRatio = pulseRatio;
+  _dbgDriveScore = driveScore;
+  _dbgThreshAmb = threshAmbient;
+  _dbgThreshBld = threshBuilding;
+}
+let _dbgPulseRatio = 1;
+let _dbgDriveScore = 1;
+let _dbgThreshAmb = 0.65;
+let _dbgThreshBld = 1.02;
+
+// ═══════════════════════════════════════════════════════════════
+// BPM Tap (Space key)
+// ═══════════════════════════════════════════════════════════════
+
+function handleTap() {
+  const now = performance.now();
+  
+  // Clear old taps
+  if (tapTimes.length > 0 && now - tapTimes[tapTimes.length - 1] > TAP_TIMEOUT) {
+    tapTimes = [];
+  }
+  
+  tapTimes.push(now);
+  
+  // ── 1 TAP = SYNC (BPM already set) ───────────────────────
+  if (tapTimes.length === 1 && bpm > 0) {
+    beatIndex = 0;
+    beatFlash = 1.0;
+    beatCount++;
+    abClockStart = performance.now();
+    abBaseLoops = 0;
+    abLastSpeed = videoSpeed;
+    startBeatClock(bpm);
+    if (videoLoaded) updateVideoSpeed(bpm);
+    return;
+  }
+  
+  if (tapTimes.length < 2) return;
+  
+  // Keep last 12 taps
+  if (tapTimes.length > 12) tapTimes.shift();
+  
+  // ── Calculate intervals (iOS: iv >= 250 && iv <= 1500) ────
+  const intervals = [];
+  for (let i = 1; i < tapTimes.length; i++) {
+    const iv = tapTimes[i] - tapTimes[i - 1];
+    if (iv >= 250 && iv <= 1500) intervals.push(iv);
+  }
+  if (intervals.length < 1) return;
+  
+  // ── IQR outlier rejection ─────────────────────────────────
+  intervals.sort((a, b) => a - b);
+  const q1 = intervals[Math.floor(intervals.length * 0.25)];
+  const q3 = intervals[Math.floor(intervals.length * 0.75)];
+  const iqr = q3 - q1;
+  const clean = intervals.filter(v => v >= q1 - 1.5 * iqr && v <= q3 + 1.5 * iqr);
+  if (clean.length < 1) return;
+  
+  const avg = clean.reduce((a, b) => a + b) / clean.length;
+  const newBpm = Math.min(Math.max(60000 / avg, 40), 240);
+  
+  // ── Progressive locking (iOS 1:1) ─────────────────────────
+  if (bpm === 0) {
+    // First measurement
+    bpm = Math.round(newBpm * 10) / 10;
+  } else if (clean.length <= 3) {
+    // Few taps → fast learning: 70% new
+    bpm = Math.round((bpm * 0.3 + newBpm * 0.7) * 10) / 10;
+  } else if (clean.length <= 8) {
+    // Mid phase → gradual refinement: 30% new
+    bpm = Math.round((bpm * 0.7 + newBpm * 0.3) * 10) / 10;
+  } else {
+    // 8+ taps → BPM locked, micro correction only: max ±2 BPM × 15%
+    const diff = Math.min(Math.max(newBpm - bpm, -2.0), 2.0);
+    bpm = Math.round((bpm + diff * 0.15) * 10) / 10;
+  }
+  
+  // Beat flash on tap
+  beatFlash = 1.0;
+  beatIndex++;
+  beatCount++;
+  
+  // Sync video speed
+  if (videoLoaded) updateVideoSpeed(bpm);
+  
+  // ── Clock restart logic (iOS 1:1) ─────────────────────────
+  if (clean.length <= 4) {
+    // Learning phase → full restart with phase reset
+    startBeatClock(bpm);
+  } else {
+    // Locked → update speed only, NO phase reset
+    if (beatClockTimer) clearInterval(beatClockTimer);
+    const intervalMs = 60000 / bpm;
+    beatClockTimer = setInterval(() => onBeatTick(), intervalMs);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Beat Clock — timer-based, fires on every beat (from iOS)
+// ═══════════════════════════════════════════════════════════════
+
+let beatClockTimer = null;
+
+function startBeatClock(newBpm) {
+  if (beatClockTimer) clearInterval(beatClockTimer);
+  if (newBpm <= 0) return;
+  
+  const intervalMs = 60000 / newBpm;
+  
+  // Reset auto-correction state
+  peakSkipCount = 0;
+  detectedPeakTimes = [];
+  
+  // Reset beatIndex on first few taps (learning phase)
+  if (tapTimes.length <= 4) {
+    beatIndex = 0;
+  }
+  
+  beatClockTimer = setInterval(() => {
+    onBeatTick();
+  }, intervalMs);
+}
+
+function onBeatTick() {
+  beatIndex++;
+  beatCount++;
+  moodBeatCounter++; // watchdog counter
+  beatFiredFrames = 5;
+  
+  // Camera hold countdown (per beat, not per cut)
+  if (camHoldBeats > 0) camHoldBeats--;
+  
+  // Camera beat pulse + rotation (mood-dependent range, skip in silence)
+  if (PRESETS[activePreset]?.type === 'camera' && smoothVol >= 0.008) {
+    camPulseScale = 1.0;
+    let camRotRange = 1;
+    if (mood === 'PEAK' || mood === 'DROP') camRotRange = 8;
+    else if (mood === 'GROOVE') camRotRange = 5;
+    else if (mood === 'BUILDING') camRotRange = 3;
+    else camRotRange = 1;
+    
+    if (beatCutEnabled) {
+      camRotTarget = camRotTarget > 0 ? -camRotRange : camRotRange;
+    }
+  }
+  
+  // Typo beat hook
+  typoOnBeat();
+  
+  // Phrase detection (breakdown → drop alignment)
+  updatePhraseOnBeat();
+  
+  const bar4 = beatIndex % 4;
+  const bar8 = beatIndex % 8;
+  const bar16 = beatIndex % 16;
+  
+  // ── FX hierarchy (iOS: fx16 > fx8 > fx4 > every beat) ──────
+  // driveScale (0.05-1.0) scales ALL visual intensity
+  const ds = driveScale;
+  if (bar16 === 0) {
+    beatFlash = 1.0 * fxIntensity;
+    exposureOpacity = 0.4 * fxIntensity;
+    pulseScale = 1.0 + 0.35 * ds + smoothBass * 0.4 * ds;
+  } else if (bar8 === 0) {
+    beatFlash = 0.75 * fxIntensity;
+    exposureOpacity = 0.2 * fxIntensity;
+    pulseScale = 1.0 + 0.25 * ds + smoothBass * 0.3 * ds;
+  } else if (bar4 === 0) {
+    beatFlash = 0.5 * fxIntensity;
+    exposureOpacity = 0.08 * fxIntensity;
+    pulseScale = 1.0 + 0.15 * ds + smoothBass * 0.2 * ds;
+  } else {
+    pulseScale = 1.0 + 0.05 * ds + smoothBass * 0.1 * ds;
+  }
+  
+  // ── Strobo (beat flash × envelope) ───────────────────────────
+  // stroboEnvelope = overall brightness (auto strobo fade controls this)
+  // Beat toggle creates the flicker, envelope scales it
+  if (stroboActive) {
+    stroboBeatToggle = !stroboBeatToggle; // flicker per beat
+    stroboFlash = stroboBeatToggle ? stroboEnvelope : 0;
+  } else {
+    stroboBeatToggle = false;
+    if (stroboFlash > 0.01) stroboFlash *= 0.65; else stroboFlash = 0; // quick fade
+  }
+  
+  // Update video speed on every beat
+  if (videoLoaded && bpm > 0) {
+    updateVideoSpeed(bpm);
+  }
+  
+  // Beat cut — PRE-SEEK 2 beats early for glitch-free cuts
+  if (beatCutEnabled) {
+    beatCutCountdown--;
+    
+    // 2 beats before cut: pre-pick + pre-seek next video
+    if (beatCutCountdown === 2) {
+      _preCutPreset = pickNextBeatCutPreset();
+      if (_preCutPreset >= 0) {
+        preSyncVideo(_preCutPreset);
+      }
+    }
+    
+    // CUT: video already seeked and playing at correct timecode
+    if (beatCutCountdown <= 0) {
+      if (_preCutPreset >= 0 && presetReady[_preCutPreset]) {
+        switchToPreset(_preCutPreset);
+      } else {
+        beatCutNext(); // fallback
+      }
+      _preCutPreset = -1;
+      beatCutCountdown = getOrganicInterval();
+    }
+  }
+}
+
+// Pre-seek: start playing next video at correct timecode BEFORE the cut
+let _preCutPreset = -1;
+
+function preSyncVideo(idx) {
+  const p = PRESETS[idx];
+  if (!p || !p.videoA) return;
+  const ab = getCurrentAB();
+  const vid = document.getElementById(`vid${idx}${ab === 0 ? 'a' : 'b'}`);
+  if (!vid || vid.readyState < 2) return;
+  
+  // Calculate where the active video is NOW
+  const activeAB = getCurrentAB();
+  const activeVid = document.getElementById(`vid${activePreset}${activeAB === 0 ? 'a' : 'b'}`);
+  const syncTime = activeVid ? activeVid.currentTime : 0;
+  
+  vid.currentTime = syncTime;
+  vid.playbackRate = videoSpeed;
+  vid.play().catch(() => {});
+}
+
+// Pick next preset without switching (for pre-seek)
+function pickNextBeatCutPreset() {
+  const loaded = getLoadedPresets();
+  if (loaded.length < 2) return -1;
+  
+  let others = loaded.filter(i => i !== activePreset);
+  
+  const currentIsCamera = PRESETS[activePreset]?.type === 'camera';
+  if (currentIsCamera) {
+    const nonCam = others.filter(i => PRESETS[i]?.type !== 'camera');
+    if (nonCam.length > 0) others = nonCam;
+  }
+  
+  // Energy-aware
+  let targetCat = 3;
+  if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
+  else if (mood === 'BUILDING') targetCat = 2;
+  const energyMatched = others.filter(i => (PRESETS[i]?.energy || 2) === targetCat);
+  const pool = (energyMatched.length > 0 && Math.random() < 0.7) ? energyMatched : others;
+  
+  return pickByThemeWeight(pool) ?? -1;
+}
+
+// Organic beat cut: human variation around base interval
+function getOrganicInterval() {
+  const base = beatCutInterval;
+  const energy = normEnergy || 0;
+  
+  // Variation = ±25% of base (rounded to whole beats)
+  const maxVar = Math.max(1, Math.round(base * 0.25));
+  let variation = Math.floor(Math.random() * (maxVar * 2 + 1)) - maxVar; // -maxVar to +maxVar
+  
+  // High energy: tighter (halve variation)
+  if (energy > 0.7) variation = Math.round(variation * 0.5);
+  
+  // Low energy: 20% chance of DOUBLE HOLD (dramatic pause)
+  if (energy < 0.3 && Math.random() < 0.20) {
+    return Math.min(base * 2, 32);
+  }
+  
+  // High energy: 10% chance of HALF interval (surprise quick cut)
+  if (energy > 0.8 && Math.random() < 0.10 && base >= 8) {
+    return Math.max(Math.floor(base / 2), 2);
+  }
+  
+  return Math.max(2, base + variation);
+}
+
+// ── Silence detection → dampen FX ─────────────────────────────
+function updateSilenceDampen() {
+  const target = Math.min(fxSliderValue * driveScale, driveScale);
+  if (smoothVol > SILENCE_THRESHOLD) {
+    silenceTimer = 0;
+    fxIntensity = fxIntensity * 0.75 + target * 0.25; // was 0.9/0.1 — 2.5× faster
+  } else {
+    silenceTimer++;
+    if (silenceTimer > SILENCE_DAMPEN_AFTER) {
+      fxIntensity = fxIntensity * 0.92 + (0.15 * target) * 0.08;
+    }
+  }
+  fxIntensity = Math.min(fxIntensity, driveScale);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Autopilot — Feature container (toggleable sub-features)
+// ═══════════════════════════════════════════════════════════════
+
+let autopilotEnabled = false;       // master toggle
+// Theme mix: which themes autopilot uses + weight ratios
+let activeThemes = { omen: true, camera: false, voyager: false, typo: false };
+let themeWeights = { omen: 80, camera: 20, voyager: 0, typo: 30 };
+let _themeCheckCounter = 0;
+let autoEnergyEnabled = true;       // sub: energy-based preset switch
+let autoFxEnabled = true;           // sub: FX amount driven by volume
+let autoBeatCutEnabled = true;      // sub: beat cut interval by energy
+let autoStroboEnabled = true;       // sub: strobo on cymbal/crash detect
+let autoColorEnabled = true;        // sub: color palette by mood
+let autoSpeedEnabled = true;        // sub: video speed by energy
+
+let lastAutopilotMood = '';
+let autopilotCooldown = 0;
+const AUTOPILOT_MIN_INTERVAL = 600;
+
+// Auto strobo state
+let highAvg = 0;          // running high-freq average (ratchet)
+let highPeakBuffer = [];  // last 5 frames raw high values
+let stroboAutoFrames = 0; // frames remaining for auto-strobo burst
+
+// Helper: get theme for any preset (handles missing themeId)
+function getPresetTheme(p) {
+  if (p?.themeId) return p.themeId;
+  if (p?.type === 'camera') return 'camera';
+  return 'omen';
+}
+
+function getPresetsByEnergy(cat) {
+  return PRESETS.map((p, i) => ({ ...p, idx: i }))
+    .filter(p => {
+      if (p.energy !== cat) return false;
+      if (!presetReady[p.idx] || !presetPool.has(p.idx)) return false;
+      if (!activeThemes[getPresetTheme(p)]) return false;
+      if (!isCamPresetLive(p.idx)) return false;
+      return true;
+    });
+}
+
+// Get all eligible presets from active themes (any energy)
+function getActiveThemePresets() {
+  return PRESETS.map((p, i) => ({ ...p, idx: i }))
+    .filter(p => {
+      if (!presetReady[p.idx] || !presetPool.has(p.idx)) return false;
+      if (!activeThemes[getPresetTheme(p)]) return false;
+      if (!isCamPresetLive(p.idx)) return false;
+      return true;
+    });
+}
+
+// Weighted random pick from presets based on theme weights
+// Two-step: pick THEME by weight, then preset within theme
+function weightedPresetPick(candidates) {
+  if (candidates.length === 0) return null;
+  
+  // Group by theme
+  const groups = {};
+  candidates.forEach(p => {
+    const theme = getPresetTheme(p);
+    if (!groups[theme]) groups[theme] = [];
+    groups[theme].push(p);
+  });
+  
+  const themeIds = Object.keys(groups);
+  if (themeIds.length === 0) return null;
+  if (themeIds.length === 1) {
+    const presets = groups[themeIds[0]];
+    return presets[Math.floor(Math.random() * presets.length)];
+  }
+  
+  // Weighted random: pick theme
+  let totalWeight = 0;
+  const weighted = themeIds.map(id => {
+    const w = themeWeights[id] || 10;
+    totalWeight += w;
+    return { id, w, presets: groups[id] };
+  });
+  
+  let r = Math.random() * totalWeight;
+  let picked = weighted[0];
+  for (const t of weighted) {
+    r -= t.w;
+    if (r <= 0) { picked = t; break; }
+  }
+  
+  // Random preset within picked theme
+  return picked.presets[Math.floor(Math.random() * picked.presets.length)];
+}
+
+// Map normEnergy to beat cut interval
+function getAutoBeatCutInterval() {
+  const driveN = masterDrive / 100;
+  
+  // BASE interval from DRIVE position (primary control)
+  // Drive 0-25%:   32 beats (8 bars — very slow, atmospheric)
+  // Drive 25-50%:  16 beats (4 bars — standard phrase)
+  // Drive 50-75%:  8 beats (2 bars — active)
+  // Drive 75-100%: 4 beats (1 bar — aggressive)
+  let interval;
+  if (driveN < 0.25) interval = 32;
+  else if (driveN < 0.50) interval = 16;
+  else if (driveN < 0.75) interval = 8;
+  else interval = 4;
+  
+  // Mood modifier
+  if (mood === 'AMBIENT' || mood === 'LISTENING') return 0; // beat cut OFF
+  if (mood === 'DROP' || mood === 'PEAK') interval = Math.max(Math.floor(interval / 2), 2);
+  if (mood === 'BUILDING') interval = Math.min(interval * 2, 32);
+  
+  return Math.max(Math.min(interval, 32), 2);
+}
+
+function updateAutopilot() {
+  if (!autopilotEnabled) return;
+  
+  // ── SILENCE GUARD: no audio = ambient only, skip everything ──
+  if (smoothVol < 0.008) {
+    if (mood !== 'AMBIENT') {
+      mood = 'AMBIENT';
+      moodCandidate = 'AMBIENT';
+      lastAutopilotMood = '';
+      autopilotCooldown = 0;
+    }
+    // Force CAT1 preset if not already
+    const cat1 = getPresetsByEnergy(1);
+    if (cat1.length > 0 && PRESETS[activePreset]?.energy !== 1) {
+      switchToPreset(cat1[0].idx);
+    }
+    // Kill beat cut + strobo + camera hold in silence
+    if (beatCutEnabled) { beatCutEnabled = false; updatePresetGrid(); }
+    if (stroboActive && !manualStrobo) { stroboActive = false; stroboFlash = 0; }
+    return; // skip all other autopilot
+  }
+  
+  // ── Sub-feature: FX AMOUNT (runs every frame) ───────────────
+  if (autoFxEnabled) {
+    const targetFx = 0.3 + smoothVol * 2.4;
+    fxSliderValue = fxSliderValue * 0.95 + Math.min(targetFx, 2.0) * 0.05;
+  }
+  
+  // ── Sub-feature: AUTO STROBO (cymbal/crash detection) ───────
+  if (autoStroboEnabled) {
+    // Use RAW high (not smoothed) — crashes are transients
+    if (high > highAvg) {
+      highAvg = highAvg * 0.999 + high * 0.001;
+    } else {
+      highAvg = highAvg * 0.9999 + high * 0.0001;
+    }
+    
+    // Peak tracker: max high in last 5 frames
+    highPeakBuffer.push(high);
+    if (highPeakBuffer.length > 5) highPeakBuffer.shift();
+    const highPeak = Math.max(...highPeakBuffer);
+    
+    const highRatio = highAvg > 0.002 ? highPeak / highAvg : 1.0;
+    
+    // Crash/open hat: variable duration by intensity
+    // highRatio 1.3 = tiny flash (3 frames), 2.0+ = full burst (10 frames)
+    // Drive gates auto-strobo: below 30% drive, no auto strobo
+    if (highRatio > 1.3 && driveScale > 0.3) {
+      const intensity = Math.min((highRatio - 1.3) / 0.7, 1.0);
+      const duration = Math.round(3 + intensity * 7);
+      if (duration > stroboAutoFrames) {
+        stroboAutoFrames = duration;
+        stroboMaxFrames = duration;
+      }
+    }
+    
+    if (stroboAutoFrames > 0) {
+      stroboAutoFrames--;
+      if (!stroboActive) stroboActive = true;
+      
+      const progress = 1.0 - (stroboAutoFrames / Math.max(stroboMaxFrames, 1));
+      if (progress < 0.6) {
+        stroboEnvelope = 0.85 * driveScale; // SCALED by drive
+      } else {
+        stroboEnvelope = 0.85 * driveScale * (1.0 - (progress - 0.6) / 0.4);
+      }
+    } else {
+      if (stroboActive && !manualStrobo) {
+        stroboActive = false;
+        stroboFlash = 0;
+        stroboEnvelope = 0.85 * driveScale; // reset for next burst
+      }
+    }
+  }
+  
+  // ── Sub-feature: BEAT CUT interval (runs every frame) ───────
+  if (autoBeatCutEnabled) {
+    const autoInterval = getAutoBeatCutInterval();
+    if (autoInterval === 0) {
+      // AMBIENT → beat cut OFF
+      if (beatCutEnabled) { beatCutEnabled = false; updatePresetGrid(); }
+    } else {
+      const wasOff = !beatCutEnabled;
+      beatCutEnabled = true;
+      if (beatCutInterval !== autoInterval) {
+        beatCutInterval = autoInterval;
+        if (wasOff) {
+          beatCutWaitForDownbeat = cdjConnected;
+          beatCutCountdown = autoInterval;
+        } else {
+          beatCutCountdown = Math.min(beatCutCountdown, autoInterval);
+        }
+      }
+      // Only rebuild pool + refresh grid when beat cut first turns ON
+      if (wasOff) {
+        const allActive = PRESETS.map((p, i) => i).filter(i => {
+          if (!presetReady[i]) return false;
+          if (!presetPool.has(i)) return false;
+          const theme = getPresetTheme(PRESETS[i]);
+          if (!activeThemes[theme]) return false;
+          if (!isCamPresetLive(i)) return false;
+          return true;
+        });
+        if (allActive.length >= 2) {
+          beatCutActive = new Set(allActive);
+        }
+        updatePresetGrid();
+      }
+    }
+  }
+  
+  // ── Sub-feature: AUTO SPEED (energy → 1× or 2×) ─────────────
+  if (autoSpeedEnabled) {
+    const targetSpeed = (mood === 'DROP' || mood === 'PEAK') ? 2.0 : 1.0;
+    if (videoSpeedMultiplier !== targetSpeed) {
+      setVideoSpeed(targetSpeed);
+    }
+  }
+  
+  // ── Sub-feature: ENERGY preset switch (gated by cooldown) ───
+  if (!autoEnergyEnabled) return;
+  if (autopilotCooldown > 0) { autopilotCooldown--; return; }
+  
+  if (mood === lastAutopilotMood) return;
+  
+  lastAutopilotMood = mood;
+  
+  // When beat cut is running, DON'T switch presets directly
+  // Beat cut countdown is the MASTER of switch timing
+  // But AUTO COLOR still fires on mood change!
+  
+  // ── Sub-feature: AUTO COLOR (change palette on mood switch) ──
+  if (autoColorEnabled) {
+    const moodPalettes = {
+      'AMBIENT': [1, 4],
+      'LISTENING': [1, 4],
+      'BUILDING': [1, 2],
+      'GROOVE': [0, 3],
+      'DROP': [3, 4],
+      'PEAK': [0, 3, 4],
+    };
+    const moodChoices = moodPalettes[mood] || [0];
+    const poolChoices = moodChoices.filter(c => colorPool.has(c));
+    const choices = poolChoices.length > 0 ? poolChoices : [...colorPool];
+    if (choices.length > 0) {
+      const colorFiltered = choices.filter(c => c !== colorIndex);
+      const newColor = colorFiltered.length > 0 
+        ? colorFiltered[Math.floor(Math.random() * colorFiltered.length)]
+        : choices[0];
+      setColor(newColor);
+    }
+  }
+  
+  if (beatCutEnabled) return; // block preset switch only, color already handled
+
+  let targetCat = 2;
+  switch (mood) {
+    case 'AMBIENT':
+    case 'LISTENING':
+      targetCat = 1; break;
+    case 'BUILDING':
+      targetCat = 2; break;
+    case 'GROOVE':
+    case 'DROP':
+    case 'PEAK':
+      targetCat = 3; break;
+  }
+  
+  let candidates = getPresetsByEnergy(targetCat);
+  if (candidates.length === 0 && targetCat > 1) {
+    candidates = getPresetsByEnergy(targetCat - 1 >= 2 ? targetCat - 1 : targetCat + 1);
+  }
+  if (candidates.length === 0) candidates = getPresetsByEnergy(targetCat + 1);
+  // Last resort: any preset from active themes
+  if (candidates.length === 0) candidates = getActiveThemePresets();
+  if (candidates.length === 0) return;
+  
+  // Weighted random pick (theme weight × avoid current preset)
+  const filtered = candidates.filter(p => p.idx !== activePreset);
+  const pool = filtered.length > 0 ? filtered : candidates;
+  const pick = weightedPresetPick(pool);
+  if (!pick) return;
+  
+  switchToPreset(pick.idx);
+  
+  updatePresetGrid();
+  autopilotCooldown = AUTOPILOT_MIN_INTERVAL;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Auto BPM Correction — detected peaks refine tapped BPM
+// ═══════════════════════════════════════════════════════════════
+
+let detectedPeakTimes = [];
+const PEAK_HISTORY = 16;
+const MAX_CORRECTION = 2.0; // max ±2 BPM drift
+const CORRECTION_RATE = 0.08; // 8% per correction step
+let peakSkipCount = 0; // skip first 2 after clock start
+
+function autoCorrectBpm() {
+  const now = performance.now();
+  
+  // Skip first 2 detected peaks — usually off-beat
+  peakSkipCount++;
+  if (peakSkipCount <= 2) return;
+  
+  // Log detected peak
+  detectedPeakTimes.push(now);
+  if (detectedPeakTimes.length > PEAK_HISTORY) detectedPeakTimes.shift();
+  if (detectedPeakTimes.length < 6) return; // need enough data
+  
+  // Calculate average peak interval
+  const intervals = [];
+  for (let i = 1; i < detectedPeakTimes.length; i++) {
+    intervals.push(detectedPeakTimes[i] - detectedPeakTimes[i - 1]);
+  }
+  
+  // IQR filter (reject outliers)
+  intervals.sort((a, b) => a - b);
+  const q1 = intervals[Math.floor(intervals.length * 0.25)];
+  const q3 = intervals[Math.floor(intervals.length * 0.75)];
+  const iqr = q3 - q1;
+  const clean = intervals.filter(v => v >= q1 - 1.5 * iqr && v <= q3 + 1.5 * iqr);
+  if (clean.length < 3) return;
+  
+  const avgInterval = clean.reduce((a, b) => a + b) / clean.length;
+  const detectedBpm = 60000 / avgInterval;
+  
+  // Only correct if detected BPM is close to current (within ±15 BPM)
+  // Prevents correction from noise or half/double time
+  if (Math.abs(detectedBpm - bpm) > 15) return;
+  
+  // Nudge toward detected BPM
+  const delta = (detectedBpm - bpm) * CORRECTION_RATE;
+  const clampedDelta = Math.max(-MAX_CORRECTION * CORRECTION_RATE, 
+                       Math.min(MAX_CORRECTION * CORRECTION_RATE, delta));
+  
+  const newBpm = Math.round((bpm + clampedDelta) * 10) / 10;
+  
+  if (newBpm !== bpm) {
+    bpm = newBpm;
+    // Restart clock with corrected BPM (preserve phase — don't reset beatIndex)
+    if (beatClockTimer) clearInterval(beatClockTimer);
+    const intervalMs = 60000 / bpm;
+    beatClockTimer = setInterval(() => onBeatTick(), intervalMs);
+    
+    if (videoLoaded) updateVideoSpeed(bpm);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Video Preset A/B System — Hardcoded Registry (like iOS)
+// ═══════════════════════════════════════════════════════════════
+
+function initPresets() {
+  // Set initial vignette
+  document.getElementById('videoVignette').style.background = 
+    'radial-gradient(circle closest-side, transparent 0%, transparent 40%, rgba(0,0,0,0.08) 52%, rgba(0,0,0,0.25) 62%, rgba(0,0,0,0.50) 72%, rgba(0,0,0,0.75) 82%, rgba(0,0,0,0.92) 92%, rgba(0,0,0,1.0) 100%)';
+  
+  // ── Generate video elements ─────────────────────────────────
+  const videoLayer = document.getElementById('videoLayer');
+  videoLayer.innerHTML = '';
+  PRESETS.forEach((preset, i) => {
+    if (!preset.videoA) return; // GFX-only preset (OMEN1)
+    const vidA = document.createElement('video');
+    const vidB = document.createElement('video');
+    [vidA, vidB].forEach((v, j) => {
+      v.id = `vid${i}${j === 0 ? 'a' : 'b'}`;
+      v.loop = true; v.muted = true; v.playsInline = true;
+      v.setAttribute('playsinline', '');
+      videoLayer.appendChild(v);
+    });
+  });
+  
+  // ── Generate preset buttons ─────────────────────────────────
+  const presetBtns = document.getElementById('presetBtns');
+  presetBtns.innerHTML = '';
+  PRESETS.forEach((preset, i) => {
+    const btn = document.createElement('div');
+    btn.id = 'pg' + i;
+    btn.className = 'pgrid' + (i === 0 ? ' active' : '');
+    btn.textContent = preset.name.replace('OMEN', '');
+    btn.style.cursor = 'pointer';
+    btn.onclick = () => handlePresetClick(i);
+    presetBtns.appendChild(btn);
+  });
+  
+  applyVideoColor();
+  updateColorDots();
+  
+  // ── Load videos ─────────────────────────────────────────────
+  PRESETS.forEach((preset, i) => {
+    // GFX-only or camera preset → mark ready immediately
+    if (!preset.videoA || preset.type === 'camera') {
+      presetReady[i] = true;
+      return;
+    }
+    
+    const vidA = document.getElementById(`vid${i}a`);
+    const vidB = document.getElementById(`vid${i}b`);
+    
+    vidA.src = preset.videoA;
+    vidB.src = preset.videoB;
+    
+    let aReady = false, bReady = false;
+    
+    vidA.oncanplaythrough = () => {
+      if (aReady) return;
+      aReady = true;
+      vidA.play().catch(() => {});
+      checkPresetReady(i);
+    };
+    vidB.oncanplaythrough = () => {
+      if (bReady) return;
+      bReady = true;
+      vidB.play().catch(() => {});
+    };
+    
+    vidA.onerror = () => { console.warn(`${preset.videoA} not found`); checkPresetReady(i); };
+    vidB.onerror = () => { console.warn(`${preset.videoB} not found`); checkPresetReady(i); };
+    
+    // Timeout fallback — if video hasn't loaded in 8s, mark ready anyway (GFX works without video)
+    setTimeout(() => {
+      if (!presetReady[i]) {
+        console.warn(`${preset.name} video timeout — marking ready (GFX only)`);
+        checkPresetReady(i);
+      }
+    }, 8000);
+    
+    vidA.load();
+    vidB.load();
+  });
+}
+
+function checkPresetReady(idx) {
+  presetReady[idx] = true;
+  videoLoaded = true;
+  
+  if (abClockStart === 0) {
+    abClockStart = performance.now();
+    abLastSpeed = videoSpeed;
+  }
+  
+  updateVideoVisibility();
+  updatePresetGrid();
+}
+
+// BPM → playback speed: 24s video synced to 48 beats
+function updateVideoSpeed(newBpm) {
+  if (newBpm <= 0) return;
+  
+  const targetSeconds = (VIDEO_SYNC_BEATS * 60.0) / newBpm;
+  const speed = Math.min(Math.max((VIDEO_DURATION_S / targetSeconds) * videoSpeedMultiplier, 0.1), 8.0);
+  
+  if (Math.abs(speed - videoSpeed) < 0.01) return;
+  
+  // Resync A/B clock
+  const elapsed = performance.now() - abClockStart;
+  const durationMs = VIDEO_DURATION_S * 1000;
+  if (abLastSpeed > 0 && durationMs > 0) {
+    abBaseLoops += Math.floor(elapsed * abLastSpeed / durationMs);
+  }
+  abClockStart = performance.now();
+  abLastSpeed = speed;
+  videoSpeed = speed;
+  
+  // Apply to all video elements
+  PRESETS.forEach((preset, i) => {
+    if (!preset.videoA) return; // GFX-only, no video elements
+    const a = document.getElementById(`vid${i}a`);
+    const b = document.getElementById(`vid${i}b`);
+    if (a && a.readyState >= 2) a.playbackRate = speed;
+    if (b && b.readyState >= 2) b.playbackRate = speed;
+  });
+}
+
+// A/B: monotonic clock, even=A odd=B
+function getCurrentAB() {
+  if (videoSpeed <= 0) return 0;
+  const elapsed = performance.now() - abClockStart;
+  const durationMs = VIDEO_DURATION_S * 1000;
+  const loopIndex = abBaseLoops + Math.floor(elapsed * videoSpeed / durationMs);
+  return loopIndex % 2 === 0 ? 0 : 1;
+}
+
+// Camera CSS filters (static — defined once)
+const CAM_FILTERS = [
+  'sepia(0.6) hue-rotate(-10deg) saturate(2.5)',
+  'sepia(0.6) hue-rotate(200deg) saturate(2.5)',
+  'sepia(0.6) hue-rotate(100deg) saturate(2.5)',
+  'sepia(0.6) hue-rotate(40deg) saturate(2.5)',
+  'saturate(0)',
+];
+
+// Cached DOM refs (set once)
+let _vlEl = null, _clEl = null, _coEl = null, _vigEl = null;
+let _lastActivePreset = -1, _lastAB = -1;
+
+function updateVideoVisibility() {
+  currentAB = getCurrentAB();
+  const currentPreset = PRESETS[activePreset];
+  const currentPresetHasVideo = currentPreset?.videoA != null;
+  const currentPresetIsCamera = currentPreset?.type === 'camera';
+  
+  // Cache DOM refs on first call
+  if (!_vlEl) _vlEl = document.getElementById('videoLayer');
+  if (!_clEl) _clEl = document.getElementById('cameraLayer');
+  if (!_coEl) _coEl = document.getElementById('camColorOverlay');
+  
+  // Video layer opacity
+  if (_vlEl) _vlEl.style.opacity = (currentPresetHasVideo && !currentPresetIsCamera && !videoHidden) ? '1' : '0';
+  
+  // Hide overlay div (unused)
+  if (_coEl && _coEl.style.display !== 'none') _coEl.style.display = 'none';
+  
+  // ═══ CAMERA: exactly ONE source visible, all others HIDDEN ═══
+  // Step 1: HIDE EVERYTHING camera-related first
+  if (_clEl) _clEl.style.display = 'none';
+  Object.keys(localCams).forEach(pidx => {
+    const cam = localCams[pidx];
+    if (cam && cam.videoEl) cam.videoEl.style.display = 'none';
+  });
+  
+  // Step 2: Show ONE source if camera preset is active
+  if (currentPresetIsCamera && !videoHidden) {
+    const camSource = currentPreset?.camSource || 'remote';
+    const camFilter = CAM_FILTERS[colorIndex] || CAM_FILTERS[0];
+    const isSilence = smoothVol < 0.008;
+    const t = performance.now() / 1000;
+    
+    let rot = 0;
+    let camScale = pinchScale;
+    
+    if (!isSilence) {
+      // Audio active: pulse + rotation
+      const activePulse = camPulseScale > 0.05 ? camPulseScale : (Math.sin(t * 3) * 0.5 + 0.5) * 0.3;
+      let driftRange = 1;
+      if (mood === 'PEAK' || mood === 'DROP') driftRange = 5;
+      else if (mood === 'GROOVE') driftRange = 3;
+      else if (mood === 'BUILDING') driftRange = 2;
+      else driftRange = 1;
+      rot = beatCutEnabled ? camRotCurrent : Math.sin(t * 0.4) * driftRange;
+      const breathe = 1.0 + smoothVol * 0.15;
+      const pulse = 1.0 + activePulse * 0.22;
+      camScale = breathe * pulse * pinchScale;
+    }
+    // Silence: rot=0, camScale=pinchScale (static)
+    
+    const transformStr = `translate(-50%, -50%) scale(${camScale.toFixed(3)}) rotate(${rot.toFixed(1)}deg)`;
+    
+    if (camSource === 'local' && localCams[activePreset]?.videoEl) {
+      // LOCAL camera: show this preset's video element
+      const el = localCams[activePreset].videoEl;
+      el.style.display = 'block';
+      el.style.transform = transformStr;
+      el.style.filter = camFilter;
+    } else if (remoteCamActive && _clEl) {
+      // REMOTE camera: show shared canvas
+      _clEl.style.display = 'block';
+      _clEl.style.transform = transformStr;
+      _clEl.style.filter = camFilter;
+    }
+  } else if (!currentPresetIsCamera && _clEl) {
+    _clEl.style.filter = 'none';
+    applyVideoColor();
+  }
+  
+  // ── Video A/B toggle (only when preset or AB changes) ──
+  if (activePreset !== _lastActivePreset || currentAB !== _lastAB) {
+    // Deactivate previous — hide FIRST, pause after delay (no stale frame)
+    if (_lastActivePreset >= 0 && _lastActivePreset !== activePreset) {
+      const oldIdx = _lastActivePreset;
+      const pA = document.getElementById(`vid${oldIdx}a`);
+      const pB = document.getElementById(`vid${oldIdx}b`);
+      if (pA) pA.classList.remove('active');
+      if (pB) pB.classList.remove('active');
+      // Pause after 200ms (release decode resources, but don't flash)
+      setTimeout(() => {
+        if (activePreset !== oldIdx) { // still not active
+          if (pA) pA.pause();
+          if (pB) pB.pause();
+        }
+      }, 200);
+    }
+    // Activate current — pre-seeked by preSyncVideo, already at correct timecode
+    if (presetReady[activePreset] && PRESETS[activePreset]?.videoA) {
+      const cA = document.getElementById(`vid${activePreset}a`);
+      const cB = document.getElementById(`vid${activePreset}b`);
+      // Ensure playing (preSyncVideo started it, but safety)
+      if (cA) { cA.play().catch(()=>{}); cA.style.transform = _lastVideoTransform; cA.classList.toggle('active', currentAB === 0); }
+      if (cB) { cB.play().catch(()=>{}); cB.style.transform = _lastVideoTransform; cB.classList.toggle('active', currentAB === 1); }
+    }
+    _lastActivePreset = activePreset;
+    _lastAB = currentAB;
+  }
+}
+
+// ── Local Camera Management ────────────────────────────────────
+let availableCameras = []; // list of { deviceId, label } for controller
+
+async function enumerateLocalCameras() {
+  try {
+    const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    tempStream.getTracks().forEach(t => t.stop());
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    availableCameras = devices.filter(d => d.kind === 'videoinput').map(d => ({
+      deviceId: d.deviceId,
+      label: d.label || 'Camera ' + d.deviceId.slice(0, 8),
+    }));
+    console.log('[CAM] Found', availableCameras.length, 'cameras');
+  } catch (err) {
+    console.warn('[CAM] Cannot enumerate cameras:', err.message);
+  }
+}
+
+async function openLocalCam(presetIdx, deviceId) {
+  if (localCams[presetIdx]) return; // already open
+  
+  try {
+    // Use provided deviceId, or first available
+    if (!deviceId && availableCameras.length > 0) {
+      deviceId = availableCameras[0].deviceId;
+    }
+    if (!deviceId) {
+      await enumerateLocalCameras();
+      if (availableCameras.length > 0) deviceId = availableCameras[0].deviceId;
+    }
+    if (!deviceId) return;
+    
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { deviceId: { exact: deviceId }, width: { ideal: 720 }, height: { ideal: 720 } }
+    });
+    
+    const videoEl = document.createElement('video');
+    videoEl.srcObject = stream;
+    videoEl.muted = true;
+    videoEl.playsInline = true;
+    videoEl.setAttribute('playsinline', '');
+    videoEl.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:100vh; height:100vh; object-fit:cover; z-index:0; display:none;';
+    videoEl.id = 'localCam' + presetIdx;
+    document.body.insertBefore(videoEl, document.getElementById('videoVignette'));
+    await videoEl.play();
+    
+    localCams[presetIdx] = { stream, videoEl, deviceId };
+    console.log('[CAM] Local camera opened for preset', presetIdx);
+  } catch (err) {
+    console.warn('[CAM] Local camera error:', err.message);
+  }
+}
+
+// Enumerate cameras after 3s delay (only if local camera presets exist)
+setTimeout(() => {
+  const hasLocalCam = PRESETS.some(p => p.type === 'camera' && p.camSource === 'local');
+  if (hasLocalCam) enumerateLocalCameras();
+}, 3000);
+
+let lastSwitchTime = 0;
+const SWITCH_MIN_MS = 300; // minimum 300ms between switches
+
+function switchToPreset(idx) {
+  if (!presetReady[idx]) return;
+  
+  // Pool + theme block during autopilot/beatcut — manual clicks always pass
+  if (autopilotEnabled || beatCutEnabled) {
+    if (!presetPool.has(idx)) return; // ILLEGAL: not in drive pool
+    const p = PRESETS[idx];
+    const theme = getPresetTheme(p);
+    if (!activeThemes[theme]) return;
+  }
+  
+  // Throttle beat cut (not manual clicks)
+  const now = performance.now();
+  if (now - lastSwitchTime < SWITCH_MIN_MS && beatCutEnabled) return;
+  lastSwitchTime = now;
+  
+  activePreset = idx;
+  
+  const preset = PRESETS[idx];
+  
+  // Local camera preset → open camera if needed
+  if (preset?.type === 'camera' && preset?.camSource === 'local') {
+    openLocalCam(idx, preset?.deviceId || null);
+  }
+  
+  // Seek video presets to current loop position
+  if (preset && preset.videoA && preset.type !== 'camera' && abClockStart > 0 && videoSpeed > 0) {
+    const elapsed = performance.now() - abClockStart;
+    const durationMs = VIDEO_DURATION_S * 1000;
+    const posInLoop = (elapsed * videoSpeed / durationMs) % 1.0;
+    const seekTime = posInLoop * VIDEO_DURATION_S;
+    
+    const vidA = document.getElementById(`vid${idx}a`);
+    const vidB = document.getElementById(`vid${idx}b`);
+    if (vidA && vidA.readyState >= 2) { vidA.currentTime = seekTime; vidA.playbackRate = videoSpeed; }
+    if (vidB && vidB.readyState >= 2) { vidB.currentTime = seekTime; vidB.playbackRate = videoSpeed; }
+  }
+  
+  updateVideoVisibility();
+  updatePresetGrid();
+}
+
+// Check if a camera preset has an active stream
+function isCamPresetLive(idx) {
+  const p = PRESETS[idx];
+  if (p?.type !== 'camera') return true; // not camera = always OK
+  const src = p?.camSource || 'remote';
+  if (src === 'remote') {
+    if (!remoteCamActive) return false;
+    // Only FIRST remote camera preset is "live" — they all share one canvas
+    const firstRemoteIdx = PRESETS.findIndex(pr => pr?.type === 'camera' && (pr?.camSource || 'remote') === 'remote');
+    return idx === firstRemoteIdx;
+  }
+  return !!localCams[idx]; // local cam open
+}
+
+function getLoadedPresets() {
+  return PRESETS.map((_, i) => i).filter(i => {
+    if (!presetReady[i]) return false;
+    if (!beatCutActive.has(i)) return false;  // user X in beat cut mode
+    if (!presetPool.has(i)) return false;     // drive auto-deselect + user X in autopilot
+    const theme = getPresetTheme(PRESETS[i]);
+    if (!activeThemes[theme]) return false;
+    if (!isCamPresetLive(i)) return false;
+    return true;
+  });
+}
+
+// Two-step selection: pick THEME by weight, then random preset within theme
+function pickByThemeWeight(candidates) {
+  if (candidates.length === 0) return null;
+  
+  // Group by theme
+  const groups = {};
+  candidates.forEach(idx => {
+    const p = typeof idx === 'number' ? PRESETS[idx] : idx;
+    const i = typeof idx === 'number' ? idx : idx.idx;
+    const theme = getPresetTheme(p);
+    if (!groups[theme]) groups[theme] = [];
+    groups[theme].push(i);
+  });
+  
+  // Weighted random pick of theme
+  const themeIds = Object.keys(groups);
+  if (themeIds.length === 0) return null;
+  if (themeIds.length === 1) {
+    const presets = groups[themeIds[0]];
+    return presets[Math.floor(Math.random() * presets.length)];
+  }
+  
+  let totalWeight = 0;
+  const weighted = themeIds.map(id => {
+    const w = themeWeights[id] || 10;
+    totalWeight += w;
+    return { id, w, presets: groups[id] };
+  });
+  
+  let r = Math.random() * totalWeight;
+  let picked = weighted[0];
+  for (const t of weighted) {
+    r -= t.w;
+    if (r <= 0) { picked = t; break; }
+  }
+  
+  // Random preset within picked theme
+  return picked.presets[Math.floor(Math.random() * picked.presets.length)];
+}
+
+let camHoldBeats = 0;
+
+function beatCutNext() {
+  // Camera hold: don't switch away from camera
+  if (camHoldBeats > 0) return;
+  
+  const loaded = getLoadedPresets();
+  if (loaded.length < 2) return;
+  
+  const currentIsCamera = PRESETS[activePreset]?.type === 'camera';
+  const currentCamSource = PRESETS[activePreset]?.camSource || 'remote';
+  
+  // Filter: avoid current preset
+  let others = loaded.filter(i => i !== activePreset);
+  
+  // After camera: prefer non-camera
+  if (currentIsCamera) {
+    const nonCam = others.filter(i => PRESETS[i]?.type !== 'camera');
+    if (nonCam.length > 0) {
+      others = nonCam;
+    } else {
+      others = others.filter(i => (PRESETS[i]?.camSource || 'remote') !== currentCamSource);
+      if (others.length === 0) return;
+    }
+  }
+  
+  // ── Energy-aware: prefer presets matching mood category ──
+  let targetCat = 3;
+  if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
+  else if (mood === 'BUILDING') targetCat = 2;
+  
+  const energyMatched = others.filter(i => (PRESETS[i]?.energy || 2) === targetCat);
+  // Use energy-matched if available (70% chance), otherwise any
+  const pool = (energyMatched.length > 0 && Math.random() < 0.7) ? energyMatched : others;
+  
+  const pick = pickByThemeWeight(pool);
+  if (pick === null) return;
+  
+  if (PRESETS[pick]?.type === 'camera') camHoldBeats = 8;
+  
+  switchToPreset(pick);
+}
+
+// iOS-style: beat cut ON = toggle in/out of pool, OFF = instant switch
+function handlePresetClick(idx) {
+  if (!presetReady[idx]) return;
+  
+  if (autopilotEnabled) {
+    // Toggle preset in/out of autopilot pool — track user intent
+    if (presetPool.has(idx)) {
+      const remaining = [...presetPool].filter(i => i !== idx);
+      if (remaining.length >= 1) {
+        presetPool.delete(idx);
+        userExcludedPresets.add(idx); // user explicitly excluded
+      }
+    } else {
+      presetPool.add(idx);
+      userExcludedPresets.delete(idx); // user explicitly included
+    }
+  } else if (beatCutEnabled) {
+    // Toggle in/out of beat cut pool
+    if (beatCutActive.has(idx)) {
+      // Allow removal if at least 1 OTHER preset remains
+      const remaining = [...beatCutActive].filter(i => i !== idx);
+      if (remaining.length >= 1) beatCutActive.delete(idx);
+    } else {
+      beatCutActive.add(idx);
+    }
+    beatCutSequenceIdx = 0;
+  } else {
+    // Normal: instant switch
+    switchToPreset(idx);
+  }
+  updatePresetGrid();
+}
+
+let _videoSyncCounter = 0;
+
+function updateVideoLayer() {
+  const currentPreset = PRESETS[activePreset];
+  const hasVideo = currentPreset && currentPreset.videoA != null;
+  
+  // ── Auto-rotation — friction-based (never accumulates forever) ──
+  const drift = (smoothBass * 0.003 - smoothMid * 0.001) * driveScale;
+  compassTarget += drift;
+  compassTarget *= 0.998; // FRICTION: slowly returns to 0 (half-life ~5 sec)
+  // CAP: max ±0.5 rad (~28°) — prevents runaway rotation
+  compassTarget = Math.max(-0.5, Math.min(0.5, compassTarget));
+  compassAngle += (compassTarget - compassAngle) * 0.015;
+  
+  const isCamera = currentPreset && currentPreset.type === 'camera';
+  
+  if (!hasVideo && !isCamera || !videoLoaded && !isCamera) {
+    // GFX-only — still update visibility (deactivate old videos)
+    updateVideoVisibility();
+    return;
+  }
+  
+  if (isCamera) {
+    // Camera preset — skip video transforms, just update visibility
+    updateVideoVisibility();
+    return;
+  }
+  
+  // Video transform — bass breathing + pulse scaled by drive
+  const videoPulse = 1.0 + (pulseScale - 1.0) * 0.25;
+  const videoScale = (0.95 + smoothBass * 0.04 * driveScale) * pinchScale * videoPulse;
+  
+  // Rotation: smooth follow, faster than before (was 0.03)
+  videoCompassAngle = videoCompassAngle * 0.92 + compassAngle * 0.08;
+  
+  const transform = `translate(-50%, -50%) scale(${videoScale.toFixed(4)}) rotate(${videoCompassAngle.toFixed(4)}rad)`;
+  _lastVideoTransform = transform;
+  
+  // VISIBILITY FIRST — toggle classes before applying transforms
+  updateVideoVisibility();
+  
+  // Apply transform AFTER visibility toggle (no flash of old transform)
+  const vidA = document.getElementById(`vid${activePreset}a`);
+  const vidB = document.getElementById(`vid${activePreset}b`);
+  if (vidA) vidA.style.transform = transform;
+  if (vidB) vidB.style.transform = transform;
+  
+  // Vignette scales WITH video
+  if (!_vigEl) _vigEl = document.getElementById('videoVignette');
+  if (_vigEl) _vigEl.style.transform = `scale(${pinchScale})`;
+}
+
+function updatePresetGrid() {
+  PRESETS.forEach((preset, i) => {
+    const el = document.getElementById('pg' + i);
+    if (!el) return;
+    el.className = 'pgrid';
+    const excluded = autopilotEnabled && !presetPool.has(i);
+    if (excluded) {
+      el.classList.add('excluded');
+    } else if (i === activePreset) {
+      el.classList.add('active');
+    } else if (beatCutEnabled && beatCutActive.has(i) && presetReady[i]) {
+      el.classList.add('bc-active');
+    } else if (presetReady[i]) {
+      el.classList.add('loaded');
+    }
+  });
+  
+  document.getElementById('abIndicator').textContent = currentAB === 0 ? 'A' : 'B';
+  
+  const bcEl = document.getElementById('bcToggle');
+  bcEl.textContent = beatCutEnabled ? 'CUT ON' : 'CUT OFF';
+  bcEl.className = 'pgrid' + (beatCutEnabled ? ' cut-on' : '');
+  
+  // Highlight active interval button
+  [1, 2, 4, 8].forEach(n => {
+    const el = document.getElementById('bci' + n);
+    el.className = 'pgrid' + (beatCutInterval === n ? ' active' : '');
+  });
+  
+  updateColorDots();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Canvas GFX Rendering (iOS OmenPainter port)
+// ═══════════════════════════════════════════════════════════════
+
+// Animation time for wave variation
+let animTime = 0;
+
+// GFX renders at full viewport scale — overlays on top of masked video
+const GFX_SCALE = 1.0;
+
+// Mirrored FFT: maps i around circle symmetrically (0→half = low→high, half→count = high→low)
+function getMirroredFft(i, count, startBin, endBin) {
+  const half = count / 2;
+  const t = i < half ? i / half : (count - i) / half; // 0→1→0
+  const fftLen = freqData ? freqData.length : 1;
+  const idx = Math.floor(startBin * fftLen + t * (endBin - startBin) * fftLen);
+  return freqData ? (freqData[Math.min(idx, fftLen - 1)] / 255) : 0;
+}
+
+// Helper: hex color to rgb array
+function hexRgb(hex) {
+  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+}
+
+// Helper: lerp color
+function lerpColor(c1, c2, t) {
+  const a = hexRgb(c1), b = hexRgb(c2);
+  return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t];
+}
+
+function render() {
+  const pal = palettes[colorIndex];
+  const preset = PRESETS[activePreset] || {};
+  const gfx = preset.gfx || 'video_rings';
+  const hasVideo = preset.videoA != null;
+  animTime += 0.016;
+  
+  // ── Reset transform to clean state every frame ──────────────
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  
+  // Is current preset camera type?
+  const isCurrentCam = PRESETS[activePreset]?.type === 'camera' && (remoteCamActive || localCams[activePreset]);
+  
+  // Clear — transparent over video/camera, black for GFX-only
+  if ((hasVideo || isCurrentCam) && !videoHidden) {
+    ctx.clearRect(0, 0, W, H);
+  } else {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+  }
+  
+  // Compass update done in updateVideoLayer
+  
+  if (gfx === 'omen1_full') {
+    renderOmen1(pal);
+  } else if (gfx === 'beat_circles') {
+    renderBeatCircles(pal);
+  } else if (gfx === 'dot_matrix') {
+    renderDotMatrix(pal);
+  } else if (gfx === 'crosshair') {
+    renderCrosshair(pal);
+  } else if (gfx === 'data_scope') {
+    renderDataScope(pal);
+  } else if (gfx === 'text_overlay') {
+    renderTextOverlay(pal);
+  } else if (gfx === 'typo') {
+    renderTypo(pal);
+  } else {
+    renderVideoRings(pal);
+  }
+  
+  // ── Beat flash overlay ──────────────────────────────────────
+  if (beatFlash > 0.01) {
+    const [r, g, b] = hexRgb(pal[2]);
+    ctx.fillStyle = `rgba(${r},${g},${b},${(beatFlash * 0.7).toFixed(3)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+  
+  // ── Exposure glow ─────────────────────────────────────────
+  if (exposureOpacity > 0.005) {
+    const minD = Math.min(W, H);
+    const expGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, minD * 0.5);
+    expGrad.addColorStop(0, `rgba(255,255,255,${exposureOpacity * 0.8})`);
+    expGrad.addColorStop(0.4, `rgba(255,255,255,${exposureOpacity * 0.3})`);
+    expGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = expGrad;
+    ctx.fillRect(0, 0, W, H);
+  }
+  
+  // ── Canvas vignette (only for GFX-only presets, NOT video/camera) ───
+  if ((!hasVideo && !isCurrentCam) || videoHidden) {
+    const minD = Math.min(W, H);
+    const grad = ctx.createRadialGradient(CX, CY, minD * 0.35, CX, CY, Math.max(W, H) * 0.55);
+    grad.addColorStop(0, 'transparent');
+    grad.addColorStop(0.5, 'rgba(0,0,0,0.3)');
+    grad.addColorStop(0.8, 'rgba(0,0,0,0.85)');
+    grad.addColorStop(1, 'rgba(0,0,0,1.0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+  }
+  
+  // ── Strobo overlay (drive already in stroboEnvelope) ──
+  if (stroboFlash > 0.01) {
+    ctx.fillStyle = `rgba(255,255,255,${stroboFlash})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+  
+  // Decay
+  beatFlash *= 0.7 + driveScale * 0.15; // drive 0%→decay 0.70 (fast), 100%→0.85 (slow)
+  exposureOpacity *= 0.88;
+  camPulseScale *= 0.85;
+  // Smooth rotation toward target
+  camRotCurrent += (camRotTarget - camRotCurrent) * 0.08;
+  // When not beat cutting, ease rotation to 0
+  if (!beatCutEnabled && PRESETS[activePreset]?.type === 'camera') {
+    camRotTarget = 0;
+  }
+  pulseScale = pulseScale * 0.92 + 1.0 * 0.08;
+}
+
+// ── OMEN1: Full OmenPainter (iOS port — no video) ──────────────
+function renderOmen1(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]); // primary
+  const [rB, gB, bB] = hexRgb(pal[3]); // bright
+  const [rD, gD, bD] = hexRgb(pal[0]); // dark
+  
+  // Dark radial background
+  const bgGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, minD * 0.55);
+  bgGrad.addColorStop(0, `rgba(${rD},${gD},${bD},0.9)`);
+  bgGrad.addColorStop(0.5, `rgba(${rD},${gD},${bD},0.5)`);
+  bgGrad.addColorStop(1, 'transparent');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(compassAngle);
+  
+  // ── Mega ring (128 bars, bass, wave variation) ──────────────
+  const megaR = minD * 0.44 * 2 * pulseScale;
+  for (let i = 0; i < 128; i++) {
+    const angle = (i / 128) * Math.PI * 2 - Math.PI / 2;
+    const variation = Math.sin(angle * 7 + animTime * 2 * Math.PI) * 0.3 + 0.7;
+    const barH = smoothBass * minD * 0.25 * variation;
+    if (barH < 0.5) continue;
+    
+    const lc = lerpColor(pal[2], pal[3], smoothBass);
+    const alpha = 0.35 + smoothBass * 0.3;
+    
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * (megaR + 2), Math.sin(angle) * (megaR + 2));
+    ctx.lineTo(Math.cos(angle) * (megaR + 2 + barH), Math.sin(angle) * (megaR + 2 + barH));
+    ctx.strokeStyle = `rgba(${lc[0]|0},${lc[1]|0},${lc[2]|0},${alpha})`;
+    ctx.lineWidth = Math.max(2, Math.min(W * 0.008, 6));
+    ctx.stroke();
+  }
+  
+  // ── Outer ring (64 bars, FFT) ───────────────────────────────
+  const outerR = minD * 0.44 * pulseScale;
+  ctx.beginPath();
+  ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(${rP},${gP},${bP},0.3)`;
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  
+  for (let i = 0; i < 64; i++) {
+    const angle = (i / 64) * Math.PI * 2 - Math.PI / 2;
+    const val = getMirroredFft(i, 64, 0, 0.3);
+    const barH = val * minD * 0.18;
+    if (barH < 1) continue;
+    
+    const lc = lerpColor(pal[2], pal[3], smoothBass);
+    const alpha = 0.7 + smoothBass * 0.3;
+    
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * (outerR + 2), Math.sin(angle) * (outerR + 2));
+    ctx.lineTo(Math.cos(angle) * (outerR + 2 + barH), Math.sin(angle) * (outerR + 2 + barH));
+    ctx.strokeStyle = `rgba(${lc[0]|0},${lc[1]|0},${lc[2]|0},${alpha})`;
+    ctx.lineWidth = Math.max(3, Math.min(W * 0.009, 9));
+    ctx.stroke();
+  }
+  
+  // ── Mid ring (48 bars) ──────────────────────────────────────
+  const midR = minD * 0.36;
+  ctx.beginPath();
+  ctx.arc(0, 0, midR, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(${rP},${gP},${bP},0.2)`;
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+  
+  for (let i = 0; i < 48; i++) {
+    const angle = (i / 48) * Math.PI * 2 - Math.PI / 2;
+    const val = getMirroredFft(i, 48, 0.15, 0.45);
+    const barH = val * minD * 0.06;
+    if (barH < 0.5) continue;
+    
+    const lc = lerpColor(pal[2], pal[3], smoothMid);
+    const alpha = 0.3 + smoothMid * 0.4;
+    
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * (midR + 2), Math.sin(angle) * (midR + 2));
+    ctx.lineTo(Math.cos(angle) * (midR + 2 + barH), Math.sin(angle) * (midR + 2 + barH));
+    ctx.strokeStyle = `rgba(${lc[0]|0},${lc[1]|0},${lc[2]|0},${alpha})`;
+    ctx.lineWidth = Math.max(1, Math.min(W * 0.004, 3));
+    ctx.stroke();
+  }
+  
+  ctx.restore();
+  
+  // ── Inner ring (32 bars, gravity fade — not rotated) ────────
+  ctx.save();
+  ctx.translate(CX, CY);
+  
+  const innerR = minD * 0.28;
+  ctx.beginPath();
+  ctx.arc(0, 0, innerR, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(${rP},${gP},${bP},0.25)`;
+  ctx.lineWidth = 0.6;
+  ctx.stroke();
+  
+  for (let i = 0; i < 32; i++) {
+    const angle = (i / 32) * Math.PI * 2 - Math.PI / 2;
+    const val = getMirroredFft(i, 32, 0.5, 0.7);
+    const barH = val * minD * 0.08;
+    if (barH < 0.5) continue;
+    
+    const lc = lerpColor(pal[2], pal[3], smoothHigh);
+    const alpha = 0.5 + smoothHigh * 0.4;
+    
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * (innerR + 2), Math.sin(angle) * (innerR + 2));
+    ctx.lineTo(Math.cos(angle) * (innerR + 2 + barH), Math.sin(angle) * (innerR + 2 + barH));
+    ctx.strokeStyle = `rgba(${lc[0]|0},${lc[1]|0},${lc[2]|0},${alpha})`;
+    ctx.lineWidth = Math.max(2.5, Math.min(W * 0.007, 7));
+    ctx.stroke();
+  }
+  
+  ctx.restore();
+  
+  // ── Bass glow (iOS: blurred radial circle) ──────────────────
+  if (smoothBass > 0.01) {
+    const glowR = minD * 0.225 + smoothBass * minD * 0.25;
+    const glowGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, glowR);
+    glowGrad.addColorStop(0, `rgba(${rP},${gP},${bP},${0.45 * smoothBass})`);
+    glowGrad.addColorStop(0.5, `rgba(${rP},${gP},${bP},${0.2 * smoothBass})`);
+    glowGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(0, 0, W, H);
+    
+    // Center hot spot
+    const cGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, minD * 0.08 + smoothBass * minD * 0.04);
+    cGrad.addColorStop(0, `rgba(${rP},${gP},${bP},${0.3 * smoothBass})`);
+    cGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = cGrad;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+// ── Video Rings: Simpler overlay for video presets (OMEN2/3) ───
+// ── Text Overlay: Editable animated text (dynamic sans-serif) ──
+// Uses Space Grotesk from Google Fonts (loaded in HTML head)
+function renderTextOverlay(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  const [rB, gB, bB] = hexRgb(pal[3]);
+  
+  const preset = PRESETS[activePreset] || {};
+  const mainText = preset.gfxText || 'ØMEN';
+  const subText = preset.gfxSubText || '';
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  
+  // Subtle rotation drift
+  const drift = Math.sin(animTime * 0.3) * 0.008;
+  ctx.rotate(drift);
+  
+  // Beat pulse scale
+  const textPulse = 1.0 + beatFlash * 0.06 + smoothBass * 0.03;
+  ctx.scale(textPulse, textPulse);
+  
+  // ── Main text ──
+  const fontSize = minD * 0.18;
+  ctx.font = `300 ${fontSize}px 'Space Grotesk', 'Inter', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  
+  // Letter spacing via manual character placement
+  const tracking = 0.25 + smoothVol * 0.15; // em units
+  const chars = mainText.split('');
+  const charWidths = chars.map(c => ctx.measureText(c).width);
+  const spacingPx = fontSize * tracking;
+  const totalW = charWidths.reduce((a, b) => a + b, 0) + spacingPx * (chars.length - 1);
+  
+  // Glitch offset on beat
+  const glitchX = beatFlash > 0.3 ? (Math.random() - 0.5) * minD * 0.01 : 0;
+  const glitchY = beatFlash > 0.3 ? (Math.random() - 0.5) * minD * 0.005 : 0;
+  
+  const baseAlpha = 0.6 + smoothVol * 0.3 + beatFlash * 0.1;
+  
+  // Draw each character
+  let xPos = -totalW / 2;
+  chars.forEach((char, i) => {
+    // Per-character vertical wave
+    const wave = Math.sin(animTime * 1.5 + i * 0.4) * minD * 0.003;
+    
+    ctx.fillStyle = `rgba(${rP},${gP},${bP},${baseAlpha.toFixed(3)})`;
+    ctx.fillText(char, xPos + charWidths[i] / 2 + glitchX, wave + glitchY);
+    
+    xPos += charWidths[i] + spacingPx;
+  });
+  
+  // ── Beat flash: brief bright duplicate (offset) ──
+  if (beatFlash > 0.15) {
+    const flashAlpha = beatFlash * 0.3;
+    xPos = -totalW / 2;
+    chars.forEach((char, i) => {
+      const wave = Math.sin(animTime * 1.5 + i * 0.4) * minD * 0.003;
+      ctx.fillStyle = `rgba(${rB},${gB},${bB},${flashAlpha.toFixed(3)})`;
+      ctx.fillText(char, xPos + charWidths[i] / 2 + minD * 0.003, wave - minD * 0.003);
+      xPos += charWidths[i] + spacingPx;
+    });
+  }
+  
+  // ── Subtitle ──
+  if (subText) {
+    const subSize = fontSize * 0.22;
+    ctx.font = `400 ${subSize}px 'Space Grotesk', 'Inter', system-ui, sans-serif`;
+    const subAlpha = 0.2 + smoothVol * 0.2;
+    ctx.fillStyle = `rgba(${rP},${gP},${bP},${subAlpha.toFixed(3)})`;
+    // Wide letter spacing for subtitle
+    const subChars = subText.split('');
+    const subWidths = subChars.map(c => ctx.measureText(c).width);
+    const subSpacing = subSize * 0.5;
+    const subTotalW = subWidths.reduce((a, b) => a + b, 0) + subSpacing * (subChars.length - 1);
+    let sx = -subTotalW / 2;
+    subChars.forEach((char) => {
+      ctx.fillText(char, sx + ctx.measureText(char).width / 2, fontSize * 0.55);
+      sx += ctx.measureText(char).width + subSpacing;
+    });
+  }
+  
+  // ── Thin horizontal line accent ──
+  const lineW = minD * 0.3 * (0.8 + smoothVol * 0.2);
+  const lineAlpha = 0.1 + smoothVol * 0.15;
+  ctx.strokeStyle = `rgba(${rP},${gP},${bP},${lineAlpha.toFixed(3)})`;
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(-lineW, fontSize * 0.32);
+  ctx.lineTo(lineW, fontSize * 0.32);
+  ctx.stroke();
+  
+  ctx.restore();
+}
+
+// ── TYPO: Fullscreen text theme ──────────────────────────────────
+let typoScale = 1.0;
+let typoTargetScale = 1.0;
+let typoX = 0, typoY = 0;
+let typoTargetX = 0, typoTargetY = 0;
+let typoFlash = 0;
+let typoSpread = 0; // spacing explosion (0 = base, 1 = max spread)
+
+function typoOnBeat() {
+  const preset = PRESETS[activePreset];
+  if (!preset || getPresetTheme(preset) !== 'typo') return;
+  
+  const energy = normEnergy || 0;
+  const bar4 = beatIndex % 4;
+  const fx = preset.fx || 'none';
+  
+  // Combined animation intensity: drive × fxIntensity
+  const intensity = driveScale * fxIntensity;
+  // intensity 0 = no animation, 1 = full
+  
+  // ── SCALE ──
+  if (fx === 'scale') {
+    const picks = [0.4, 0.6, 1.0, 1.5, 2.0, 2.8, 0.3, 1.8];
+    const raw = picks[beatIndex % picks.length];
+    // Lerp toward raw based on intensity (low intensity → stays near 1.0)
+    typoScale = 1.0 + (raw - 1.0) * intensity;
+    typoTargetScale = typoScale;
+  } else if (fx === 'jump') {
+    typoTargetScale = 1.0 + (Math.random() * 0.3 - 0.15) * intensity;
+  } else if (energy > 0.5) {
+    typoTargetScale = 1.0 + Math.random() * 0.6 * intensity;
+  } else {
+    typoTargetScale = 1.0 + (Math.random() * 0.2 - 0.1) * intensity;
+  }
+  
+  // ── JUMP ──
+  if (fx === 'jump') {
+    const positions = [
+      [0, 0], [0, -0.35], [0, 0.35],
+      [-0.3, -0.25], [0.3, 0.25],
+      [-0.35, 0], [0.35, 0],
+      [0, -0.45], [0.2, -0.3],
+      [-0.25, 0.2], [0.15, 0.4],
+    ];
+    const pos = positions[Math.floor(Math.random() * positions.length)];
+    // Scale position offset by intensity
+    typoX = pos[0] * intensity; typoY = pos[1] * intensity;
+    typoTargetX = typoX; typoTargetY = typoY;
+  } else if (bar4 === 0 && intensity > 0.1) {
+    const positions = [
+      [0, 0], [0, -0.2], [0, 0.2],
+      [-0.15, 0], [0.15, 0], [0, -0.3],
+    ];
+    const pos = positions[Math.floor(Math.random() * positions.length)];
+    typoTargetX = pos[0] * intensity;
+    typoTargetY = pos[1] * intensity;
+  }
+  
+  // ── SPREAD FX: spacing explosion ──
+  if (fx === 'spread') {
+    typoSpread = 1.0; // full burst, decays in render
+  }
+  
+  typoFlash = 1.0;
+  typoNextRandom();
+}
+
+// Logo image cache
+const _logoCache = {};
+function getLogoImage(url) {
+  if (!url) return null;
+  if (_logoCache[url]) {
+    const cached = _logoCache[url];
+    if (cached._failed) return null; // load failed
+    return (cached.complete && cached.naturalWidth > 0) ? cached : null;
+  }
+  const img = new Image();
+  img._failed = false;
+  img.onerror = () => { img._failed = true; console.warn('[LOGO] Failed to load:', url); };
+  img.onload = () => { console.log('[LOGO] Loaded:', url, img.naturalWidth + 'x' + img.naturalHeight); };
+  img.src = url;
+  _logoCache[url] = img;
+  return null;
+}
+
+// ── TYPO placeholder system ──────────────────────────────────────
+const TYPO_WORDS_DEFAULT = ['BASS', 'DROP', 'TECHNO', 'OMEN', 'NIGHT', 'ENERGY', 'PULSE', 'MOVE', 'DEEP', 'DARK', 'ACID', 'RAVE', 'LOVE', 'UNITY', 'FLOW', 'HEAT'];
+let typoWords = TYPO_WORDS_DEFAULT;
+let typoRandomWord = typoWords[0];
+let typoRandomIdx = 0;
+
+function typoNextRandom() {
+  if (typoWords.length === 0) return;
+  typoRandomIdx = (typoRandomIdx + 1) % typoWords.length;
+  typoRandomWord = typoWords[typoRandomIdx];
+}
+
+// Event config — loaded from localStorage
+let typoEventConfig = { dj: '', event: '', schedule: [], words: [] };
+try {
+  const ec = localStorage.getItem('omen_event');
+  if (ec) {
+    typoEventConfig = JSON.parse(ec);
+    if (typoEventConfig.words && typoEventConfig.words.length > 0) typoWords = typoEventConfig.words;
+  }
+} catch(e) {}
+
+function getDayString() {
+  const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+  const d = new Date();
+  const h = d.getHours();
+  const day = days[d.getDay()];
+  if (h >= 18 || h < 5) return day + ' NIGHT';
+  if (h >= 12) return day + ' AFTERNOON';
+  return day + ' MORNING';
+}
+
+function getCurrentSetDJ() {
+  if (!typoEventConfig.schedule || typoEventConfig.schedule.length === 0) return typoEventConfig.dj || '';
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  // Find current set (last one that started)
+  let current = typoEventConfig.schedule[0];
+  for (const s of typoEventConfig.schedule) {
+    const [h, m] = (s.time || '00:00').split(':').map(Number);
+    let setMins = h * 60 + m;
+    // Handle overnight (if set time < 12:00, assume next day = +1440)
+    if (setMins < 720 && mins > 720) setMins += 1440;
+    if (setMins <= (mins > 720 ? mins : mins + 1440)) current = s;
+  }
+  return current.dj || current.name || '';
+}
+
+function resolveTypoPlaceholders(text) {
+  if (!text || !text.includes('{')) return text;
+  
+  return text.replace(/\{(\w+)\}/g, (match, key) => {
+    switch (key) {
+      case 'mood':      return mood || 'AMBIENT';
+      case 'energy':    return Math.round((normEnergy || 0) * 100) + '%';
+      case 'day':       return getDayString();
+      case 'beats':     return String(beatCount);
+      case 'random':    return typoRandomWord;
+      case 'dj':        return getCurrentSetDJ() || typoEventConfig.dj || 'DJ';
+      case 'event':     return typoEventConfig.event || 'ØMEN';
+      case 'countdown': {
+        if (!typoEventConfig.countdownTo) return '00:00';
+        const target = new Date(typoEventConfig.countdownTo).getTime();
+        const diff = Math.max(0, target - Date.now());
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      }
+      case 'settime': {
+        const dj = getCurrentSetDJ();
+        const sched = typoEventConfig.schedule || [];
+        const entry = sched.find(s => (s.dj || s.name) === dj);
+        return entry ? `${dj} ${entry.time || ''}` : dj;
+      }
+      default: return match;
+    }
+  });
+}
+
+function renderTypo(pal) {
+  const preset = PRESETS[activePreset] || {};
+  const fx = preset.fx || 'none';
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  const intensity = driveScale * fxIntensity; // combined animation level
+  
+  // Easing — speed proportional to intensity
+  const easeSpeed = 0.2 + intensity * 0.3; // 0.2 at idle, 0.5 at max
+  typoScale += (typoTargetScale - typoScale) * easeSpeed;
+  typoX += (typoTargetX - typoX) * easeSpeed;
+  typoY += (typoTargetY - typoY) * easeSpeed;
+  typoFlash *= (fx === 'strobo') ? 0.93 : 0.82;
+  typoSpread *= 0.88; // spread decay
+  
+  // Background
+  const invertActive = fx === 'invert' && typoFlash > 0.15; // was 0.4
+  ctx.fillStyle = invertActive ? '#fff' : '#000';
+  ctx.fillRect(0, 0, W, H);
+  
+  const beatPulse = 1.0 + typoFlash * 0.3 * fxIntensity + smoothBass * 0.1 * fxIntensity;
+  const tx = CX + typoX * W;
+  const ty = CY + typoY * H;
+  
+  // FX: SHAKE — violent vibration
+  let shakeX = 0, shakeY = 0;
+  if (fx === 'shake' && typoFlash > 0.05) {
+    const shakeAmt = typoFlash * fxIntensity;
+    shakeX = (Math.random() - 0.5) * W * 0.08 * shakeAmt;
+    shakeY = (Math.random() - 0.5) * H * 0.04 * shakeAmt;
+  }
+  
+  // FX: STROBO — rapid on/off
+  const stroboHide = fx === 'strobo' && typoFlash > 0.08 && Math.floor(animTime * 60) % 2 === 0;
+  if (stroboHide) { ctx.restore?.(); return; }
+  
+  // Color
+  const flash = typoFlash * 0.7;
+  let tr, tg, tb;
+  if (invertActive) { tr = tg = tb = 0; }
+  else { tr = Math.round(rP + (255 - rP) * flash); tg = Math.round(gP + (255 - gP) * flash); tb = Math.round(bP + (255 - bP) * flash); }
+  
+  ctx.save();
+  ctx.translate(tx + shakeX, ty + shakeY);
+  
+  // ═══ LOGO MODE ═══
+  if (preset.logoUrl) {
+    const img = getLogoImage(preset.logoUrl);
+    if (img) {
+      const logoSize = (preset.logoSize || 40) / 100;
+      const scale = typoScale * beatPulse;
+      const imgW = Math.min(W * logoSize, img.naturalWidth) * scale;
+      const imgH = imgW * (img.naturalHeight / img.naturalWidth);
+      
+      // Glow
+      if (typoFlash > 0.15 && fx !== 'invert') {
+        ctx.shadowColor = `rgba(${rP},${gP},${bP},${typoFlash * 0.4})`;
+        ctx.shadowBlur = imgW * 0.05 * typoFlash;
+      }
+      
+      // FX: GLITCH on logo — aggressive RGB split
+      if (fx === 'glitch' && typoFlash > 0.05) {
+        const go = imgW * 0.06 * typoFlash;
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = 0.6 + typoFlash * 0.3;
+        ctx.drawImage(img, -imgW/2 - go, -imgH/2 - go*0.5, imgW, imgH);
+        ctx.drawImage(img, -imgW/2 + go, -imgH/2 + go*0.5, imgW, imgH);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      
+      if (invertActive) { ctx.filter = 'invert(1)'; }
+      ctx.drawImage(img, -imgW/2, -imgH/2, imgW, imgH);
+      ctx.filter = 'none';
+    } else {
+      // Loading or failed — show preset name as fallback
+      ctx.font = `300 ${Math.min(W, H) * 0.05}px system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = `rgba(${rP},${gP},${bP},0.3)`;
+      ctx.fillText('loading logo...', 0, 0);
+    }
+    ctx.shadowBlur = 0;
+    ctx.restore();
+    return;
+  }
+  
+  // ═══ TEXT MODE (multi-line) ═══
+  const rawText = preset.text || preset.name || 'ØMEN';
+  const text = resolveTypoPlaceholders(rawText);
+  const font = preset.font || 'Helvetica Neue';
+  const weight = preset.weight || '900';
+  const spacing = preset.spacing || 10;
+  
+  const lines = text.split('\n').filter(l => l.trim());
+  const lineCount = Math.max(lines.length, 1);
+  
+  // Calculate font size per line: widest line fills 90% viewport
+  ctx.font = `${weight} 100px '${font}', sans-serif`;
+  let maxTextWidth = 1;
+  lines.forEach(line => {
+    const m = ctx.measureText(line);
+    const w = m.width + line.length * spacing;
+    if (w > maxTextWidth) maxTextWidth = w;
+  });
+  const autoSize = (W * 0.90) / (maxTextWidth / 100);
+  // Multi-line: shrink to fit all lines vertically
+  const maxH = H * 0.75 / lineCount;
+  const fontSize = Math.max(Math.min(autoSize, maxH) * typoScale * beatPulse, 10);
+  const lineHeight = fontSize * 1.1;
+  const totalH = lineHeight * lineCount;
+  const startY = -totalH / 2 + lineHeight / 2;
+  
+  ctx.font = `${weight} ${fontSize.toFixed(0)}px '${font}', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  
+  // Spacing: base + bass breathing (always on) + SPREAD FX burst
+  const baseSp = spacing * fontSize / 100;
+  const breathSp = smoothBass * 8 * driveScale; // subtle bass breathing
+  const spreadSp = typoSpread * fontSize * 0.15; // SPREAD FX: massive burst
+  const totalSp = baseSp + breathSp + spreadSp;
+  try { ctx.letterSpacing = `${totalSp.toFixed(1)}px`; } catch(e) {}
+  
+  // Glow — strong burst
+  if (typoFlash > 0.05 && fx !== 'invert') {
+    ctx.shadowColor = `rgba(${rP},${gP},${bP},${typoFlash * 0.6})`;
+    ctx.shadowBlur = fontSize * 0.15 * typoFlash;
+  }
+  
+  // FX: GLITCH — massive RGB split + slice
+  if (fx === 'glitch' && typoFlash > 0.05) {
+    const go = fontSize * 0.06 * typoFlash; // was 0.015 — 4x bigger
+    ctx.globalCompositeOperation = 'screen';
+    lines.forEach((line, i) => {
+      const ly = startY + i * lineHeight;
+      // Horizontal slice offset per line
+      const sliceX = (Math.random() - 0.5) * fontSize * 0.1 * typoFlash;
+      ctx.fillStyle = `rgba(255,0,0,${0.6 + typoFlash * 0.3})`;
+      ctx.fillText(line, -go + sliceX, ly - go * 0.5);
+      ctx.fillStyle = `rgba(0,255,255,${0.6 + typoFlash * 0.3})`;
+      ctx.fillText(line, go - sliceX, ly + go * 0.5);
+    });
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  
+  // Main text
+  ctx.fillStyle = `rgb(${tr},${tg},${tb})`;
+  lines.forEach((line, i) => {
+    ctx.fillText(line, 0, startY + i * lineHeight);
+  });
+  
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+// ── Data Scope: Concentric FFT waveform rings (Big Data style) ──
+function renderDataScope(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  const [rB, gB, bB] = hexRgb(pal[3]);
+  const [rD, gD, bD] = hexRgb(pal[0]);
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(compassAngle);
+  
+  const ringCount = 18;
+  const innerR = minD * 0.08;
+  const outerR = minD * 0.48 * pulseScale;
+  const points = 128; // resolution per ring
+  
+  for (let ring = 0; ring < ringCount; ring++) {
+    const t = ring / (ringCount - 1); // 0→1
+    const baseR = innerR + (outerR - innerR) * t;
+    
+    // Each ring reads different FFT range
+    const freqStart = t * 0.6;
+    const freqEnd = freqStart + 0.15;
+    
+    // Color: inner = palette dark/warm, outer = palette bright
+    const cr = rD + (rP - rD) * t;
+    const cg = gD + (gP - gD) * t;
+    const cb = bD + (bP - bD) * t;
+    // Outer rings get bright accent
+    const ar = ring > ringCount * 0.7 ? rB : cr;
+    const ag = ring > ringCount * 0.7 ? gB : cg;
+    const ab = ring > ringCount * 0.7 ? bB : cb;
+    
+    const alpha = 0.15 + t * 0.45 + beatFlash * 0.3;
+    
+    // Amplitude: outer rings = more displacement
+    const ampScale = (0.3 + t * 0.7) * minD * 0.06;
+    
+    ctx.beginPath();
+    for (let i = 0; i <= points; i++) {
+      const angle = (i / points) * Math.PI * 2;
+      
+      // FFT value at this angle
+      const fftIdx = Math.floor((i / points) * (freqData ? freqData.length * 0.5 : 64));
+      const rawVal = freqData ? freqData[Math.min(fftIdx, freqData.length - 1)] / 255 : 0;
+      
+      // Sharp/jagged: quantize to steps
+      const quantized = Math.floor(rawVal * 6) / 6;
+      
+      // Displacement outward
+      const disp = quantized * ampScale;
+      const r = baseR + disp;
+      
+      const x = Math.cos(angle) * r;
+      const y = Math.sin(angle) * r;
+      
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = `rgba(${ar|0},${ag|0},${ab|0},${alpha.toFixed(3)})`;
+    ctx.lineWidth = ring > ringCount * 0.75 ? 1.5 : 0.8;
+    ctx.stroke();
+  }
+  
+  // ── Radial grid lines (subtle, like radar) ──
+  ctx.strokeStyle = `rgba(${rP},${gP},${bP},0.06)`;
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i < 36; i++) {
+    const angle = (i / 36) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * innerR, Math.sin(angle) * innerR);
+    ctx.lineTo(Math.cos(angle) * outerR * 1.1, Math.sin(angle) * outerR * 1.1);
+    ctx.stroke();
+  }
+  
+  // ── Tick marks around outer edge (like compass/protractor) ──
+  ctx.strokeStyle = `rgba(${rP},${gP},${bP},0.12)`;
+  const tickR = outerR * 1.05;
+  for (let i = 0; i < 72; i++) {
+    const angle = (i / 72) * Math.PI * 2;
+    const len = i % 9 === 0 ? minD * 0.02 : minD * 0.008;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * tickR, Math.sin(angle) * tickR);
+    ctx.lineTo(Math.cos(angle) * (tickR + len), Math.sin(angle) * (tickR + len));
+    ctx.stroke();
+  }
+  
+  // ── Center dot ──
+  const dotR = 2 + smoothBass * 4 + beatFlash * 6;
+  ctx.beginPath();
+  ctx.arc(0, 0, dotR, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(${rB},${gB},${bB},${0.3 + beatFlash * 0.7})`;
+  ctx.fill();
+  
+  ctx.restore();
+}
+
+// ── Crosshair: Red targeting scope overlay (iOS squareRed port) ──
+function renderCrosshair(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  
+  // Base opacity: low idle, bright on beat
+  const baseAlpha = 0.25 + smoothVol * 0.3 + beatFlash * 0.4;
+  const color = `rgba(${rP},${gP},${bP},${baseAlpha.toFixed(3)})`;
+  const colorDim = `rgba(${rP},${gP},${bP},${(baseAlpha * 0.4).toFixed(3)})`;
+  
+  // Sizes pulse with bass
+  const pulse = 1.0 + smoothBass * 0.08;
+  const outerW = minD * 0.55 * pulse;
+  const outerH = minD * 0.42 * pulse;
+  const innerW = minD * 0.32 * pulse;
+  const innerH = minD * 0.25 * pulse;
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(compassAngle);
+  
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = color;
+  
+  // ── Outer rectangle ──
+  ctx.strokeRect(-outerW, -outerH, outerW * 2, outerH * 2);
+  
+  // ── Inner rectangle ──
+  ctx.strokeStyle = colorDim;
+  ctx.strokeRect(-innerW, -innerH, innerW * 2, innerH * 2);
+  
+  // ── Center cross (extends beyond outer rect) ──
+  const crossExtend = minD * 0.65;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 0.8;
+  
+  // Vertical line
+  ctx.beginPath();
+  ctx.moveTo(0, -crossExtend);
+  ctx.lineTo(0, crossExtend);
+  ctx.stroke();
+  
+  // Horizontal line
+  ctx.beginPath();
+  ctx.moveTo(-crossExtend, 0);
+  ctx.lineTo(crossExtend, 0);
+  ctx.stroke();
+  
+  // ── Tick marks at intersections ──
+  const tickSize = minD * 0.015;
+  ctx.lineWidth = 1.0;
+  ctx.strokeStyle = color;
+  
+  // Ticks on outer rect (where cross meets edges)
+  const outerTicks = [
+    [0, -outerH], [0, outerH],       // top, bottom center
+    [-outerW, 0], [outerW, 0],       // left, right center
+  ];
+  outerTicks.forEach(([tx, ty]) => {
+    ctx.beginPath();
+    ctx.moveTo(tx - tickSize, ty);
+    ctx.lineTo(tx + tickSize, ty);
+    ctx.moveTo(tx, ty - tickSize);
+    ctx.lineTo(tx, ty + tickSize);
+    ctx.stroke();
+  });
+  
+  // Ticks on inner rect
+  const innerTicks = [
+    [0, -innerH], [0, innerH],
+    [-innerW, 0], [innerW, 0],
+  ];
+  innerTicks.forEach(([tx, ty]) => {
+    ctx.beginPath();
+    ctx.moveTo(tx - tickSize, ty);
+    ctx.lineTo(tx + tickSize, ty);
+    ctx.moveTo(tx, ty - tickSize);
+    ctx.lineTo(tx, ty + tickSize);
+    ctx.stroke();
+  });
+  
+  // ── Corner dots on outer rect (4 corners) ──
+  const dotR = 2 + beatFlash * 4;
+  const corners = [
+    [-outerW, -outerH], [outerW, -outerH],
+    [-outerW, outerH], [outerW, outerH],
+  ];
+  corners.forEach(([cx, cy]) => {
+    ctx.beginPath();
+    ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  });
+  
+  // ── Center dot ──
+  const centerDot = 2 + smoothBass * 5 + beatFlash * 8;
+  ctx.beginPath();
+  ctx.arc(0, 0, centerDot, 0, Math.PI * 2);
+  ctx.fillStyle = beatFlash > 0.1 ? pal[2] : color;
+  ctx.fill();
+  
+  ctx.restore();
+}
+
+function renderVideoRings(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  const [rB, gB, bB] = hexRgb(pal[3]);
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(compassAngle);
+  
+  // ── Outer ring (64 bars, bass reactive) ─────────────────────
+  const outerR = minD * 0.35 * (1 + smoothBass * 0.15) * pulseScale;
+  for (let i = 0; i < 64; i++) {
+    const angle = (i / 64) * Math.PI * 2;
+    const val = getMirroredFft(i, 64, 0, 0.3);
+    const barLen = val * outerR * 0.5 + 2;
+    const alpha = 0.15 + val * 0.6;
+    
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * outerR, Math.sin(angle) * outerR);
+    ctx.lineTo(Math.cos(angle) * (outerR + barLen), Math.sin(angle) * (outerR + barLen));
+    ctx.strokeStyle = `rgba(${rP},${gP},${bP},${alpha})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+  
+  // ── Mid ring (48 bars) ──────────────────────────────────────
+  const midR = minD * 0.22 * (1 + smoothMid * 0.1);
+  for (let i = 0; i < 48; i++) {
+    const angle = (i / 48) * Math.PI * 2 + 0.03;
+    const val = getMirroredFft(i, 48, 0.15, 0.45);
+    const barLen = val * midR * 0.35 + 1;
+    const alpha = 0.08 + val * 0.4;
+    
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * midR, Math.sin(angle) * midR);
+    ctx.lineTo(Math.cos(angle) * (midR + barLen), Math.sin(angle) * (midR + barLen));
+    ctx.strokeStyle = `rgba(${rB},${gB},${bB},${alpha})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  
+  // ── Inner ring circle ───────────────────────────────────────
+  const innerR = minD * 0.10 * (1 + smoothHigh * 0.15);
+  ctx.beginPath();
+  ctx.arc(0, 0, innerR, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(${rB},${gB},${bB},0.19)`;
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+  
+  // ── Center dot ──────────────────────────────────────────────
+  const dotR = 3 + smoothBass * 8 + beatFlash * 15;
+  ctx.beginPath();
+  ctx.arc(0, 0, dotR, 0, Math.PI * 2);
+  ctx.fillStyle = beatFlash > 0.1 ? pal[2] : `rgba(${rB},${gB},${bB},0.38)`;
+  ctx.fill();
+  
+  ctx.restore();
+}
+
+// ── Beat Circles: Segmented beat-reveal rings (iOS OMEN4 port) ──
+function renderBeatCircles(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  const bar8 = beatIndex % 8;
+  const redOpacity = (0.10 + smoothBass * 0.90);
+  
+  // Beat reveal: 8 elements, reset every 8 beats
+  // Beats 0-3 → small circle segments, beats 4-7 → medium circle segments
+  const smallActive = bar8 < 4 ? bar8 + 1 : 4;
+  const mediumActive = bar8 >= 4 ? bar8 - 3 : 0;
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(compassAngle);
+  
+  const rLarge = minD * 0.431 * pulseScale;
+  const rMedium = minD * 0.350;
+  const rSmall = minD * 0.290;
+  
+  // Bass-reactive stroke width
+  const baseStroke = 2 + smoothBass * 14;
+  
+  // Large circle — always full, bass reactive
+  drawSegmentedCircle(rLarge, 4, baseStroke, `rgba(${rP},${gP},${bP},${redOpacity})`, `rgba(${rP},${gP},${bP},0.18)`);
+  
+  // Medium circle — beat reveal
+  drawSegmentedCircle(rMedium, mediumActive, baseStroke * 4, `rgba(${rP},${gP},${bP},${redOpacity})`, `rgba(${rP},${gP},${bP},0.18)`);
+  
+  // Small circle — beat reveal
+  drawSegmentedCircle(rSmall, smallActive, baseStroke * 4, `rgba(${rP},${gP},${bP},${redOpacity})`, `rgba(${rP},${gP},${bP},0.18)`);
+  
+  ctx.restore();
+}
+
+function drawSegmentedCircle(radius, activeCount, strokeW, activeColor, ghostColor) {
+  const gapAngle = 10 / radius;
+  const segAngle = (Math.PI * 2 - 4 * gapAngle) / 4;
+  
+  for (let i = 0; i < 4; i++) {
+    const startAngle = i * (segAngle + gapAngle) - Math.PI / 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, startAngle, startAngle + segAngle);
+    ctx.strokeStyle = i < activeCount ? activeColor : ghostColor;
+    ctx.lineWidth = strokeW;
+    ctx.lineCap = 'butt';
+    ctx.stroke();
+  }
+}
+
+// ── Dot Matrix: Dotted ring columns (iOS OMEN5 port) ────────────
+function renderDotMatrix(pal) {
+  const minD = Math.min(W, H) * GFX_SCALE;
+  const [rP, gP, bP] = hexRgb(pal[2]);
+  const [rB, gB, bB] = hexRgb(pal[3]);
+  const bar8 = beatIndex % 8;
+  
+  // Beat boost on bar8
+  const beatBoost = (bar8 === 0) ? 1.8 : (bar8 % 4 === 0 ? 1.3 : 1.0);
+  
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(compassAngle);
+  
+  // ── Outer dotted ring (4 rows of dots) ──────────────────────
+  const outerDotR = minD * 0.50 * pulseScale;
+  const outerCount = 100;
+  
+  for (let i = 0; i < outerCount; i++) {
+    const angle = (i / outerCount) * Math.PI * 2 - Math.PI / 2;
+    const val = Math.min(getMirroredFft(i, outerCount, 0, 0.4) * beatBoost, 1.0);
+    const baseVal = 0.08 * beatBoost;
+    
+    for (let d = 0; d < 4; d++) {
+      const r = outerDotR + d * (minD * 0.028);
+      const dotSize = minD * 0.005 * (1.0 - d * 0.15) * Math.min(beatBoost, 1.5);
+      const threshold = d * 0.20;
+      const effectiveVal = val > threshold ? val : baseVal;
+      const opacity = Math.min(Math.max(effectiveVal * (1.0 - d * 0.18), 0.04), 1.0);
+      
+      const lc = lerpColor(pal[2], pal[3], effectiveVal);
+      ctx.beginPath();
+      ctx.arc(Math.cos(angle) * r, Math.sin(angle) * r, dotSize, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${lc[0]|0},${lc[1]|0},${lc[2]|0},${opacity})`;
+      ctx.fill();
+    }
+  }
+  
+  // ── Inner dotted ring (column dots, high freq) ──────────────
+  const innerDotR = minD * 0.40;
+  const innerCount = 100;
+  
+  for (let i = 0; i < innerCount; i++) {
+    const angle = (i / innerCount) * Math.PI * 2 - Math.PI / 2;
+    const val = getMirroredFft(i, innerCount, 0.4, 0.7);
+    if (val < 0.02) continue;
+    
+    const dots = Math.min(Math.ceil(val * 6), 6);
+    for (let d = 0; d < dots; d++) {
+      const r = innerDotR + d * (minD * 0.025);
+      const dotSize = minD * 0.006 * (1.0 - d * 0.25);
+      const opacity = Math.min(Math.max(0.9 - d * 0.15, 0.1), 1.0);
+      
+      const lc = lerpColor(pal[2], pal[3], val);
+      ctx.beginPath();
+      ctx.arc(Math.cos(angle) * r, Math.sin(angle) * r, dotSize, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${lc[0]|0},${lc[1]|0},${lc[2]|0},${opacity})`;
+      ctx.fill();
+    }
+  }
+  
+  // ── Center beat dot ─────────────────────────────────────────
+  const dotR = 3 + smoothBass * 8 + beatFlash * 15;
+  ctx.beginPath();
+  ctx.arc(0, 0, dotR, 0, Math.PI * 2);
+  ctx.fillStyle = beatFlash > 0.1 ? pal[2] : `rgba(${rB},${gB},${bB},0.38)`;
+  ctx.fill();
+  
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Main Loop
+// ═══════════════════════════════════════════════════════════════
+
+let beatCount = 0;
+
+function tick() {
+  try {
+    analyseAudio();
+    
+    // Beat detection — skip if CDJ bridge provides beats
+    if (!cdjConnected) {
+      const beat = detectBeat();
+      if (!beatClockTimer) {
+        if (beat) {
+          beatFlash = 1.0 * fxIntensity;
+          pulseScale = 1.0 + 0.25 * driveScale + smoothBass * 0.3 * driveScale;
+          beatCount++;
+          moodBeatCounter++;
+          if (PRESETS[activePreset]?.type === 'camera') {
+            camPulseScale = 1.0;
+          }
+          // Strobo on raw beat
+          if (stroboActive) { stroboBeatToggle = !stroboBeatToggle; stroboFlash = stroboBeatToggle ? stroboEnvelope : 0; }
+          // TYPO: fire FX on raw beat
+          typoFlash = 1.0;
+          beatIndex++;
+          typoOnBeat();
+          updatePhraseOnBeat();
+        }
+      } else {
+        if (beat) autoCorrectBpm();
+      }
+    }
+    
+    updateEnergy();
+    updateSilenceDampen();
+    
+    // Phrase detection: audio-side (runs every frame, even during CDJ breakdown)
+    updatePhraseAudio();
+    
+    updateAutopilot();
+    
+    // THEME ENFORCEMENT: only during autopilot/beatcut
+    if (autopilotEnabled || beatCutEnabled) {
+      _themeCheckCounter++;
+      if (_themeCheckCounter >= 30) {
+        _themeCheckCounter = 0;
+        const _p = PRESETS[activePreset];
+        const _t = getPresetTheme(_p);
+        if (!activeThemes[_t]) {
+          const _allowed = getActiveThemePresets();
+          if (_allowed.length > 0) {
+            const _pick = _allowed[Math.floor(Math.random() * _allowed.length)];
+            activePreset = _pick.idx;
+            updateVideoVisibility();
+            updatePresetGrid();
+          }
+        }
+      }
+    }
+    
+    updateVideoLayer();
+    render();
+    
+    // Update HUD
+    const bpmEl = document.getElementById('bpmDisplay');
+    if (bpmEl) bpmEl.textContent = bpm > 0 ? bpm.toFixed(1) + ' BPM' : '— BPM';
+    const eFill = document.getElementById('energyFill');
+    if (eFill) eFill.style.width = (normEnergy * 100).toFixed(0) + '%';
+    const moodEl = document.getElementById('moodDisplay');
+    if (moodEl) moodEl.textContent = mood;
+    const dbg = document.getElementById('debugDisplay');
+    if (dbg) {
+      const cdjInfo = cdjConnected ? ` CDJ:${cdjBarBeat}/4 bar:${Math.floor((cdjBeatTotal-1)/4)%4+1}/4` : '';
+      const phraseInfo = phraseState !== 'NORMAL' ? ` [${phraseState}]` : ` P:${phraseCounter}`;
+      dbg.textContent = `${PRESETS[activePreset]?.name||'?'} | ${mood} D:${masterDrive}% cut:${beatCutInterval}${phraseInfo}${cdjInfo}`;
+    }
+    
+    // Beat dots — synced to phrase (not arbitrary beatIndex)
+    const pos16 = phraseCounter % 16;
+    for (let i = 0; i < 16; i++) {
+      const dot = document.getElementById('bd' + i);
+      if (!dot) continue;
+      if (i === pos16 && beatFlash > 0.3) {
+        // Current beat: downbeats (0,4,8,12) = RED, others = white
+        dot.className = 'bdot ' + (i % 4 === 0 ? 'downbeat' : 'on');
+      } else if (i < pos16) {
+        // Passed beats: dim trail
+        dot.className = 'bdot';
+        dot.style.background = 'rgba(255,255,255,0.15)';
+      } else {
+        dot.className = 'bdot';
+        dot.style.background = '';
+      }
+    }
+  } catch (err) {
+    console.error('tick error:', err);
+  }
+  
+  // ALWAYS schedule next frame + broadcast, even if tick errored
+  requestAnimationFrame(tick);
+  broadcastState();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI Button Handlers
+// ═══════════════════════════════════════════════════════════════
+
+function toggleBeatCut() {
+  beatCutEnabled = !beatCutEnabled;
+  beatCutSequenceIdx = 0;
+  if (beatCutEnabled) {
+    beatCutWaitForDownbeat = cdjConnected; // sync to downbeat if CDJ
+    beatCutCountdown = beatCutInterval;
+    beatCutActive = new Set(PRESETS.map((_, i) => i).filter(i => presetReady[i] && presetPool.has(i)));
+  }
+  updatePresetGrid();
+}
+
+function setBeatCutInterval(n) {
+  beatCutInterval = n;
+  beatCutCountdown = Math.min(beatCutCountdown, n); // don't wait longer than new interval
+  updatePresetGrid();
+}
+
+function handleColorClick(idx) {
+  if (autopilotEnabled && autoColorEnabled) {
+    // Toggle color in/out of pool
+    if (colorPool.has(idx)) {
+      if (colorPool.size > 1) colorPool.delete(idx);
+    } else {
+      colorPool.add(idx);
+    }
+  } else {
+    // Manual: instant switch
+    colorIndex = idx;
+    applyVideoColor();
+  }
+  updateColorDots();
+}
+
+function setColor(idx) {
+  colorIndex = idx;
+  applyVideoColor();
+  updateColorDots();
+}
+
+function updateColorDots() {
+  for (let i = 0; i < 5; i++) {
+    const el = document.getElementById('cd' + i);
+    if (!el) continue;
+    if (autopilotEnabled && autoColorEnabled) {
+      // Pool mode: bright = in pool, dim = excluded, ring = current
+      const inPool = colorPool.has(i);
+      const isCurrent = i === colorIndex;
+      el.className = 'cdot' + (isCurrent ? ' active' : '') + (!inPool ? ' excluded' : '');
+    } else {
+      el.className = 'cdot' + (i === colorIndex ? ' active' : '');
+    }
+  }
+}
+
+function toggleStrobo() {
+  stroboActive = !stroboActive;
+  manualStrobo = stroboActive;
+  stroboEnvelope = 0.85 * driveScale; // manual strobo scaled by drive
+  document.getElementById('strbBtn').className = 'pgrid' + (stroboActive ? ' cut-on' : '');
+}
+
+let videoHidden = false;
+function toggleVideoHide() {
+  videoHidden = !videoHidden;
+  document.getElementById('videoLayer').style.opacity = videoHidden ? '0' : '1';
+  document.getElementById('vhidBtn').className = 'pgrid' + (videoHidden ? ' cut-on' : '');
+}
+
+function setVideoSpeed(mult) {
+  videoSpeedMultiplier = mult;
+  if (bpm > 0) updateVideoSpeed(bpm);
+  ['05', '10', '20'].forEach(id => {
+    const el = document.getElementById('spd' + id);
+    const val = id === '05' ? 0.5 : id === '20' ? 2.0 : 1.0;
+    el.className = 'pgrid' + (videoSpeedMultiplier === val ? ' active' : '');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Video Color Filter (iOS: ColorFilter.mode hue blend)
+// ═══════════════════════════════════════════════════════════════
+
+function applyVideoColor() {
+  const layer = document.getElementById('videoLayer');
+  if (!layer) return;
+  if (colorIndex === 4) {
+    layer.style.filter = 'saturate(0)';
+  } else if (colorIndex === 0) {
+    layer.style.filter = 'none';
+  } else {
+    const hueMap = [0, 220, 120, 50, 0];
+    layer.style.filter = `hue-rotate(${hueMap[colorIndex]}deg)`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Pinch / Wheel Zoom (iOS: _onPinchUpdate → _scaleBoost)
+// ═══════════════════════════════════════════════════════════════
+
+let pinchScale = 1.0;
+
+document.addEventListener('wheel', (e) => {
+  if (!audioCtx) return; // not started yet
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -0.05 : 0.05;
+  pinchScale = Math.min(Math.max(pinchScale + delta, 0.3), 4.0);
+}, { passive: false });
+
+// Touch pinch
+let pinchStartDist = 0;
+let pinchBaseScale = 1.0;
+
+document.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    pinchStartDist = Math.sqrt(dx * dx + dy * dy);
+    pinchBaseScale = pinchScale;
+  }
+}, { passive: true });
+
+document.addEventListener('touchmove', (e) => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    pinchScale = Math.min(Math.max(pinchBaseScale * (dist / pinchStartDist), 0.3), 4.0);
+  }
+}, { passive: true });
+
+// ═══════════════════════════════════════════════════════════════
+// Keyboard controls
+// ═══════════════════════════════════════════════════════════════
+
+let hudVisible = true;
+
+document.addEventListener('keydown', (e) => {
+  // S key on setup screen → system audio
+  if (e.code === 'KeyS' && !document.getElementById('setup').classList.contains('hidden')) {
+    e.preventDefault();
+    startAudio('system');
+    return;
+  }
+  switch (e.code) {
+    case 'Space':
+      e.preventDefault();
+      handleTap();
+      break;
+    case 'KeyF':
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+      break;
+    case 'KeyH':
+      hudVisible = !hudVisible;
+      document.getElementById('hud').classList.toggle('hidden');
+      document.getElementById('controls-hint').classList.toggle('hidden');
+      break;
+    case 'KeyC':
+      colorIndex = (colorIndex + 1) % palettes.length;
+      applyVideoColor();
+      updateColorDots();
+      break;
+    case 'KeyV':
+      toggleVideoHide();
+      break;
+    case 'KeyS':
+      toggleStrobo();
+      break;
+    case 'KeyB':
+      toggleBeatCut();
+      break;
+    case 'Digit2':
+      setBeatCutInterval(2);
+      break;
+    case 'Digit4':
+      setBeatCutInterval(4);
+      break;
+    case 'Digit8':
+      setBeatCutInterval(8);
+      updatePresetGrid();
+      break;
+    case 'Digit1': case 'Digit3':
+      // Manual preset switch: 1=OMEN2, 3=OMEN4
+      if (e.code === 'Digit1' && presetReady[0]) switchToPreset(0);
+      if (e.code === 'Digit3' && presetReady[2]) switchToPreset(2);
+      break;
+    case 'KeyQ':
+      handlePresetClick(0);
+      break;
+    case 'KeyW':
+      handlePresetClick(1);
+      break;
+    case 'KeyE':
+      handlePresetClick(2);
+      break;
+    case 'Escape':
+      document.getElementById('setup').classList.remove('hidden');
+      document.getElementById('hud').classList.add('hidden');
+      document.getElementById('controls-hint').classList.add('hidden');
+      break;
+  }
+});
+
+// Tap on mobile/desktop — click anywhere except HUD
+document.body.addEventListener('click', (e) => {
+  if (!audioCtx) return;
+  // Don't tap if clicking HUD controls
+  if (e.target.closest('#hud, #setup, #controls-hint')) return;
+  handleTap();
+});
+
+// ═══════════════════════════════════════════════════════════════
+// CDJ / ProLink Bridge (WebSocket → ws://localhost:9000)
+// ═══════════════════════════════════════════════════════════════
+
+let cdjConnected = false;
+let audioSourceName = '';
+let availableAudioDevices = [];
+let cdjBarBeat = 0;        // 1-4 from CDJ (0 = no CDJ)
+let cdjDownbeatCount = 0;  // counts downbeats since beat cut enabled
+let cdjBeatTotal = 0;      // running beat total from CDJ
+let beatCutWaitForDownbeat = false; // true = waiting to sync to downbeat
+let cdjWs = null;
+let cdjBpm = 0;
+let cdjLastBeat = 0;
+let cdjTrackTitle = '';
+
+// Remote camera from mobile controller
+let remoteCamActive = false;
+let remoteCamCanvas = null;
+let remoteCamCtx = null;
+let remoteCamImg = null;
+let remoteCamFrameCount = 0;
+
+// Camera animation
+let camPulseBeat = 0;
+let camPulseScale = 0;
+let camRotCurrent = 0;
+let camRotTarget = 0;
+
+// Local cameras (USB webcam etc. on player PC)
+const localCams = {}; // presetIdx → { stream, videoEl }
+let localCamPickerOpen = false;
+
+function connectCDJ() {
+  try {
+    cdjWs = new WebSocket('ws://localhost:9000');
+    
+    cdjWs.onopen = () => {
+      cdjConnected = true;
+      // Kill TAP BPM timer — CDJ is now the beat source
+      if (beatClockTimer) { clearInterval(beatClockTimer); beatClockTimer = null; }
+      console.log('[CDJ] Bridge connected — TAP BPM timer killed');
+    };
+    
+    cdjWs.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        
+        if (msg.type === 'cdj_beat') {
+          cdjBpm = msg.bpm;
+          bpm = Math.round(msg.bpm * 10) / 10;
+          
+          // CDJ bar position (1-4)
+          const barBeat = msg.beatInMeasure || 1;
+          cdjBarBeat = barBeat;
+          cdjBeatTotal = msg.beatTotal || cdjBeatTotal + 1;
+          beatIndex++;
+          beatCount++;
+          moodBeatCounter++;
+          if (camHoldBeats > 0) camHoldBeats--;
+          beatFiredFrames = 5;
+          
+          const isDownbeat = barBeat === 1;
+          
+          // Downbeat counter (reset when beat cut enabled)
+          if (isDownbeat) cdjDownbeatCount++;
+          
+          // Bar number from CDJ beatTotal (phrase tracking)
+          const barNumber = Math.floor((cdjBeatTotal - 1) / 4);
+          const phraseBar = barNumber % 4;  // 0,1,2,3 within 4-bar phrase
+          const isPhrase4 = isDownbeat && phraseBar === 0;  // start of 4-bar phrase
+          const isPhrase2 = isDownbeat && phraseBar % 2 === 0; // start of 2-bar phrase
+          
+          // FX hierarchy — CDJ phrase-aware
+          const ds = driveScale;
+          if (isPhrase4) {
+            // Beat 1 of 4-bar phrase = STRONGEST
+            beatFlash = 1.0 * fxIntensity;
+            exposureOpacity = 0.4 * fxIntensity;
+            pulseScale = 1.0 + 0.35 * ds + smoothBass * 0.4 * ds;
+          } else if (isPhrase2) {
+            // Beat 1 of 2-bar phrase
+            beatFlash = 0.85 * fxIntensity;
+            exposureOpacity = 0.25 * fxIntensity;
+            pulseScale = 1.0 + 0.30 * ds + smoothBass * 0.35 * ds;
+          } else if (isDownbeat) {
+            // Regular downbeat
+            beatFlash = 0.65 * fxIntensity;
+            exposureOpacity = 0.12 * fxIntensity;
+            pulseScale = 1.0 + 0.20 * ds + smoothBass * 0.25 * ds;
+          } else if (barBeat === 3) {
+            // Backbeat
+            beatFlash = 0.3 * fxIntensity;
+            pulseScale = 1.0 + 0.10 * ds + smoothBass * 0.12 * ds;
+          } else {
+            // Beats 2, 4
+            pulseScale = 1.0 + 0.04 * ds + smoothBass * 0.08 * ds;
+          }
+          
+          // Strobo
+          if (stroboActive) { stroboBeatToggle = !stroboBeatToggle; stroboFlash = stroboBeatToggle ? stroboEnvelope : 0; } else { if (stroboFlash > 0.01) stroboFlash *= 0.65; else stroboFlash = 0; }
+          
+          // Video speed sync
+          if (videoLoaded) updateVideoSpeed(bpm);
+          
+          // Phrase detection — BEFORE beat cut (may reset countdown)
+          updatePhraseOnBeat();
+          
+          // Beat cut — PRE-SEEK + PHRASE ALIGNED
+          if (beatCutEnabled) {
+            if (beatCutWaitForDownbeat) {
+              if (isDownbeat) {
+                beatCutWaitForDownbeat = false;
+                cdjDownbeatCount = 0;
+                beatCutCountdown = getOrganicInterval();
+              }
+            } else {
+              beatCutCountdown--;
+              
+              // Pre-seek 2 beats early
+              if (beatCutCountdown === 2) {
+                _preCutPreset = pickNextBeatCutPreset();
+                if (_preCutPreset >= 0) preSyncVideo(_preCutPreset);
+              }
+              
+              if (beatCutCountdown <= 0 && isDownbeat) {
+                if (_preCutPreset >= 0 && presetReady[_preCutPreset]) {
+                  switchToPreset(_preCutPreset);
+                } else {
+                  beatCutNext();
+                }
+                _preCutPreset = -1;
+                beatCutCountdown = getOrganicInterval();
+              }
+            }
+          }
+          
+          // TYPO FX on CDJ beat
+          typoFlash = 1.0;
+          typoOnBeat();
+        }
+        
+        else if (msg.type === 'cdj_status') {
+          if (msg.isMaster || cdjBpm === 0) {
+            cdjBpm = msg.bpm;
+            bpm = Math.round(msg.bpm * 10) / 10;
+          }
+        }
+        
+        else if (msg.type === 'cdj_track') {
+          cdjTrackTitle = msg.title || '';
+          console.log(`[CDJ] Track: ${msg.artist} - ${msg.title} (${msg.bpm} BPM)`);
+        }
+        
+      } catch (err) {
+        // ignore parse errors
+      }
+    };
+    
+    cdjWs.onclose = () => {
+      cdjConnected = false;
+      console.log('[CDJ] Bridge disconnected, retrying in 3s...');
+      setTimeout(connectCDJ, 3000);
+    };
+    
+    cdjWs.onerror = () => {
+      cdjConnected = false;
+      cdjWs.close();
+    };
+    
+  } catch (err) {
+    // WebSocket not available, retry
+    setTimeout(connectCDJ, 5000);
+  }
+}
+
+// Auto-connect on page load (silent if bridge not running)
+connectCDJ();
+applyDrive(masterDrive); // initialize drive state
+
+// ═══════════════════════════════════════════════════════════════
+// Communication — BroadcastChannel (local) + WebSocket (remote)
+// ═══════════════════════════════════════════════════════════════
+
+const RELAY_URL = 'https://omen-relay.sony-vega.workers.dev';
+const omenChannel = new BroadcastChannel('omen');
+let controllerConnected = false;
+let relayWs = null;
+let relaySessionId = '';
+let relayPin = '';
+
+// ── Shared command handler (from BC or WS) ────────────────────
+function handleCommand(msg) {
+  if (!msg || !msg.type) return;
+  controllerConnected = true;
+  
+  switch (msg.type) {
+    case 'presets_updated': {
+      // Hot-reload from editor — rebuild PRESETS without page refresh
+      const oldLen = PRESETS.length;
+      loadPresets();
+      // Rebuild arrays to match new length
+      const newReady = new Array(PRESETS.length).fill(false);
+      presetReady.forEach((v, i) => { if (i < newReady.length) newReady[i] = v; });
+      // Mark non-video presets (GFX/camera/text) as ready
+      PRESETS.forEach((p, i) => { if (!p.videoA || p.type === 'camera' || p.type === 'text') newReady[i] = true; });
+      presetReady = newReady;
+      // Preserve existing pool state — only add NEW presets
+      const oldPool = new Set(presetPool);
+      const oldBeatCut = new Set(beatCutActive);
+      presetPool = new Set();
+      beatCutActive = new Set();
+      PRESETS.forEach((_, i) => {
+        if (i < oldLen) {
+          // Existing preset — keep old state
+          if (oldPool.has(i)) presetPool.add(i);
+          if (oldBeatCut.has(i)) beatCutActive.add(i);
+        } else {
+          // New preset — enabled by default
+          presetPool.add(i);
+          beatCutActive.add(i);
+        }
+      });
+      // Clamp active preset
+      if (activePreset >= PRESETS.length) activePreset = 0;
+      _lastActivePreset = -1; // force visibility rebuild
+      updateVideoVisibility();
+      updatePresetGrid();
+      console.log('[HOT-RELOAD] Presets updated:', oldLen, '→', PRESETS.length);
+      break;
+    }
+    case 'event_updated': {
+      try {
+        const ec = localStorage.getItem('omen_event');
+        if (ec) {
+          typoEventConfig = JSON.parse(ec);
+          if (typoEventConfig.words && typoEventConfig.words.length > 0) {
+            typoWords = typoEventConfig.words;
+          } else {
+            typoWords = TYPO_WORDS_DEFAULT;
+          }
+          typoRandomIdx = 0;
+          typoRandomWord = typoWords[0];
+        }
+        console.log('[HOT-RELOAD] Event config updated:', typoEventConfig.event, 'words:', typoWords.length);
+      } catch(e) {}
+      break;
+    }
+    case 'ping': {
+      if (PRESETS.length === 0) break;
+      document.getElementById('hud').classList.add('hidden');
+      document.getElementById('controls-hint').classList.add('hidden');
+      
+      // Reply on both channels
+      const pong = { type: 'pong', presets: PRESETS.map(p => p.name), scenes: PRESETS.map(p => ({ name: p.name, themeId: p.themeId || 'omen', type: p.type || 'video' })) };
+      omenChannel.postMessage(pong);
+      if (relayWs && relayWs.readyState === 1) relayWs.send(JSON.stringify(pong));
+      break;
+    }
+    case 'tap':
+      handleTap();
+      break;
+    case 'preset':
+      handlePresetClick(msg.idx);
+      break;
+    case 'beatcut':
+      if (msg.enabled !== undefined) {
+        beatCutEnabled = msg.enabled;
+        beatCutSequenceIdx = 0;
+        if (msg.enabled) {
+          beatCutWaitForDownbeat = cdjConnected;
+          beatCutCountdown = beatCutInterval;
+        }
+      }
+      if (msg.interval) {
+        beatCutInterval = msg.interval;
+        beatCutCountdown = Math.min(beatCutCountdown, msg.interval);
+      }
+      if (beatCutEnabled && msg.togglePreset !== undefined) {
+        if (beatCutActive.has(msg.togglePreset)) {
+          if (beatCutActive.size > 1) beatCutActive.delete(msg.togglePreset);
+        } else {
+          beatCutActive.add(msg.togglePreset);
+        }
+      }
+      updatePresetGrid();
+      break;
+    case 'color':
+      handleColorClick(msg.idx);
+      break;
+    case 'strobo':
+      toggleStrobo();
+      break;
+    case 'videohide':
+      toggleVideoHide();
+      break;
+    case 'hudtoggle':
+      document.getElementById('hud').classList.toggle('hidden');
+      document.getElementById('controls-hint').classList.toggle('hidden');
+      break;
+    case 'speed':
+      setVideoSpeed(msg.value);
+      break;
+    case 'fx':
+      fxSliderValue = msg.value;
+      break;
+    case 'pinch':
+      pinchScale = msg.value;
+      break;
+    case 'autopilot':
+      autopilotEnabled = !autopilotEnabled;
+      if (autopilotEnabled) {
+        autoEnergyEnabled = true;
+        autoFxEnabled = true;
+        autoBeatCutEnabled = true;
+        autoStroboEnabled = true;
+        autoColorEnabled = true;
+        autoSpeedEnabled = true;
+        lastAutopilotMood = '';
+      }
+      break;
+    case 'drive':
+      applyDrive(msg.value ?? 70);
+      break;
+    case 'autofeature':
+      if (msg.feature === 'energy') autoEnergyEnabled = !autoEnergyEnabled;
+      if (msg.feature === 'fx') autoFxEnabled = !autoFxEnabled;
+      if (msg.feature === 'beatcut') autoBeatCutEnabled = !autoBeatCutEnabled;
+      if (msg.feature === 'strobo') autoStroboEnabled = !autoStroboEnabled;
+      if (msg.feature === 'color') autoColorEnabled = !autoColorEnabled;
+      if (msg.feature === 'speed') autoSpeedEnabled = !autoSpeedEnabled;
+      autopilotEnabled = autoEnergyEnabled || autoFxEnabled || autoBeatCutEnabled || autoStroboEnabled || autoColorEnabled || autoSpeedEnabled;
+      break;
+    case 'thememix': {
+      if (msg.themes) activeThemes = msg.themes;
+      if (msg.weights) themeWeights = msg.weights;
+      // Force switch only during autopilot/beatcut
+      if (autopilotEnabled || beatCutEnabled) {
+        const p2 = PRESETS[activePreset];
+        const curTheme2 = getPresetTheme(p2);
+        if (!activeThemes[curTheme2]) {
+          const allowed = getActiveThemePresets();
+          if (allowed.length > 0) {
+            const pick = weightedPresetPick(allowed.filter(x => x.idx !== activePreset)) || allowed[0];
+            if (pick) {
+              activePreset = pick.idx;
+              updateVideoVisibility();
+              updatePresetGrid();
+            }
+          }
+        }
+      }
+      break;
+    }
+    case 'cam_start':
+      remoteCamActive = true;
+      remoteCamFrameCount = 0;
+      remoteCamCanvas = document.getElementById('cameraLayer');
+      if (remoteCamCanvas) {
+        remoteCamCtx = remoteCamCanvas.getContext('2d');
+        remoteCamCanvas.width = msg.width || 480;
+        remoteCamCanvas.height = msg.height || 480;
+      }
+      console.log('[CAM] Remote camera started');
+      break;
+    case 'cam_stop':
+      remoteCamActive = false;
+      remoteCamFrameCount = 0;
+      const camEl2 = document.getElementById('cameraLayer');
+      if (camEl2) camEl2.style.display = 'none';
+      console.log('[CAM] Remote camera stopped');
+      break;
+    case 'cam_frame':
+      // Auto-activate on first frame (in case cam_start was missed)
+      if (!remoteCamActive) {
+        remoteCamActive = true;
+        console.log('[CAM] Auto-activated from frame');
+      }
+      if (!remoteCamCanvas) {
+        remoteCamCanvas = document.getElementById('cameraLayer');
+        if (!remoteCamCanvas) break;
+        remoteCamCtx = remoteCamCanvas.getContext('2d');
+        remoteCamCanvas.width = 480;
+        remoteCamCanvas.height = 480;
+      }
+      remoteCamFrameCount++;
+      if (!remoteCamImg) remoteCamImg = new Image();
+      remoteCamImg.onload = () => {
+        if (remoteCamCtx) remoteCamCtx.drawImage(remoteCamImg, 0, 0, remoteCamCanvas.width, remoteCamCanvas.height);
+      };
+      remoteCamImg.src = 'data:image/jpeg;base64,' + msg.data;
+      break;
+    case 'cam_select':
+      // Controller selected a local camera for a preset
+      if (msg.presetIdx !== undefined && msg.deviceId) {
+        // Close existing cam for this preset
+        if (localCams[msg.presetIdx]) {
+          localCams[msg.presetIdx].stream.getTracks().forEach(t => t.stop());
+          localCams[msg.presetIdx].videoEl.remove();
+          delete localCams[msg.presetIdx];
+        }
+        openLocalCam(msg.presetIdx, msg.deviceId);
+      }
+      break;
+    case 'audio':
+      // Controller requests audio source change
+      startAudio(msg.source, msg.deviceId);
+      break;
+  }
+}
+
+// ── BroadcastChannel (same device) ────────────────────────────
+omenChannel.onmessage = (e) => {
+  try { handleCommand(e.data); } catch (err) { console.error('BC error:', err); }
+};
+
+// ── WebSocket Relay (remote mobile) ───────────────────────────
+async function initRelay() {
+  try {
+    // Create session → get PIN
+    const resp = await fetch(RELAY_URL + '/session/create', { method: 'POST' });
+    if (!resp.ok) { console.warn('[RELAY] Create failed:', resp.status); return; }
+    const data = await resp.json();
+    relayPin = data.pin;
+    relaySessionId = data.sessionId;
+    
+    // Show PIN
+    document.getElementById('pinCode').textContent = relayPin;
+    document.getElementById('pinDisplay').style.display = 'block';
+    console.log('[RELAY] Session PIN:', relayPin);
+    
+    // Connect WebSocket as player
+    connectRelay();
+  } catch (err) {
+    console.warn('[RELAY] Init failed:', err.message);
+  }
+}
+
+function connectRelay() {
+  if (!relaySessionId) return;
+  
+  try {
+    const wsUrl = RELAY_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+    relayWs = new WebSocket(wsUrl + '/ws?session=' + relaySessionId + '&role=player');
+    
+    relayWs.onopen = () => {
+      console.log('[RELAY] Connected as player');
+    };
+    
+    relayWs.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'ws_connected' || msg.type === 'ws_peer') return; // relay meta
+        handleCommand(msg);
+      } catch (err) {}
+    };
+    
+    relayWs.onclose = () => {
+      console.log('[RELAY] Disconnected, reconnecting...');
+      setTimeout(connectRelay, 3000);
+    };
+    
+    relayWs.onerror = () => { relayWs.close(); };
+  } catch (err) {
+    setTimeout(connectRelay, 5000);
+  }
+}
+
+// Start relay session on page load
+initRelay();
+
+// Broadcast state to controller (every 3 frames ≈ 20Hz)
+let broadcastCounter = 0;
+let beatJustFired = false;
+let beatFiredFrames = 0;
+
+function broadcastState() {
+  if (!controllerConnected && !(relayWs && relayWs.readyState === 1)) return;
+  broadcastCounter++;
+  
+  const urgent = beatFiredFrames > 0;
+  if (beatFiredFrames > 0) beatFiredFrames--;
+  
+  // BroadcastChannel: 20Hz (every 3 frames) — local, free
+  const bcTick = urgent || broadcastCounter % 3 === 0;
+  // WebSocket relay: 5Hz (every 12 frames) — remote, metered
+  const wsTick = urgent || broadcastCounter % 12 === 0;
+  
+  if (!bcTick && !wsTick) return;
+  
+  try {
+    const state = {
+      type: 'state',
+      bpm: bpm || 0,
+      beatIndex: beatIndex || 0,
+      bar16: (beatIndex || 0) % 16,
+      beatJustFired: beatFiredFrames > 0,
+      activePreset: activePreset || 0,
+      currentAB: currentAB || 0,
+      energy: normEnergy || 0,
+      mood: mood || 'LISTENING',
+      beatCutEnabled: !!beatCutEnabled,
+      beatCutInterval: beatCutInterval || 4,
+      beatCutActive: beatCutActive ? [...beatCutActive] : [],
+      colorIndex: colorIndex || 0,
+      colorPool: [...colorPool],
+      stroboActive: !!stroboActive,
+      videoHidden: !!videoHidden,
+      videoSpeed: videoSpeed || 1,
+      videoSpeedMultiplier: videoSpeedMultiplier || 1,
+      fxIntensity: fxIntensity || 1,
+      fxSliderValue: fxSliderValue || 1,
+      smoothBass: smoothBass || 0,
+      smoothMid: smoothMid || 0,
+      smoothHigh: smoothHigh || 0,
+      presetReady: presetReady ? [...presetReady] : [],
+      presetPool: [...presetPool],
+      pinchScale: pinchScale || 1,
+      autopilotEnabled: !!autopilotEnabled,
+      autoEnergyEnabled: !!autoEnergyEnabled,
+      autoFxEnabled: !!autoFxEnabled,
+      autoBeatCutEnabled: !!autoBeatCutEnabled,
+      autoStroboEnabled: !!autoStroboEnabled,
+      autoColorEnabled: !!autoColorEnabled,
+      autoSpeedEnabled: !!autoSpeedEnabled,
+      cdjConnected: !!cdjConnected,
+      cdjBarBeat,
+      drive: masterDrive,
+      cdjTrackTitle: cdjTrackTitle || '',
+      audioSource: audioSourceName || '',
+      audioDevices: availableAudioDevices || [],
+      availableCameras: availableCameras || [],
+      activeThemes,
+      themeWeights,
+    };
+    
+    // Send to local controller (BroadcastChannel) — 20Hz
+    if (bcTick) omenChannel.postMessage(state);
+    
+    // Send to remote controller (WebSocket relay) — 5Hz
+    if (wsTick && relayWs && relayWs.readyState === 1) {
+      relayWs.send(JSON.stringify(state));
+    }
+  } catch (err) {
+    console.error('broadcast error:', err);
+  }
+}
+
+</script>
+</body>
+</html>
