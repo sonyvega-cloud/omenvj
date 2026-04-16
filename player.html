@@ -2110,22 +2110,9 @@ function beatCutNext() {
 function handlePresetClick(idx) {
   if (!presetReady[idx]) return;
   
-  if (autopilotEnabled) {
-    // Toggle preset in/out of autopilot pool — track user intent
-    if (presetPool.has(idx)) {
-      const remaining = [...presetPool].filter(i => i !== idx);
-      if (remaining.length >= 1) {
-        presetPool.delete(idx);
-        userExcludedPresets.add(idx); // user explicitly excluded
-      }
-    } else {
-      presetPool.add(idx);
-      userExcludedPresets.delete(idx); // user explicitly included
-    }
-  } else if (beatCutEnabled) {
-    // Toggle in/out of beat cut pool
+  if (beatCutEnabled) {
+    // Beat cut ON → toggle preset in/out of beat cut pool
     if (beatCutActive.has(idx)) {
-      // Allow removal if at least 1 OTHER preset remains
       const remaining = [...beatCutActive].filter(i => i !== idx);
       if (remaining.length >= 1) beatCutActive.delete(idx);
     } else {
@@ -2133,8 +2120,11 @@ function handlePresetClick(idx) {
     }
     beatCutSequenceIdx = 0;
   } else {
-    // Normal: instant switch
+    // Beat cut OFF → SWITCH (manual override, works during autopilot too)
     switchToPreset(idx);
+    // Prevent autopilot from overriding manual choice for 5 seconds
+    autopilotCooldown = 300;
+    lastAutopilotMood = mood; // lock current mood so autopilot doesn't trigger
   }
   updatePresetGrid();
 }
