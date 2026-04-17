@@ -402,8 +402,12 @@
     <input type="range" id="fxSlider" min="0" max="200" value="100" oninput="sendFx(this.value/100)">
   </div>
   <div class="slider-row">
+    <label>STROBO</label>
+    <input type="range" id="stroboSlider" min="0" max="200" value="100" oninput="sendStroboIntensity(this.value/100)">
+  </div>
+  <div class="slider-row">
     <label>ZOOM</label>
-    <input type="range" id="zoomSlider" min="30" max="400" value="50" oninput="sendPinch(this.value/100)">
+    <input type="range" id="zoomSlider" min="30" max="400" value="100" oninput="sendPinch(this.value/100)">
   </div>
 </div>
 
@@ -855,6 +859,12 @@ function updateUI(s) {
   if (stEl) stEl.className = 'btn' + (s.stroboActive ? ' on' : '');
   if (vhEl) vhEl.className = 'btn' + (s.videoHidden ? ' on' : '');
   
+  // Strobo intensity slider
+  const stSl = document.getElementById('stroboSlider');
+  if (stSl && !stSl.matches(':active')) {
+    stSl.value = Math.round((s.stroboIntensity ?? 1) * 100);
+  }
+  
   // Drive
   if (s.drive !== undefined && !driveDirty) {
     const driveEl = document.getElementById('masterDrive');
@@ -995,6 +1005,7 @@ function sendBeatCutToggle()    { send({ type: 'beatcut', enabled: !state.beatCu
 function sendBeatCutInterval(n) { send({ type: 'beatcut', interval: n }); }
 function sendColor(idx)         { send({ type: 'color', idx }); }
 function sendStrobo()           { send({ type: 'strobo' }); }
+function sendStroboIntensity(v) { send({ type: 'strobointensity', value: v }); }
 function sendVideoHide()        { send({ type: 'videohide' }); }
 function sendHudToggle()        { send({ type: 'hudtoggle' }); }
 function sendAutopilot()        { send({ type: 'autopilot' }); }

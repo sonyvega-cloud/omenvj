@@ -449,6 +449,7 @@ let stroboActive = false;
 let manualStrobo = false;
 let stroboFlash = 0;           // final strobo opacity 0-1
 let stroboEnvelope = 0.85;     // brightness envelope (auto fade)
+let stroboIntensity = 1.0;     // user slider 0-2.0 (controller)
 let stroboBeatToggle = false;  // flicker toggle per beat
 let stroboMaxFrames = 0;
 let videoSpeedMultiplier = 1.0; // ½×, 1×, 2×
@@ -1476,13 +1477,13 @@ function updateAutopilot() {
       if (!stroboActive) stroboActive = true;
       
       const progress = 1.0 - (stroboAutoFrames / Math.max(stroboMaxFrames, 1));
-      stroboEnvelope = 0.85 * driveScale * (1.0 - progress * 0.7); // fade from 85% to 25%
+      stroboEnvelope = 0.85 * driveScale * stroboIntensity * (1.0 - progress * 0.7); // fade from 85% to 25%
       stroboFlash = stroboEnvelope;
     } else {
       if (stroboActive && !manualStrobo) {
         stroboActive = false;
         stroboFlash = 0;
-        stroboEnvelope = 0.85 * driveScale;
+        stroboEnvelope = 0.85 * driveScale * stroboIntensity;
       }
     }
   }
@@ -3385,7 +3386,7 @@ function updateColorDots() {
 function toggleStrobo() {
   stroboActive = !stroboActive;
   manualStrobo = stroboActive;
-  stroboEnvelope = 0.85 * driveScale; // manual strobo scaled by drive
+  stroboEnvelope = 0.85 * driveScale * stroboIntensity; // manual strobo scaled by drive
   document.getElementById('strbBtn').className = 'pgrid' + (stroboActive ? ' cut-on' : '');
 }
 
@@ -3827,6 +3828,9 @@ function handleCommand(msg) {
     case 'strobo':
       toggleStrobo();
       break;
+    case 'strobointensity':
+      stroboIntensity = msg.value ?? 1.0;
+      break;
     case 'videohide':
       toggleVideoHide();
       break;
@@ -4059,6 +4063,7 @@ function broadcastState() {
       colorIndex: colorIndex || 0,
       colorPool: [...colorPool],
       stroboActive: !!stroboActive,
+      stroboIntensity: stroboIntensity,
       videoHidden: !!videoHidden,
       videoSpeed: videoSpeed || 1,
       videoSpeedMultiplier: videoSpeedMultiplier || 1,
