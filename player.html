@@ -1482,9 +1482,8 @@ function updateAutopilot() {
       } else {
         stroboEnvelope = 0.85 * driveScale * (1.0 - (progress - 0.6) / 0.4);
       }
-      // Auto strobo: set flash DIRECTLY per frame (don't wait for onBeatTick)
-      stroboBeatToggle = !stroboBeatToggle;
-      stroboFlash = stroboBeatToggle ? stroboEnvelope : 0;
+      // Auto strobo: sustained flash (fades with envelope)
+      stroboFlash = stroboEnvelope;
     } else {
       if (stroboActive && !manualStrobo) {
         stroboActive = false;
