@@ -859,12 +859,6 @@ function updateUI(s) {
   if (stEl) stEl.className = 'btn' + (s.stroboActive ? ' on' : '');
   if (vhEl) vhEl.className = 'btn' + (s.videoHidden ? ' on' : '');
   
-  // Strobo intensity slider
-  const stSl = document.getElementById('stroboSlider');
-  if (stSl && !stSl.matches(':active')) {
-    stSl.value = Math.round((s.stroboIntensity ?? 1) * 100);
-  }
-  
   // Drive
   if (s.drive !== undefined && !driveDirty) {
     const driveEl = document.getElementById('masterDrive');
