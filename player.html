@@ -39,9 +39,9 @@
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
-    width: 100vw;
+    width: 100vh;
     height: 100vh;
-    object-fit: cover;
+    object-fit: contain;
     opacity: 0;
     z-index: 0;
     backface-visibility: hidden;
@@ -877,8 +877,8 @@ function updateEnergy() {
     const now = performance.now();
     if (kickDetect && (now - _lastKickJump) > 80) { // debounce 80ms
       _lastKickJump = now;
-      let jumpScale = 1.25;
-      if (mood === 'DROP' || mood === 'PEAK') jumpScale = 1.45;
+      let jumpScale = 1.05;
+      if (mood === 'DROP' || mood === 'PEAK') jumpScale = 1.08;
       // Only bump if stronger than current
       if (jumpScale > videoJumpScale) videoJumpScale = jumpScale;
       
@@ -888,7 +888,7 @@ function updateEnergy() {
         const delta = now - _prevKickTime;
         // Half-beat at BPM range 110-140 = ~215-275ms between kicks
         if (delta > 200 && delta < 350 && (mood === 'DROP' || mood === 'PEAK')) {
-          videoJumpScale = Math.max(videoJumpScale, 1.35);
+          videoJumpScale = Math.max(videoJumpScale, 1.06);
         }
       }
       _prevKickTime = now;
@@ -1189,9 +1189,9 @@ function onBeatTick() {
   if (curPresetVJ && videoJumpEnabled) {
     // Mood-based scale: GROOVE = medium (1.15), DROP/PEAK = aggressive (1.3)
     // BUILDING/AMBIENT = subtle (1.08)
-    let jumpScale = 1.15;
-    if (mood === 'GROOVE') jumpScale = 1.25;
-    else if (mood === 'DROP' || mood === 'PEAK') jumpScale = 1.45;
+    let jumpScale = 1.03;
+    if (mood === 'GROOVE') jumpScale = 1.05;
+    else if (mood === 'DROP' || mood === 'PEAK') jumpScale = 1.08;
     
     // Instant jump on downbeats (bar4 === 0 means downbeat)
     if (bar4 === 0) {
@@ -3427,7 +3427,7 @@ function applyVideoColor() {
 // Pinch / Wheel Zoom (iOS: _onPinchUpdate → _scaleBoost)
 // ═══════════════════════════════════════════════════════════════
 
-let pinchScale = 0.5;
+let pinchScale = 1.0;
 
 document.addEventListener('wheel', (e) => {
   if (!audioCtx) return; // not started yet
