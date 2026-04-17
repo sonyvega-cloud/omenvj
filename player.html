@@ -304,20 +304,27 @@
 <div id="camColorOverlay" style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:100vh; height:100vh; z-index:0; pointer-events:none; mix-blend-mode:multiply; display:none;"></div>
 <div id="videoVignette"></div>
 <div id="edgeMask"></div>
+<div id="stroboOverlay" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:10; pointer-events:none; background:#fff; opacity:0;"></div>
 
-<!-- ── Setup: Single start button ──────────────────── -->
+<!-- ── Setup: Audio source selection ──────────────────── -->
 <div id="setup">
   <div class="setup-box">
     <img src="https://cdn.omenvj.com/logo.png" alt="ØMEN" style="width: min(280px, 50vw); margin-bottom: 1rem; opacity: 0.9;">
     
     <button class="source-btn" onclick="startAudio('mic')" style="margin-top:1.5rem;">
-      <div class="label">▶ START ENGINE</div>
-      <div class="desc">Default audio input (change from controller)</div>
+      <div class="label">▶ MICROPHONE</div>
+      <div class="desc">Default mic input</div>
     </button>
     
-    <div style="font-size:0.45rem; color:rgba(255,255,255,0.12); letter-spacing:0.1em; margin-top:1.5rem;">
-      Press S for System Audio capture
-    </div>
+    <button class="source-btn" onclick="startAudio('linein')" style="margin-top:0.5rem;">
+      <div class="label">▶ LINE-IN / INTERFACE</div>
+      <div class="desc">Audio interface, mixer, soundcard</div>
+    </button>
+    
+    <button class="source-btn" onclick="startAudio('system')" style="margin-top:0.5rem;">
+      <div class="label">▶ SYSTEM AUDIO</div>
+      <div class="desc">Capture desktop/browser audio (screen share)</div>
+    </button>
   </div>
 </div>
 
@@ -671,12 +678,12 @@ function showDevicePicker(devices) {
   });
 }
 
-async function startAudio(source) {
+async function startAudio(source, selectedDeviceId) {
   try {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = FFT_SIZE;
-    analyser.smoothingTimeConstant = 0.5;  // less smoothing = sharper transients
+    analyser.smoothingTimeConstant = 0.5;
     analyser.minDecibels = -90;
     analyser.maxDecibels = -10;
     freqData = new Uint8Array(analyser.frequencyBinCount);
@@ -686,41 +693,34 @@ async function startAudio(source) {
     let sourceLabel = '';
 
     if (source === 'system') {
-      // System audio via getDisplayMedia
       stream = await navigator.mediaDevices.getDisplayMedia({
         audio: true,
-        video: true // required but we discard it
+        video: true
       });
-      // Remove video track — we only want audio
       stream.getVideoTracks().forEach(t => t.stop());
       sourceLabel = 'SYSTEM AUDIO';
     }
     else if (source === 'linein') {
-      // Get permission first
       const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       tempStream.getTracks().forEach(t => t.stop());
       
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices.filter(d => d.kind === 'audioinput');
       
-      // Broadcast available devices for controller picker
       availableAudioDevices = audioInputs.map(d => ({ deviceId: d.deviceId, label: d.label || 'Audio ' + d.deviceId.slice(0, 8) }));
       
-      if (deviceId) {
-        // Specific device from controller
+      if (selectedDeviceId) {
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: { deviceId: { exact: deviceId } }
+          audio: { deviceId: { exact: selectedDeviceId } }
         });
-        const picked = audioInputs.find(d => d.deviceId === deviceId);
+        const picked = audioInputs.find(d => d.deviceId === selectedDeviceId);
         sourceLabel = 'LINE-IN: ' + (picked?.label || 'Audio Device');
       } else {
-        // Auto-pick first device (no popup on player)
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         sourceLabel = 'LINE-IN: ' + (audioInputs[0]?.label || 'Default');
       }
     }
     else {
-      // Mic fallback
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       sourceLabel = 'MICROPHONE';
     }
@@ -1738,7 +1738,7 @@ const CAM_FILTERS = [
 ];
 
 // Cached DOM refs (set once)
-let _vlEl = null, _clEl = null, _coEl = null, _vigEl = null;
+let _vlEl = null, _clEl = null, _coEl = null, _vigEl = null, _stroboEl = null;
 let _lastActivePreset = -1;
 
 function updateVideoVisibility() {
@@ -2268,11 +2268,9 @@ function render() {
     ctx.fillRect(0, 0, W, H);
   }
   
-  // ── Strobo overlay (drive already in stroboEnvelope) ──
-  if (stroboFlash > 0.01) {
-    ctx.fillStyle = `rgba(255,255,255,${stroboFlash})`;
-    ctx.fillRect(0, 0, W, H);
-  }
+  // ── Strobo overlay (separate div, z-index 10 — ABOVE everything) ──
+  if (!_stroboEl) _stroboEl = document.getElementById('stroboOverlay');
+  if (_stroboEl) _stroboEl.style.opacity = stroboFlash > 0.01 ? stroboFlash : 0;
   
   // Decay
   beatFlash *= 0.7 + driveScale * 0.15; // drive 0%→decay 0.70 (fast), 100%→0.85 (slow)
