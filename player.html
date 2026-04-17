@@ -1223,16 +1223,15 @@ function onBeatTick() {
     pulseScale = 1.0 + 0.05 * ds + smoothBass * 0.1 * ds;
   }
   
-  // ── Strobo (beat flash × envelope) ───────────────────────────
-  // stroboEnvelope = overall brightness (auto strobo fade controls this)
-  // Beat toggle creates the flicker, envelope scales it
-  if (stroboActive) {
-    stroboBeatToggle = !stroboBeatToggle; // flicker per beat
+  // ── Strobo (manual = beat toggle, auto = handled in updateAutopilot) ──
+  if (stroboActive && manualStrobo) {
+    stroboBeatToggle = !stroboBeatToggle;
     stroboFlash = stroboBeatToggle ? stroboEnvelope : 0;
-  } else {
+  } else if (!stroboActive) {
     stroboBeatToggle = false;
-    if (stroboFlash > 0.01) stroboFlash *= 0.65; else stroboFlash = 0; // quick fade
+    if (stroboFlash > 0.01) stroboFlash *= 0.65; else stroboFlash = 0;
   }
+  // Auto strobo flash is set directly in updateAutopilot — don't touch here
   
   // Update video speed on every beat
   if (videoLoaded && bpm > 0) {
@@ -2088,7 +2087,7 @@ function updateVideoLayer() {
   // Video transform — bass breathing + pulse + jump
   // Base 1.08 = always covers viewport (even with rotation up to ~15°)
   const videoPulse = 1.0 + (pulseScale - 1.0) * 0.25;
-  const videoScale = (1.08 + smoothBass * 0.04 * driveScale) * pinchScale * videoPulse * videoJumpScale;
+  const videoScale = (1.0 + smoothBass * 0.04 * driveScale) * pinchScale * videoPulse * videoJumpScale;
   
   // Rotation: smooth follow, faster than before (was 0.03)
   videoCompassAngle = videoCompassAngle * 0.92 + compassAngle * 0.08;
@@ -3244,8 +3243,8 @@ function tick() {
           if (PRESETS[activePreset]?.type === 'camera') {
             camPulseScale = 1.0;
           }
-          // Strobo on raw beat
-          if (stroboActive) { stroboBeatToggle = !stroboBeatToggle; stroboFlash = stroboBeatToggle ? stroboEnvelope : 0; }
+          // Strobo on raw beat (manual only)
+          if (stroboActive && manualStrobo) { stroboBeatToggle = !stroboBeatToggle; stroboFlash = stroboBeatToggle ? stroboEnvelope : 0; }
           // TYPO: fire FX on raw beat
           typoFlash = 1.0;
           beatIndex++;
@@ -3647,8 +3646,8 @@ function connectCDJ() {
             pulseScale = 1.0 + 0.04 * ds + smoothBass * 0.08 * ds;
           }
           
-          // Strobo
-          if (stroboActive) { stroboBeatToggle = !stroboBeatToggle; stroboFlash = stroboBeatToggle ? stroboEnvelope : 0; } else { if (stroboFlash > 0.01) stroboFlash *= 0.65; else stroboFlash = 0; }
+          // Strobo (manual only — auto strobo handled in updateAutopilot)
+          if (stroboActive && manualStrobo) { stroboBeatToggle = !stroboBeatToggle; stroboFlash = stroboBeatToggle ? stroboEnvelope : 0; } else if (!stroboActive) { if (stroboFlash > 0.01) stroboFlash *= 0.65; else stroboFlash = 0; }
           
           // Video speed sync
           if (videoLoaded) updateVideoSpeed(bpm);

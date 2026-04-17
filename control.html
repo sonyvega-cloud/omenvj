@@ -889,6 +889,12 @@ function updateUI(s) {
     fxSl.style.opacity = (s.autopilotEnabled && s.autoFxEnabled) ? '0.4' : '1';
   }
   
+  // Zoom slider: sync from player pinchScale
+  const zoomSl = document.getElementById('zoomSlider');
+  if (zoomSl && !zoomSl.matches(':active')) {
+    zoomSl.value = Math.round((s.pinchScale || 1) * 100);
+  }
+  
   // Speed
   ['05', '10', '20'].forEach(id => { const el = document.getElementById('spd' + id); if (el) el.className = 'btn' + (s.videoSpeedMultiplier === (id === '05' ? 0.5 : id === '20' ? 2.0 : 1.0) ? ' active' : ''); });
   
