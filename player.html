@@ -39,10 +39,8 @@
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
-    min-width: 100vw;
-    min-height: 100vh;
-    width: max(100vw, 100vh);
-    height: max(100vw, 100vh);
+    width: 100vw;
+    height: 100vh;
     object-fit: cover;
     opacity: 0;
     z-index: 0;
@@ -1321,6 +1319,7 @@ const AUTOPILOT_MIN_INTERVAL = 600;
 let highAvg = 0;          // running high-freq average (ratchet)
 let highPeakBuffer = [];  // last 5 frames raw high values
 let stroboAutoFrames = 0; // frames remaining for auto-strobo burst
+let _stroboCooldown = 0;  // frames until next auto-strobo allowed
 
 // Helper: get theme for any preset (handles missing themeId)
 function getPresetTheme(p) {
@@ -1459,16 +1458,17 @@ function updateAutopilot() {
     
     const highRatio = highAvg > 0.002 ? highPeak / highAvg : 1.0;
     
-    // Crash/open hat: variable duration by intensity
-    // highRatio 1.3 = tiny flash (3 frames), 2.0+ = full burst (10 frames)
-    // Drive gates auto-strobo: below 30% drive, no auto strobo
-    if (highRatio > 1.3 && driveScale > 0.3) {
-      const intensity = Math.min((highRatio - 1.3) / 0.7, 1.0);
-      const duration = Math.round(3 + intensity * 7);
-      if (duration > stroboAutoFrames) {
-        stroboAutoFrames = duration;
-        stroboMaxFrames = duration;
-      }
+    // Cooldown between auto strobo bursts (prevents constant flickering)
+    if (_stroboCooldown > 0) _stroboCooldown--;
+    
+    // Crash/open hat: only trigger on STRONG transients with cooldown
+    // highRatio 2.0+ = real crash/cymbal hit (raised from 1.3)
+    if (highRatio > 2.0 && driveScale > 0.3 && _stroboCooldown === 0 && stroboAutoFrames === 0) {
+      const intensity = Math.min((highRatio - 2.0) / 1.0, 1.0);
+      const duration = Math.round(3 + intensity * 5); // 3-8 frames
+      stroboAutoFrames = duration;
+      stroboMaxFrames = duration;
+      _stroboCooldown = 30; // 0.5s cooldown before next burst
     }
     
     if (stroboAutoFrames > 0) {
@@ -1476,18 +1476,13 @@ function updateAutopilot() {
       if (!stroboActive) stroboActive = true;
       
       const progress = 1.0 - (stroboAutoFrames / Math.max(stroboMaxFrames, 1));
-      if (progress < 0.6) {
-        stroboEnvelope = 0.85 * driveScale;
-      } else {
-        stroboEnvelope = 0.85 * driveScale * (1.0 - (progress - 0.6) / 0.4);
-      }
-      // Auto strobo: sustained flash (fades with envelope)
+      stroboEnvelope = 0.85 * driveScale * (1.0 - progress * 0.7); // fade from 85% to 25%
       stroboFlash = stroboEnvelope;
     } else {
       if (stroboActive && !manualStrobo) {
         stroboActive = false;
         stroboFlash = 0;
-        stroboEnvelope = 0.85 * driveScale; // reset for next burst
+        stroboEnvelope = 0.85 * driveScale;
       }
     }
   }
