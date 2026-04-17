@@ -286,6 +286,7 @@
   <div class="energy-fill-bg"><div class="energy-fill-inner" id="energyFill"></div></div>
   <div class="mood-label" id="moodLabel">—</div>
 </div>
+<div id="debugLine" style="font-family:monospace; font-size:9px; color:rgba(255,255,255,0.25); padding:2px 8px; letter-spacing:0.05em; white-space:nowrap; overflow:hidden;">—</div>
 
 <!-- Presets -->
 <div class="section">
@@ -785,45 +786,27 @@ function updateUI(s) {
   if (eFill) eFill.style.width = ((s.energy || 0) * 100) + '%';
   if (mLabel) mLabel.textContent = s.mood || '—';
   
-  // Presets (with pool exclusion + energy CAT filter during autopilot for OMEN presets only)
-  const pool = s.presetPool || [];
-  const energies = s.presetEnergies || [];
-  const types = s.presetTypes || [];
-  // Calculate target CAT from mood when autopilot ON
-  let targetCat = null;
-  if (s.autopilotEnabled) {
-    if (s.mood === 'AMBIENT' || s.mood === 'LISTENING') targetCat = 1;
-    else if (s.mood === 'BUILDING') targetCat = 2;
-    else if (s.mood === 'GROOVE' || s.mood === 'DROP' || s.mood === 'PEAK') targetCat = 3;
+  // Debug line
+  const dbgEl = document.getElementById('debugLine');
+  if (dbgEl) {
+    const pName = presetNames[s.activePreset] || '?';
+    const flags = `AP:${s.autopilotEnabled?1:0} BC:${s.beatCutEnabled?1:0} E:${s.autoEnergyEnabled?1:0} ABC:${s.autoBeatCutEnabled?1:0} VJ:${s.videoJumpEnabled?1:0}`;
+    const agc = s.drive !== undefined ? ` D:${s.drive}%` : '';
+    const phrase = s.phraseCounter !== undefined ? ` P:${s.phraseCounter}` : '';
+    dbgEl.textContent = `${pName} | ${s.mood||'?'}${agc} cut:${s.beatCutInterval||4} ${flags}${phrase}`;
   }
-  // Fallback: if target CAT has < 2 OMEN presets, expand to include nearest
-  const allowedCats = new Set();
-  if (targetCat !== null) {
-    allowedCats.add(targetCat);
-    let omenInCat = 0;
-    for (let j = 0; j < energies.length; j++) {
-      const t = types[j] || 'video';
-      if ((t === 'video' || t === 'gfx') && (energies[j] || 2) === targetCat) omenInCat++;
-    }
-    if (omenInCat < 2) {
-      if (targetCat > 1) allowedCats.add(targetCat - 1);
-      if (targetCat < 3) allowedCats.add(targetCat + 1);
-    }
-  }
+  
+  // Presets (user control via beatCutActive)
+  const bcActive = s.beatCutActive || [];
   presetNames.forEach((_, i) => {
     const el = document.getElementById('cpg' + i);
     if (!el) return;
     let cls = 'btn';
-    const userExcluded = s.autopilotEnabled && !pool.includes(i);
-    const cat = energies[i] || 2;
-    const type = types[i] || 'video';
-    const isOmenType = (type === 'video' || type === 'gfx');
-    const catExcluded = isOmenType && (targetCat !== null) && !allowedCats.has(cat);
-    if (userExcluded || catExcluded) {
-      cls += ' excluded';
-    } else if (i === s.activePreset) {
+    if (i === s.activePreset) {
       cls += ' active';
-    } else if (s.beatCutEnabled && s.beatCutActive && s.beatCutActive.includes(i)) {
+    } else if (s.beatCutEnabled && !bcActive.includes(i)) {
+      cls += ' excluded';
+    } else if (s.beatCutEnabled && bcActive.includes(i) && s.presetReady && s.presetReady[i]) {
       cls += ' bc-active';
     } else if (s.presetReady && s.presetReady[i]) {
       cls += ' loaded';
