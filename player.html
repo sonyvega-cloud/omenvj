@@ -17,6 +17,9 @@
     height: 100%;
     width: 100%;
   }
+  html {
+    clip-path: inset(0); /* clips position:fixed elements at viewport edges */
+  }
   body {
     color: #fff;
     font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -36,8 +39,10 @@
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
-    width: 100vh;
-    height: 100vh;
+    min-width: 100vw;
+    min-height: 100vh;
+    width: max(100vw, 100vh);
+    height: max(100vw, 100vh);
     object-fit: cover;
     opacity: 0;
     z-index: 0;
@@ -53,8 +58,10 @@
   /* ── Vignette over video ─────────────────────────────── */
   #videoVignette {
     position: fixed;
-    top: 0; left: 0;
-    width: 100vw; height: 100vh;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: max(100vw, 100vh);
+    height: max(100vw, 100vh);
     z-index: 1;
     pointer-events: none;
     background: radial-gradient(circle closest-side,
@@ -354,6 +361,14 @@ const FFT_SIZE = 2048;
 // ── Audio bands ────────────────────────────────────────────────
 let bass = 0, mid = 0, high = 0, volume = 0;
 let smoothBass = 0, smoothMid = 0, smoothHigh = 0, smoothVol = 0;
+
+// AGC (auto gain control) — normalizes input to consistent level
+let _agcGainNode = null;
+const AGC_TARGET = 0.18;     // target smoothVol average during music
+const AGC_MIN_GAIN = 0.5;
+const AGC_MAX_GAIN = 20.0;
+let _agcVolAccum = 0;
+let _agcFrameCount = 0;
 
 // ── Beat detection ─────────────────────────────────────────────
 let bpm = 0;
@@ -711,12 +726,15 @@ async function startAudio(source) {
     }
 
     const audioSource = audioCtx.createMediaStreamSource(stream);
-    // Gain boost — system audio often comes in low
+    // AGC: auto gain control — normalizes any input level
     const gainNode = audioCtx.createGain();
-    gainNode.gain.value = 2.5;
+    gainNode.gain.value = 2.5; // initial guess, AGC adjusts
     audioSource.connect(gainNode);
     gainNode.connect(analyser);
     // Don't connect to destination — no feedback loop
+    
+    // Store gainNode for AGC
+    _agcGainNode = gainNode;
 
     // UI
     document.getElementById('setup').classList.add('hidden');
@@ -774,6 +792,25 @@ function analyseAudio() {
   smoothMid = smoothMid * 0.82 + mid * 0.18;
   smoothHigh = smoothHigh * 0.75 + high * 0.25;
   smoothVol = smoothVol * 0.80 + volume * 0.20;
+  
+  // AGC: adjust gain every ~1 second to keep smoothVol near target
+  if (_agcGainNode) {
+    _agcVolAccum += smoothVol;
+    _agcFrameCount++;
+    if (_agcFrameCount >= 60) {
+      const avg = _agcVolAccum / _agcFrameCount;
+      _agcVolAccum = 0;
+      _agcFrameCount = 0;
+      
+      if (avg > 0.001) { // only adjust when there's actual signal
+        const ratio = AGC_TARGET / avg;
+        // Smooth adjustment — don't jump wildly
+        const currentGain = _agcGainNode.gain.value;
+        const newGain = Math.min(AGC_MAX_GAIN, Math.max(AGC_MIN_GAIN, currentGain * (0.85 + 0.15 * ratio)));
+        _agcGainNode.gain.value = newGain;
+      }
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -955,7 +992,6 @@ function updateEnergy() {
     if (mood !== candidateMood) {
       mood = candidateMood;
       moodBeatCounter = 0;
-      if (autopilotEnabled) updatePresetGrid(); // refresh grid on mood change
     }
   }
   
@@ -2048,9 +2084,10 @@ function updateVideoLayer() {
     return;
   }
   
-  // Video transform — bass breathing + pulse + jump (if preset has videoJump)
+  // Video transform — bass breathing + pulse + jump
+  // Base 1.08 = always covers viewport (even with rotation up to ~15°)
   const videoPulse = 1.0 + (pulseScale - 1.0) * 0.25;
-  const videoScale = (0.95 + smoothBass * 0.04 * driveScale) * pinchScale * videoPulse * videoJumpScale;
+  const videoScale = (1.08 + smoothBass * 0.04 * driveScale) * pinchScale * videoPulse * videoJumpScale;
   
   // Rotation: smooth follow, faster than before (was 0.03)
   videoCompassAngle = videoCompassAngle * 0.92 + compassAngle * 0.08;
@@ -2065,46 +2102,22 @@ function updateVideoLayer() {
   const vid = document.getElementById(`vid${activePreset}`);
   if (vid) vid.style.transform = transform;
   
-  // Vignette scales WITH video
+  // Vignette follows video transform (scale + rotation — never exposes corners)
   if (!_vigEl) _vigEl = document.getElementById('videoVignette');
-  if (_vigEl) _vigEl.style.transform = `scale(${pinchScale})`;
+  if (_vigEl) _vigEl.style.transform = transform;
 }
 
 function updatePresetGrid() {
-  // During autopilot: calculate target energy category from mood
-  let targetCat = null;
-  if (autopilotEnabled) {
-    if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
-    else if (mood === 'BUILDING') targetCat = 2;
-    else if (mood === 'GROOVE' || mood === 'DROP' || mood === 'PEAK') targetCat = 3;
-  }
-  
-  // Fallback: if target CAT has < 2 OMEN presets, expand to include nearest CAT
-  const allowedCats = new Set();
-  if (targetCat !== null) {
-    allowedCats.add(targetCat);
-    const omenInCat = PRESETS.filter(p => (p.type === 'video' || p.type === 'gfx') && (p.energy || 2) === targetCat).length;
-    if (omenInCat < 2) {
-      // Add nearest CATs
-      if (targetCat > 1) allowedCats.add(targetCat - 1);
-      if (targetCat < 3) allowedCats.add(targetCat + 1);
-    }
-  }
-  
   PRESETS.forEach((preset, i) => {
     const el = document.getElementById('pg' + i);
     if (!el) return;
     el.className = 'pgrid';
-    const userExcluded = autopilotEnabled && !presetPool.has(i);
-    const cat = preset.energy || 2;
-    const type = preset.type || 'video';
-    const isOmenType = (type === 'video' || type === 'gfx');
-    const catExcluded = isOmenType && (targetCat !== null) && !allowedCats.has(cat);
     
-    if (userExcluded || catExcluded) {
-      el.classList.add('excluded');
-    } else if (i === activePreset) {
+    if (i === activePreset) {
       el.classList.add('active');
+    } else if (beatCutEnabled && !beatCutActive.has(i)) {
+      // User excluded from beat cut pool
+      el.classList.add('excluded');
     } else if (beatCutEnabled && beatCutActive.has(i) && presetReady[i]) {
       el.classList.add('bc-active');
     } else if (presetReady[i]) {
