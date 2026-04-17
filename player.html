@@ -3427,7 +3427,7 @@ function applyVideoColor() {
 // Pinch / Wheel Zoom (iOS: _onPinchUpdate → _scaleBoost)
 // ═══════════════════════════════════════════════════════════════
 
-let pinchScale = 1.0;
+let pinchScale = 0.5;
 
 document.addEventListener('wheel', (e) => {
   if (!audioCtx) return; // not started yet
