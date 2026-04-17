@@ -796,8 +796,16 @@ function updateUI(s) {
     dbgEl.textContent = `${pName} | ${s.mood||'?'}${agc} cut:${s.beatCutInterval||4} ${flags}${phrase}`;
   }
   
-  // Presets (user control via beatCutActive)
+  // Presets — CAT filter during autopilot+beatcut, user control otherwise
   const bcActive = s.beatCutActive || [];
+  const energies = s.presetEnergies || [];
+  const types = s.presetTypes || [];
+  let targetCat = null;
+  if (s.autopilotEnabled && s.beatCutEnabled) {
+    if (s.mood === 'AMBIENT' || s.mood === 'LISTENING') targetCat = 1;
+    else if (s.mood === 'BUILDING') targetCat = 2;
+    else targetCat = 3;
+  }
   presetNames.forEach((_, i) => {
     const el = document.getElementById('cpg' + i);
     if (!el) return;
@@ -806,7 +814,16 @@ function updateUI(s) {
       cls += ' active';
     } else if (s.beatCutEnabled && !bcActive.includes(i)) {
       cls += ' excluded';
-    } else if (s.beatCutEnabled && bcActive.includes(i) && s.presetReady && s.presetReady[i]) {
+    } else if (s.beatCutEnabled && targetCat !== null) {
+      const cat = energies[i] || 2;
+      const type = types[i] || 'video';
+      const isOmen = (type === 'video' || type === 'gfx');
+      if (isOmen && cat !== targetCat) {
+        cls += ' excluded';
+      } else if (s.presetReady && s.presetReady[i]) {
+        cls += ' bc-active';
+      }
+    } else if (s.beatCutEnabled && s.presetReady && s.presetReady[i]) {
       cls += ' bc-active';
     } else if (s.presetReady && s.presetReady[i]) {
       cls += ' loaded';
@@ -816,7 +833,7 @@ function updateUI(s) {
   
   // Beat cut
   const bcEl = document.getElementById('bcToggle');
-  if (bcEl) { bcEl.textContent = s.beatCutEnabled ? 'CUT ON' : 'CUT'; bcEl.className = 'btn' + (s.beatCutEnabled ? ' on' : ''); }
+  if (bcEl) { bcEl.textContent = 'CUT'; bcEl.className = 'btn' + (s.beatCutEnabled ? ' on' : ''); }
   // Interval highlight (½ = id bci05, others = bci<N>)
   const intervalButtons = [
     { id: 'bci05', value: 0.5 },

@@ -990,8 +990,11 @@ function updateEnergy() {
   
   if (moodHoldFrames >= holdRequired) {
     if (mood !== candidateMood) {
+      const oldCat = (mood === 'AMBIENT' || mood === 'LISTENING') ? 1 : mood === 'BUILDING' ? 2 : 3;
       mood = candidateMood;
       moodBeatCounter = 0;
+      const newCat = (mood === 'AMBIENT' || mood === 'LISTENING') ? 1 : mood === 'BUILDING' ? 2 : 3;
+      if (oldCat !== newCat && autopilotEnabled) updatePresetGrid();
     }
   }
   
@@ -2107,7 +2110,21 @@ function updateVideoLayer() {
   if (_vigEl) _vigEl.style.transform = transform;
 }
 
+let _lastGridCat = null; // track last displayed CAT to prevent flicker
+
 function updatePresetGrid() {
+  // Calculate target CAT from mood (GROOVE/DROP/PEAK all = CAT 3, no flicker between them)
+  let targetCat = null;
+  if (autopilotEnabled && beatCutEnabled) {
+    if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
+    else if (mood === 'BUILDING') targetCat = 2;
+    else targetCat = 3; // GROOVE, DROP, PEAK all = CAT 3
+  }
+  
+  // Only refresh grid styling when CAT actually changes (prevents flicker)
+  const catChanged = targetCat !== _lastGridCat;
+  if (catChanged) _lastGridCat = targetCat;
+  
   PRESETS.forEach((preset, i) => {
     const el = document.getElementById('pg' + i);
     if (!el) return;
@@ -2116,9 +2133,20 @@ function updatePresetGrid() {
     if (i === activePreset) {
       el.classList.add('active');
     } else if (beatCutEnabled && !beatCutActive.has(i)) {
-      // User excluded from beat cut pool
+      // User manually excluded
       el.classList.add('excluded');
-    } else if (beatCutEnabled && beatCutActive.has(i) && presetReady[i]) {
+    } else if (beatCutEnabled && targetCat !== null) {
+      // Autopilot: dim non-target CAT
+      const cat = preset.energy || 2;
+      const type = preset.type || 'video';
+      const isOmen = (type === 'video' || type === 'gfx');
+      if (isOmen && cat !== targetCat) {
+        el.classList.add('excluded');
+      } else if (presetReady[i]) {
+        el.classList.add('bc-active');
+      }
+    } else if (beatCutEnabled && presetReady[i]) {
+      // Manual beat cut (no autopilot) — all in pool are active
       el.classList.add('bc-active');
     } else if (presetReady[i]) {
       el.classList.add('loaded');
