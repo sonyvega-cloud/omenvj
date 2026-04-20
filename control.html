@@ -814,12 +814,12 @@ function updateUI(s) {
   const energies = s.presetEnergies || [];
   const types = s.presetTypes || [];
   const levels = s.sceneLevels || [];
-  const hasSceneLevels = levels.some(l => l > 0);
+  const currentHasLevel = (levels[s.activePreset] || 0) > 0;
   
   let targetCat = null;
   let targetLevel = null;
   if (s.autopilotEnabled && s.beatCutEnabled) {
-    if (hasSceneLevels) {
+    if (currentHasLevel) {
       targetLevel = Math.max(1, Math.min(10, Math.ceil((s.drive || 50) / 10) || 1));
     } else {
       if (s.mood === 'AMBIENT' || s.mood === 'LISTENING') targetCat = 1;
