@@ -43,6 +43,7 @@
   .theme-tab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--accent-glow); }
   .theme-tab .badge { font-size: 9px; margin-left: 6px; opacity: 0.5; }
   .theme-tab.t-omen.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .theme-tab.t-monument.active { color: #ffaa00; border-bottom-color: #ffaa00; }
   .theme-tab.t-camera.active { color: var(--green); border-bottom-color: var(--green); }
   .theme-tab.t-voyager.active { color: var(--purple); border-bottom-color: var(--purple); }
   .theme-tab.t-typo.active { color: #ffffff; border-bottom-color: #ffffff; }
@@ -180,10 +181,11 @@
 // ═══════════════════════════════════════════════════════════════
 
 const THEMES = [
-  { id: 'omen',    name: 'OMEN',    type: 'video',   color: '#ff2200', desc: 'Radial video presets' },
-  { id: 'camera',  name: 'CAMERA',  type: 'camera',  color: '#22cc44', desc: 'Live camera input' },
-  { id: 'voyager', name: 'VOYAGER', type: 'video',   color: '#aa44ff', desc: 'Perspective tunnel presets' },
-  { id: 'typo',    name: 'TYPO',    type: 'text',    color: '#ffffff', desc: 'Fullscreen typography' },
+  { id: 'omen',     name: 'OMEN',     type: 'video',   color: '#ff2200', desc: 'Radial video presets' },
+  { id: 'monument', name: 'MONUMENT', type: 'scene',   color: '#ffaa00', desc: 'Scene — 10 intensity levels' },
+  { id: 'camera',   name: 'CAMERA',   type: 'camera',  color: '#22cc44', desc: 'Live camera input' },
+  { id: 'voyager',  name: 'VOYAGER',  type: 'video',   color: '#aa44ff', desc: 'Perspective tunnel presets' },
+  { id: 'typo',     name: 'TYPO',     type: 'text',    color: '#ffffff', desc: 'Fullscreen typography' },
 ];
 
 const GFX_REGISTRY = [
@@ -259,6 +261,7 @@ function saveToStorage() {
     name: s.name,
     gfx: s.gfx,
     energy: s.energy,
+    sceneLevel: s.sceneLevel || null,
     videoA: s.type === 'video' ? s.videoA : null,
     videoJump: !!s.videoJump,
     type: s.type || 'video',
@@ -324,6 +327,8 @@ function renderThemeContent() {
     html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>DEVICE</span><span>ENERGY</span><span></span><span></span></div>';
   } else if (theme.type === 'text') {
     html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>TEXT</span><span>FX</span><span>ENERGY</span><span></span></div>';
+  } else if (theme.type === 'scene') {
+    html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>VIDEO</span><span>LEVEL</span><span></span><span></span></div>';
   } else {
     html += '<div class="list-header"><span>#</span><span>NAME</span><span>GFX</span><span>VIDEO</span><span>ENERGY</span><span></span><span></span></div>';
   }
@@ -334,6 +339,16 @@ function renderThemeContent() {
     const eClass = s.energy === 1 ? 'cat1' : s.energy === 2 ? 'cat2' : 'cat3';
     const eLabel = s.energy === 1 ? 'AMB' : s.energy === 2 ? 'BLD' : 'GRV';
     const editing = editingIdx === s._idx ? ' editing' : '';
+
+    // Level badge for scene themes
+    let badgeHtml;
+    if (theme.type === 'scene' && s.sceneLevel) {
+      const lColors = ['','#1A1A8B','#2244FF','#44AAFF','#22FF44','#FFCC00','#FF8800','#FF4400','#FF2200','#FF0066','#FFFFFF'];
+      const lc = lColors[s.sceneLevel] || '#888';
+      badgeHtml = '<span class="energy-badge" style="background:' + lc + '20; color:' + lc + '; border-color:' + lc + '40;">L' + s.sceneLevel + '</span>';
+    } else {
+      badgeHtml = '<span class="energy-badge ' + eClass + '">' + eLabel + '</span>';
+    }
 
     html += '<div class="scene-row' + editing + '">';
     html += '<span class="scene-idx">#' + (localIdx + 1) + '</span>';
@@ -349,7 +364,7 @@ function renderThemeContent() {
       html += '<span class="scene-source">' + (s.videoA || 'no video') + '</span>';
     }
 
-    html += '<span class="energy-badge ' + eClass + '">' + eLabel + '</span>';
+    html += badgeHtml;
 
     html += '<span></span>';
 
@@ -402,7 +417,16 @@ function buildEditorFields() {
   html += '<span class="field-label">ENERGY</span><select class="field-select" id="editEnergy">';
   html += '<option value="1">CAT 1 — ambient</option><option value="2">CAT 2 — building</option><option value="3">CAT 3 — groove</option></select>';
 
-  if (theme.type === 'video') {
+  if (theme.type === 'scene') {
+    html += '<span class="field-label">SCENE LEVEL</span><select class="field-select" id="editSceneLevel">';
+    for (let l = 1; l <= 10; l++) {
+      const labels = ['','STILL','BREATH','BREEZE','WIND','STORM','LASER','CRACK','SHATTER','SCATTER','VOID'];
+      html += '<option value="' + l + '">L' + l + ' — ' + labels[l] + '</option>';
+    }
+    html += '</select>';
+  }
+
+  if (theme.type === 'video' || theme.type === 'scene') {
     html += '<span class="field-label">VIDEO JUMP</span>';
     html += '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;">';
     html += '<input type="checkbox" id="editVideoJump" style="accent-color:#ff2200;">';
@@ -504,12 +528,14 @@ function addScene() {
 
   // Defaults
   const count = scenes.filter(s => s.themeId === activeTheme).length;
-  const prefixes = { camera: 'CAM', voyager: 'VOY', typo: 'TXT', omen: 'OMEN' };
+  const prefixes = { camera: 'CAM', voyager: 'VOY', typo: 'TXT', omen: 'OMEN', monument: 'MON L' };
   const prefix = prefixes[activeTheme] || activeTheme.toUpperCase();
   document.getElementById('editName').value = prefix + (count + 1);
-  const defaultGfx = { typo: 'typo', camera: 'video_rings', voyager: 'video_rings', omen: 'video_rings' };
+  const defaultGfx = { typo: 'typo', camera: 'video_rings', voyager: 'video_rings', omen: 'video_rings', monument: 'none' };
   document.getElementById('editGfx').value = defaultGfx[activeTheme] || 'video_rings';
   document.getElementById('editEnergy').value = '3';
+  const slEl = document.getElementById('editSceneLevel');
+  if (slEl) slEl.value = Math.min(count + 1, 10);
 
   // Typo defaults
   if (activeTheme === 'typo') {
@@ -535,6 +561,8 @@ function editScene(idx) {
   document.getElementById('editName').value = s.name;
   document.getElementById('editGfx').value = s.gfx;
   document.getElementById('editEnergy').value = s.energy;
+  const slEl = document.getElementById('editSceneLevel');
+  if (slEl) slEl.value = s.sceneLevel || 1;
   const vjEl = document.getElementById('editVideoJump');
   if (vjEl) vjEl.checked = !!s.videoJump;
   onGfxChange(); // show/hide text fields
@@ -696,6 +724,7 @@ function saveScene() {
   let sceneType = 'gfx';
   if (theme.type === 'camera') sceneType = 'camera';
   else if (theme.type === 'text') sceneType = 'text';
+  else if (theme.type === 'scene') sceneType = 'video';
   else if (document.getElementById('editVideoA')?.value) sceneType = 'video';
   
   // Typo text + font properties
@@ -717,10 +746,11 @@ function saveScene() {
     name,
     gfx,
     energy: parseInt(document.getElementById('editEnergy').value),
+    sceneLevel: document.getElementById('editSceneLevel') ? parseInt(document.getElementById('editSceneLevel').value) : null,
     themeId: activeTheme,
     type: sceneType,
-    videoA: theme.type === 'video' ? (document.getElementById('editVideoA')?.value.trim() || null) : null,
-    videoJump: theme.type === 'video' ? !!document.getElementById('editVideoJump')?.checked : false,
+    videoA: (theme.type === 'video' || theme.type === 'scene') ? (document.getElementById('editVideoA')?.value.trim() || null) : null,
+    videoJump: (theme.type === 'video' || theme.type === 'scene') ? !!document.getElementById('editVideoJump')?.checked : false,
     camSource: theme.type === 'camera' ? (document.getElementById('editCamSource')?.value || 'remote') : null,
     deviceId: theme.type === 'camera' ? (document.getElementById('editDeviceId')?.value || null) : null,
     deviceLabel: theme.type === 'camera' ? (document.getElementById('editDeviceLabel')?.value || null) : null,
@@ -981,10 +1011,26 @@ function importJSON() {
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target.result);
-        if (data.scenes) { scenes = data.scenes; }
-        else if (data.presets) { scenes = data.presets.map(p => ({ ...p, themeId: p.themeId || 'omen', type: p.type || (p.videoA ? 'video' : 'gfx') })); }
+        let incoming = [];
+        if (data.scenes) { incoming = data.scenes; }
+        else if (data.presets) { incoming = data.presets.map(p => ({ ...p, themeId: p.themeId || 'omen', type: p.type || (p.videoA ? 'video' : 'gfx') })); }
+        
+        if (incoming.length === 0) { alert('No scenes found'); return; }
+        
+        // MERGE: append new scenes, skip duplicates by name+themeId
+        const existing = new Set(scenes.map(s => s.name + '|' + s.themeId));
+        let added = 0;
+        incoming.forEach(s => {
+          const key = s.name + '|' + (s.themeId || 'omen');
+          if (!existing.has(key)) {
+            scenes.push(s);
+            existing.add(key);
+            added++;
+          }
+        });
+        
         saveToStorage(); renderAll();
-        setStatus('Imported ' + scenes.length + ' scenes');
+        setStatus('Imported ' + added + ' new scenes (' + incoming.length + ' total in file)');
       } catch (err) { alert('Invalid JSON'); }
     };
     reader.readAsText(file);

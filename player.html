@@ -2009,19 +2009,37 @@ function beatCutNext() {
   let pick;
   
   if (autopilotEnabled) {
-    // AUTOPILOT = STRICT energy filter (only target category)
-    let targetCat = 3;
-    if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
-    else if (mood === 'BUILDING') targetCat = 2;
+    // Check if we have scene-level presets (monument etc.)
+    const hasSceneLevels = others.some(i => PRESETS[i]?.sceneLevel);
     
-    const energyMatched = others.filter(i => (PRESETS[i]?.energy || 2) === targetCat);
-    // If no presets in target CAT, fallback to nearest
-    let pool = energyMatched;
-    if (pool.length === 0) {
-      pool = others.filter(i => Math.abs((PRESETS[i]?.energy || 2) - targetCat) === 1);
+    if (hasSceneLevels) {
+      // SCENE MODE: drive maps to level 1-10
+      const targetLevel = Math.max(1, Math.min(10, Math.ceil(masterDrive / 10) || 1));
+      const levelMatched = others.filter(i => (PRESETS[i]?.sceneLevel || 0) === targetLevel);
+      let pool = levelMatched;
+      // Fallback: nearest level
+      if (pool.length === 0) {
+        for (let d = 1; d <= 9; d++) {
+          pool = others.filter(i => Math.abs((PRESETS[i]?.sceneLevel || 0) - targetLevel) === d);
+          if (pool.length > 0) break;
+        }
+      }
+      if (pool.length === 0) pool = others;
+      pick = pool[Math.floor(Math.random() * pool.length)];
+    } else {
+      // STANDARD MODE: mood→CAT energy filter
+      let targetCat = 3;
+      if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
+      else if (mood === 'BUILDING') targetCat = 2;
+      
+      const energyMatched = others.filter(i => (PRESETS[i]?.energy || 2) === targetCat);
+      let pool = energyMatched;
+      if (pool.length === 0) {
+        pool = others.filter(i => Math.abs((PRESETS[i]?.energy || 2) - targetCat) === 1);
+      }
+      if (pool.length === 0) pool = others;
+      pick = pickByThemeWeight(pool);
     }
-    if (pool.length === 0) pool = others; // last resort
-    pick = pickByThemeWeight(pool);
   } else {
     // MANUAL beat cut = equal random cut on all presets in beatCutActive
     pick = others[Math.floor(Math.random() * others.length)];
@@ -2102,20 +2120,29 @@ function updateVideoLayer() {
   // No transform needed — CSS handles positioning
 }
 
-let _lastGridCat = null; // track last displayed CAT to prevent flicker
+let _lastGridCat = null; // track last displayed CAT/level to prevent flicker
 
 function updatePresetGrid() {
-  // Calculate target CAT from mood (GROOVE/DROP/PEAK all = CAT 3, no flicker between them)
+  const hasSceneLevels = PRESETS.some(p => p.sceneLevel);
+  
   let targetCat = null;
+  let targetLevel = null;
+  
   if (autopilotEnabled && beatCutEnabled) {
-    if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
-    else if (mood === 'BUILDING') targetCat = 2;
-    else targetCat = 3; // GROOVE, DROP, PEAK all = CAT 3
+    if (hasSceneLevels) {
+      // Scene level mode: drive→level
+      targetLevel = Math.max(1, Math.min(10, Math.ceil(masterDrive / 10) || 1));
+    } else {
+      // Standard CAT mode
+      if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
+      else if (mood === 'BUILDING') targetCat = 2;
+      else targetCat = 3;
+    }
   }
   
-  // Only refresh grid styling when CAT actually changes (prevents flicker)
-  const catChanged = targetCat !== _lastGridCat;
-  if (catChanged) _lastGridCat = targetCat;
+  const filterKey = targetLevel !== null ? 'L' + targetLevel : (targetCat !== null ? 'C' + targetCat : null);
+  const changed = filterKey !== _lastGridCat;
+  if (changed) _lastGridCat = filterKey;
   
   PRESETS.forEach((preset, i) => {
     const el = document.getElementById('pg' + i);
@@ -2125,10 +2152,17 @@ function updatePresetGrid() {
     if (i === activePreset) {
       el.classList.add('active');
     } else if (beatCutEnabled && !beatCutActive.has(i)) {
-      // User manually excluded
       el.classList.add('excluded');
+    } else if (beatCutEnabled && targetLevel !== null) {
+      // Scene level filtering
+      const level = preset.sceneLevel || 0;
+      if (level > 0 && level !== targetLevel) {
+        el.classList.add('excluded');
+      } else if (presetReady[i]) {
+        el.classList.add('bc-active');
+      }
     } else if (beatCutEnabled && targetCat !== null) {
-      // Autopilot: dim non-target CAT
+      // Standard CAT filtering
       const cat = preset.energy || 2;
       const type = preset.type || 'video';
       const isOmen = (type === 'video' || type === 'gfx');
@@ -2138,7 +2172,6 @@ function updatePresetGrid() {
         el.classList.add('bc-active');
       }
     } else if (beatCutEnabled && presetReady[i]) {
-      // Manual beat cut (no autopilot) — all in pool are active
       el.classList.add('bc-active');
     } else if (presetReady[i]) {
       el.classList.add('loaded');
@@ -4076,6 +4109,7 @@ function broadcastState() {
       presetPool: [...presetPool],
       presetEnergies: PRESETS.map(p => p.energy || 2),
       presetTypes: PRESETS.map(p => p.type || 'video'),
+      sceneLevels: PRESETS.map(p => p.sceneLevel || 0),
       pinchScale: pinchScale || 1,
       autopilotEnabled: !!autopilotEnabled,
       autoEnergyEnabled: !!autoEnergyEnabled,
