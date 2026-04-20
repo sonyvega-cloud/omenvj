@@ -366,6 +366,12 @@
       <input type="range" id="tw_omen" min="0" max="100" value="80" class="theme-slider" oninput="sendThemeMix()" onclick="event.stopPropagation()">
       <span class="tw-val" id="twv_omen">80</span>
     </div>
+    <div class="auto-item" onclick="toggleThemeMix('monument')">
+      <div class="auto-check" id="tm_monument" style="color:#ffaa00;">✗</div>
+      <div class="auto-label" style="color:#ffaa00;">MONUMENT</div>
+      <input type="range" id="tw_monument" min="0" max="100" value="50" class="theme-slider" oninput="sendThemeMix()" onclick="event.stopPropagation()">
+      <span class="tw-val" id="twv_monument">50</span>
+    </div>
     <div class="auto-item" onclick="toggleThemeMix('camera')">
       <div class="auto-check" id="tm_camera" style="color:#22cc44;">✗</div>
       <div class="auto-label" style="color:#22cc44;">CAMERA</div>
@@ -469,8 +475,8 @@ function send(msg) {
 let presetNames = [];
 let presetData = []; // full scene data with themeId
 // ═══ THEME REGISTRY — add new themes HERE only ═══
-const THEME_IDS = ['omen', 'camera', 'voyager', 'typo'];
-const THEME_COLORS = { omen: '#ff2200', camera: '#22cc44', voyager: '#aa44ff', typo: '#ffffff' };
+const THEME_IDS = ['omen', 'monument', 'camera', 'voyager', 'typo'];
+const THEME_COLORS = { omen: '#ff2200', monument: '#ffaa00', camera: '#22cc44', voyager: '#aa44ff', typo: '#ffffff' };
 const THEME_ORDER = THEME_IDS;
 
 // Read from localStorage (editor) first, then presets.js fallback
@@ -680,7 +686,7 @@ function buildPresetButtons() {
       const btn = document.createElement('div');
       btn.className = 'btn';
       btn.id = 'cpg' + p.idx;
-      btn.textContent = p.name.replace(/^OMEN|^CAM|^VOY/i, '');
+      btn.textContent = p.name.replace(/^OMEN|^MON |^CAM|^VOY/i, '');
       if (!btn.textContent) btn.textContent = p.name;
       btn.style.borderColor = color + '30';
       btn.onclick = () => sendPreset(p.idx);
