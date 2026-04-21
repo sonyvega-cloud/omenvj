@@ -420,8 +420,8 @@ let videoJumpEnabled = true;    // global toggle from controller
 let _lastKickJump = 0;          // timestamp of last kick-triggered jump
 let _prevKickTime = 0;          // for double-kick detection
 // Monument cosmetic: random scale per beat cut, amplitude follows fxIntensity
+// Monument cosmetic: instant scale snap per beat cut, fast decay
 let monumentRandomScale = 1.0;
-let monumentRandomScaleTarget = 1.0;
 let compassAngle = 0;
 let compassTarget = 0;
 
@@ -2006,11 +2006,12 @@ function switchToPreset(idx) {
   
   const preset = PRESETS[idx];
   
-  // Monument cosmetic: random scale per beat cut, amplitude follows FX intensity
+  // Monument cosmetic: INSTANT scale snap on beat cut, kick-like pop
+  // amplitude follows FX intensity — 0.15–0.45 range at fx=1.0
   if (preset?.themeId === 'monument' && beatCutEnabled) {
-    monumentRandomScaleTarget = 1.0 + Math.random() * 0.5 * fxIntensity;
+    monumentRandomScale = 1.0 + (0.15 + Math.random() * 0.30) * fxIntensity;
   } else {
-    monumentRandomScaleTarget = 1.0;
+    monumentRandomScale = 1.0;
   }
   
   // Local camera preset → open camera if needed
@@ -2218,7 +2219,8 @@ function updateVideoLayer() {
   // Base 1.08 = always covers viewport (even with rotation up to ~15°)
   const videoPulse = 1.0 + (pulseScale - 1.0) * 0.25;
   // Monument random scale — smooth toward target (set on beat cut)
-  monumentRandomScale += (monumentRandomScaleTarget - monumentRandomScale) * 0.25;
+  // Monument scale: snap was set on cut, now decay back to 1.0 (fast, ~300ms)
+  monumentRandomScale += (1.0 - monumentRandomScale) * 0.12;
   const videoScale = (1.0 + smoothBass * 0.04 * driveScale) * pinchScale * videoPulse * videoJumpScale * monumentRandomScale;
   
   // Rotation: smooth follow, faster than before (was 0.03)
