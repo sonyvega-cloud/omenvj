@@ -1715,9 +1715,29 @@ function initPresets() {
     if (!vid) return;
     vid.src = preset.videoA;
     
+    // Capture duration as soon as metadata is available (fires ~100ms, long before canplaythrough)
+    vid.onloadedmetadata = () => {
+      if (vid.duration && isFinite(vid.duration)) {
+        videoDurations[i] = vid.duration;
+        // Recompute speed NOW that we know the real duration
+        if (bpm > 0) updateVideoSpeed(bpm);
+      }
+    };
+    // Safety net: some browsers fire durationchange instead of / in addition to loadedmetadata
+    vid.ondurationchange = () => {
+      if (vid.duration && isFinite(vid.duration) && videoDurations[i] !== vid.duration) {
+        videoDurations[i] = vid.duration;
+        if (bpm > 0) updateVideoSpeed(bpm);
+      }
+    };
+    
     vid.oncanplaythrough = () => {
+      // Belt-and-suspenders: if duration still missing here, grab it now
+      if (vid.duration && isFinite(vid.duration) && !videoDurations[i]) {
+        videoDurations[i] = vid.duration;
+        if (bpm > 0) updateVideoSpeed(bpm);
+      }
       if (presetReady[i]) return;
-      if (vid.duration && isFinite(vid.duration)) videoDurations[i] = vid.duration;
       vid.play().catch(() => {});
       checkPresetReady(i);
     };
@@ -1743,15 +1763,36 @@ function checkPresetReady(idx) {
 }
 
 // BPM → playback speed: video synced to beats
-// Measured per-preset video duration (set on canplaythrough)
+// Measured per-preset video duration (set on loadedmetadata/durationchange)
 let videoDurations = [];
+
+// Pick best-known syncBeats for preset i: 1) explicit field → 2) Monument default → 3) global default
+function _syncOf(i) {
+  const p = PRESETS[i];
+  if (!p) return VIDEO_SYNC_BEATS;
+  if (p.syncBeats && p.syncBeats > 0) return p.syncBeats;
+  // Monument scenes are 16-beat loops by design, even if field was not set (legacy presets)
+  if (p.themeId === 'monument' || (p.name && p.name.startsWith('MON'))) return 16;
+  return VIDEO_SYNC_BEATS;
+}
+
+// Pick best-known duration for preset i: 1) cached → 2) live DOM → 3) fallback
+function _durationOf(i) {
+  if (videoDurations[i] && videoDurations[i] > 0) return videoDurations[i];
+  const v = document.getElementById('vid' + i);
+  if (v && v.duration && isFinite(v.duration) && v.duration > 0) {
+    videoDurations[i] = v.duration; // cache for next call
+    return v.duration;
+  }
+  return VIDEO_DURATION_S;
+}
 
 function updateVideoSpeed(newBpm) {
   if (newBpm <= 0) return;
   
   // HUD/global videoSpeed reflects the currently ACTIVE preset
-  const activeSync = PRESETS[activePreset]?.syncBeats || VIDEO_SYNC_BEATS;
-  const activeDur  = videoDurations[activePreset] || VIDEO_DURATION_S;
+  const activeSync = _syncOf(activePreset);
+  const activeDur  = _durationOf(activePreset);
   const activeTarget = (activeSync * 60.0) / newBpm;
   const activeSpeedRaw = (activeDur / activeTarget) * videoSpeedMultiplier;
   videoSpeed = Math.min(Math.max(activeSpeedRaw, 0.1), 8.0);
@@ -1760,9 +1801,9 @@ function updateVideoSpeed(newBpm) {
   PRESETS.forEach((preset, i) => {
     if (!preset.videoA) return;
     const v = document.getElementById(`vid${i}`);
-    if (!v || v.readyState < 2) return;
-    const sync = preset.syncBeats || VIDEO_SYNC_BEATS;
-    const dur  = videoDurations[i] || VIDEO_DURATION_S;
+    if (!v || v.readyState < 1) return; // HAVE_METADATA or better
+    const sync = _syncOf(i);
+    const dur  = _durationOf(i);
     const target = (sync * 60.0) / newBpm;
     const speed = Math.min(Math.max((dur / target) * videoSpeedMultiplier, 0.1), 8.0);
     if (Math.abs(v.playbackRate - speed) > 0.005) v.playbackRate = speed;
