@@ -262,6 +262,7 @@ function saveToStorage() {
     gfx: s.gfx,
     energy: s.energy,
     sceneLevel: s.sceneLevel || null,
+    syncBeats: s.syncBeats || null,
     videoA: s.type === 'video' ? s.videoA : null,
     videoJump: !!s.videoJump,
     type: s.type || 'video',
@@ -319,7 +320,12 @@ function renderThemeContent() {
   html += '<span class="theme-name" style="color:' + theme.color + '">' + theme.name + '</span>';
   html += '<span class="theme-type">' + theme.type.toUpperCase() + '</span>';
   html += '<span class="scene-count">' + themeScenes.length + ' scenes</span>';
-  html += '<div style="margin-left:auto"><button class="btn primary" onclick="addScene()">+ ADD SCENE</button></div>';
+  html += '<div style="margin-left:auto">';
+  if (theme.type === 'scene' && themeScenes.length === 0) {
+    html += '<button class="btn" onclick="seedMonument()" style="margin-right:8px;">+ SEED L1–L10</button>';
+  }
+  html += '<button class="btn primary" onclick="addScene()">+ ADD SCENE</button>';
+  html += '</div>';
   html += '</div>';
 
   // Column headers
@@ -378,6 +384,31 @@ function renderThemeContent() {
   el.innerHTML = html;
 }
 
+function seedMonument() {
+  const existing = scenes.filter(s => s.themeId === 'monument').length;
+  if (existing > 0) {
+    if (!confirm('Monument už obsahuje ' + existing + ' scén. Přidat dalších 10?')) return;
+  }
+  for (let i = 1; i <= 10; i++) {
+    scenes.push({
+      name: 'MON L' + i,
+      gfx: 'none',
+      energy: i <= 3 ? 1 : (i <= 6 ? 2 : 3),
+      sceneLevel: i,
+      syncBeats: 16,
+      themeId: 'monument',
+      type: 'video',
+      videoA: 'monument-l' + i + '.mp4',
+      videoJump: i >= 7,
+      deviceId: null,
+      deviceLabel: null,
+    });
+  }
+  saveToStorage();
+  renderAll();
+  setStatus('Seeded 10 Monument scenes (L1–L10)');
+}
+
 function renderGfxList() {
   const el = document.getElementById('gfxList');
   const allGfx = new Set(GFX_REGISTRY.map(g => g.id));
@@ -423,6 +454,13 @@ function buildEditorFields() {
       const labels = ['','STILL','BREATH','BREEZE','WIND','STORM','LASER','CRACK','SHATTER','SCATTER','VOID'];
       html += '<option value="' + l + '">L' + l + ' — ' + labels[l] + '</option>';
     }
+    html += '</select>';
+    html += '<span class="field-label">SYNC BEATS</span><select class="field-select" id="editSyncBeats">';
+    html += '<option value="8">8 (short loop)</option>';
+    html += '<option value="16">16 (Monument default)</option>';
+    html += '<option value="24">24</option>';
+    html += '<option value="32">32</option>';
+    html += '<option value="48">48 (OMEN default)</option>';
     html += '</select>';
   }
 
@@ -563,6 +601,8 @@ function editScene(idx) {
   document.getElementById('editEnergy').value = s.energy;
   const slEl = document.getElementById('editSceneLevel');
   if (slEl) slEl.value = s.sceneLevel || 1;
+  const sbEl = document.getElementById('editSyncBeats');
+  if (sbEl) sbEl.value = s.syncBeats || 16;
   const vjEl = document.getElementById('editVideoJump');
   if (vjEl) vjEl.checked = !!s.videoJump;
   onGfxChange(); // show/hide text fields
@@ -747,6 +787,7 @@ function saveScene() {
     gfx,
     energy: parseInt(document.getElementById('editEnergy').value),
     sceneLevel: document.getElementById('editSceneLevel') ? parseInt(document.getElementById('editSceneLevel').value) : null,
+    syncBeats: document.getElementById('editSyncBeats') ? parseInt(document.getElementById('editSyncBeats').value) : null,
     themeId: activeTheme,
     type: sceneType,
     videoA: (theme.type === 'video' || theme.type === 'scene') ? (document.getElementById('editVideoA')?.value.trim() || null) : null,

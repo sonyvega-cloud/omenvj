@@ -419,6 +419,9 @@ let videoJumpScale = 1.0;       // 1.0 = neutral, decays toward 1.0
 let videoJumpEnabled = true;    // global toggle from controller
 let _lastKickJump = 0;          // timestamp of last kick-triggered jump
 let _prevKickTime = 0;          // for double-kick detection
+// Monument cosmetic: random scale per beat cut, amplitude follows fxIntensity
+let monumentRandomScale = 1.0;
+let monumentRandomScaleTarget = 1.0;
 let compassAngle = 0;
 let compassTarget = 0;
 
@@ -922,6 +925,9 @@ function updateEnergy() {
   driveHistory.push(driveScore);
   if (driveHistory.length > DRIVE_HISTORY_LEN) driveHistory.shift();
   
+  // Auto-drive: percentile rank of current driveScore → masterDrive
+  updateAutoDrive(driveScore);
+  
   // ── Floating thresholds from percentiles (recalc every 60 frames = 1s) ──
   driveRecalcCounter++;
   if (driveHistory.length >= 180 && driveRecalcCounter >= 60) {
@@ -1269,6 +1275,33 @@ function scheduleSubBeatCuts() {
   _subBeatTimeout = setTimeout(fireNext, msBetween);
 }
 
+// Auto-drive: rank current driveScore within history window → 0-100 masterDrive
+function updateAutoDrive(currentScore) {
+  if (!autopilotEnabled || !autoDriveEnabled) return;
+  if (_playerDriveDirty) return;            // respect manual slider for 3s
+  if (driveHistory.length < 180) return;    // need ~3s history @ 60Hz
+
+  // Percentile rank
+  let belowOrEqual = 0;
+  for (let i = 0; i < driveHistory.length; i++) {
+    if (driveHistory[i] <= currentScore) belowOrEqual++;
+  }
+  const rankPct = (belowOrEqual / driveHistory.length) * 100;
+
+  // Smooth (half-life ~0.6s @ 60Hz)
+  _smoothedAutoDrive = _smoothedAutoDrive * 0.98 + rankPct * 0.02;
+
+  // Silence guard: collapse drive to low-ambient
+  if (smoothVol < 0.03) {
+    _smoothedAutoDrive = _smoothedAutoDrive * 0.95 + 15 * 0.05;
+  }
+
+  const newDrive = Math.round(_smoothedAutoDrive);
+  if (Math.abs(newDrive - masterDrive) >= 2) {
+    applyDrive(newDrive);
+  }
+}
+
 // Autopilot = organic variation. Manual = exact interval.
 function getOrganicInterval() {
   if (!autopilotEnabled) return beatCutInterval; // manual = exact
@@ -1311,6 +1344,10 @@ let autoBeatCutEnabled = false;     // sub: auto manages beat cut (default OFF �
 let autoStroboEnabled = true;       // sub: strobo on cymbal/crash detect
 let autoColorEnabled = true;        // sub: color palette by mood
 let autoSpeedEnabled = true;        // sub: video speed by energy
+let autoDriveEnabled = true;        // sub: drive = audio percentile rank
+let _smoothedAutoDrive = 70;        // smoothed rank → drive value
+let _playerDriveDirty = false;      // user recently moved slider = respect them
+let _playerDriveDirtyTimer = null;
 
 let lastAutopilotMood = '';
 let autopilotCooldown = 0;
@@ -1680,6 +1717,7 @@ function initPresets() {
     
     vid.oncanplaythrough = () => {
       if (presetReady[i]) return;
+      if (vid.duration && isFinite(vid.duration)) videoDurations[i] = vid.duration;
       vid.play().catch(() => {});
       checkPresetReady(i);
     };
@@ -1705,19 +1743,29 @@ function checkPresetReady(idx) {
 }
 
 // BPM → playback speed: video synced to beats
+// Measured per-preset video duration (set on canplaythrough)
+let videoDurations = [];
+
 function updateVideoSpeed(newBpm) {
   if (newBpm <= 0) return;
   
-  const targetSeconds = (VIDEO_SYNC_BEATS * 60.0) / newBpm;
-  const speed = Math.min(Math.max((VIDEO_DURATION_S / targetSeconds) * videoSpeedMultiplier, 0.1), 8.0);
+  // HUD/global videoSpeed reflects the currently ACTIVE preset
+  const activeSync = PRESETS[activePreset]?.syncBeats || VIDEO_SYNC_BEATS;
+  const activeDur  = videoDurations[activePreset] || VIDEO_DURATION_S;
+  const activeTarget = (activeSync * 60.0) / newBpm;
+  const activeSpeedRaw = (activeDur / activeTarget) * videoSpeedMultiplier;
+  videoSpeed = Math.min(Math.max(activeSpeedRaw, 0.1), 8.0);
   
-  if (Math.abs(speed - videoSpeed) < 0.01) return;
-  videoSpeed = speed;
-  
+  // Per-preset: each video applies its own sync/duration
   PRESETS.forEach((preset, i) => {
     if (!preset.videoA) return;
     const v = document.getElementById(`vid${i}`);
-    if (v && v.readyState >= 2) v.playbackRate = speed;
+    if (!v || v.readyState < 2) return;
+    const sync = preset.syncBeats || VIDEO_SYNC_BEATS;
+    const dur  = videoDurations[i] || VIDEO_DURATION_S;
+    const target = (sync * 60.0) / newBpm;
+    const speed = Math.min(Math.max((dur / target) * videoSpeedMultiplier, 0.1), 8.0);
+    if (Math.abs(v.playbackRate - speed) > 0.005) v.playbackRate = speed;
   });
 }
 
@@ -1896,6 +1944,13 @@ function switchToPreset(idx) {
   
   const preset = PRESETS[idx];
   
+  // Monument cosmetic: random scale per beat cut, amplitude follows FX intensity
+  if (preset?.themeId === 'monument' && beatCutEnabled) {
+    monumentRandomScaleTarget = 1.0 + Math.random() * 0.5 * fxIntensity;
+  } else {
+    monumentRandomScaleTarget = 1.0;
+  }
+  
   // Local camera preset → open camera if needed
   if (preset?.type === 'camera' && preset?.camSource === 'local') {
     openLocalCam(idx, preset?.deviceId || null);
@@ -2009,15 +2064,14 @@ function beatCutNext() {
   let pick;
   
   if (autopilotEnabled) {
-    // Check if we have scene-level presets (monument etc.)
-    const hasSceneLevels = others.some(i => PRESETS[i]?.sceneLevel);
+    // Check if CURRENT preset is scene-level type (monument etc.)
+    const currentHasLevel = (PRESETS[activePreset]?.sceneLevel || 0) > 0;
     
-    if (hasSceneLevels) {
+    if (currentHasLevel) {
       // SCENE MODE: drive maps to level 1-10
       const targetLevel = Math.max(1, Math.min(10, Math.ceil(masterDrive / 10) || 1));
       const levelMatched = others.filter(i => (PRESETS[i]?.sceneLevel || 0) === targetLevel);
       let pool = levelMatched;
-      // Fallback: nearest level
       if (pool.length === 0) {
         for (let d = 1; d <= 9; d++) {
           pool = others.filter(i => Math.abs((PRESETS[i]?.sceneLevel || 0) - targetLevel) === d);
@@ -2101,7 +2155,9 @@ function updateVideoLayer() {
   // Video transform — bass breathing + pulse + jump
   // Base 1.08 = always covers viewport (even with rotation up to ~15°)
   const videoPulse = 1.0 + (pulseScale - 1.0) * 0.25;
-  const videoScale = (1.0 + smoothBass * 0.04 * driveScale) * pinchScale * videoPulse * videoJumpScale;
+  // Monument random scale — smooth toward target (set on beat cut)
+  monumentRandomScale += (monumentRandomScaleTarget - monumentRandomScale) * 0.25;
+  const videoScale = (1.0 + smoothBass * 0.04 * driveScale) * pinchScale * videoPulse * videoJumpScale * monumentRandomScale;
   
   // Rotation: smooth follow, faster than before (was 0.03)
   videoCompassAngle = videoCompassAngle * 0.92 + compassAngle * 0.08;
@@ -2123,17 +2179,15 @@ function updateVideoLayer() {
 let _lastGridCat = null; // track last displayed CAT/level to prevent flicker
 
 function updatePresetGrid() {
-  const hasSceneLevels = PRESETS.some(p => p.sceneLevel);
+  const currentHasLevel = (PRESETS[activePreset]?.sceneLevel || 0) > 0;
   
   let targetCat = null;
   let targetLevel = null;
   
   if (autopilotEnabled && beatCutEnabled) {
-    if (hasSceneLevels) {
-      // Scene level mode: drive→level
+    if (currentHasLevel) {
       targetLevel = Math.max(1, Math.min(10, Math.ceil(masterDrive / 10) || 1));
     } else {
-      // Standard CAT mode
       if (mood === 'AMBIENT' || mood === 'LISTENING') targetCat = 1;
       else if (mood === 'BUILDING') targetCat = 2;
       else targetCat = 3;
@@ -3889,6 +3943,7 @@ function handleCommand(msg) {
         autoStroboEnabled = true;
         autoColorEnabled = true;
         autoSpeedEnabled = true;
+        autoDriveEnabled = true;
         lastAutopilotMood = '';
       } else {
         // Clean state: autopilot OFF → stop auto beat cut + strobo
@@ -3900,11 +3955,15 @@ function handleCommand(msg) {
         autoStroboEnabled = false;
         autoColorEnabled = false;
         autoSpeedEnabled = false;
+        autoDriveEnabled = false;
         updatePresetGrid();
       }
       break;
     case 'drive':
       applyDrive(msg.value ?? 70);
+      _playerDriveDirty = true;
+      clearTimeout(_playerDriveDirtyTimer);
+      _playerDriveDirtyTimer = setTimeout(() => { _playerDriveDirty = false; }, 3000);
       break;
     case 'autofeature':
       if (msg.feature === 'energy') autoEnergyEnabled = !autoEnergyEnabled;
@@ -3920,7 +3979,8 @@ function handleCommand(msg) {
       if (msg.feature === 'color') autoColorEnabled = !autoColorEnabled;
       if (msg.feature === 'speed') autoSpeedEnabled = !autoSpeedEnabled;
       if (msg.feature === 'videojump') videoJumpEnabled = !videoJumpEnabled;
-      autopilotEnabled = autoEnergyEnabled || autoFxEnabled || autoBeatCutEnabled || autoStroboEnabled || autoColorEnabled || autoSpeedEnabled;
+      if (msg.feature === 'drive') autoDriveEnabled = !autoDriveEnabled;
+      autopilotEnabled = autoEnergyEnabled || autoFxEnabled || autoBeatCutEnabled || autoStroboEnabled || autoColorEnabled || autoSpeedEnabled || autoDriveEnabled;
       break;
     case 'thememix': {
       if (msg.themes) activeThemes = msg.themes;
@@ -4118,6 +4178,7 @@ function broadcastState() {
       autoStroboEnabled: !!autoStroboEnabled,
       autoColorEnabled: !!autoColorEnabled,
       autoSpeedEnabled: !!autoSpeedEnabled,
+      autoDriveEnabled: !!autoDriveEnabled,
       videoJumpEnabled: !!videoJumpEnabled,
       cdjConnected: !!cdjConnected,
       cdjBarBeat,
