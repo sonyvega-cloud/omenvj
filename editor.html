@@ -20,6 +20,7 @@
   .header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
   .header h1 { font-size: 14px; font-weight: 500; letter-spacing: 0.3em; color: var(--accent); }
   .header .sub { font-size: 11px; color: var(--text-dim); letter-spacing: 0.15em; }
+  .brand-logo { height: 32px; width: auto; user-select: none; -webkit-user-drag: none; }
   .header-actions { margin-left: auto; display: flex; gap: 6px; }
 
   /* Buttons */
@@ -106,11 +107,29 @@
   .status-bar { margin-top: 20px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); font-size: 9px; color: var(--text-dim); display: flex; align-items: center; gap: 10px; }
   .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 </style>
+<link rel="icon" type="image/svg+xml" href="https://cdn.omenvj.com/favicon.svg">
+<link rel="icon" type="image/x-icon" href="https://cdn.omenvj.com/favicon.ico">
+<link rel="apple-touch-icon" href="https://cdn.omenvj.com/apple-touch-icon.png">
+<link rel="manifest" href="https://cdn.omenvj.com/manifest.json">
+<meta name="theme-color" content="#ab0d00">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ØMEN">
+<meta property="og:image" content="https://cdn.omenvj.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://cdn.omenvj.com/og-image.png">
+<meta property="og:title" content="ØMEN Scene Editor">
+<meta property="og:description" content="Build and manage visualiser scenes">
+<meta property="og:url" content="https://omenvj.com/editor.html">
+<meta name="description" content="Build and manage visualiser scenes">
+<meta name="twitter:title" content="ØMEN Scene Editor">
+<meta name="twitter:description" content="Build and manage visualiser scenes">
 </head>
 <body>
 
 <div class="header">
-  <h1>ØMEN</h1>
+  <img src="https://cdn.omenvj.com/omen-mark.svg" alt="ØMEN" class="brand-logo">
   <span class="sub">SCENE EDITOR</span>
   <div class="header-actions">
     <button class="btn" onclick="importJSON()">IMPORT</button>

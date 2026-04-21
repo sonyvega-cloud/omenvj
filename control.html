@@ -6,9 +6,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="ØMEN">
-<meta name="theme-color" content="#000000">
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/logo.png">
 <title>ØMEN Control</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -45,6 +42,13 @@
   .header .status.connected {
     background: rgba(0,255,0,0.1);
     color: #44ff44;
+  }
+  .brand-logo {
+    width: 110px;
+    height: auto;
+    user-select: none;
+    -webkit-user-drag: none;
+    flex-shrink: 0;
   }
 
   .bpm-display {
@@ -251,11 +255,29 @@
     color: rgba(255,255,255,0.25);
   }
 </style>
+<link rel="icon" type="image/svg+xml" href="https://cdn.omenvj.com/favicon.svg">
+<link rel="icon" type="image/x-icon" href="https://cdn.omenvj.com/favicon.ico">
+<link rel="apple-touch-icon" href="https://cdn.omenvj.com/apple-touch-icon.png">
+<link rel="manifest" href="https://cdn.omenvj.com/manifest.json">
+<meta name="theme-color" content="#ab0d00">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ØMEN">
+<meta property="og:image" content="https://cdn.omenvj.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://cdn.omenvj.com/og-image.png">
+<meta property="og:title" content="ØMEN Control">
+<meta property="og:description" content="Mobile controller for the ØMEN VJ platform">
+<meta property="og:url" content="https://omenvj.com/control.html">
+<meta name="description" content="Mobile controller for the ØMEN VJ platform">
+<meta name="twitter:title" content="ØMEN Control">
+<meta name="twitter:description" content="Mobile controller for the ØMEN VJ platform">
 </head>
 <body>
 
 <div class="header">
-  <h1>ØMEN</h1>
+  <img src="https://cdn.omenvj.com/omen-mark.svg" alt="ØMEN" class="brand-logo">
   <div class="status" id="connStatus">DISCONNECTED</div>
   <div class="status" id="cdjStatus" style="display:none;">CDJ</div>
   <div class="status" id="relayStatus" style="display:none;">REMOTE</div>
