@@ -1798,15 +1798,36 @@ function updateVideoSpeed(newBpm) {
   videoSpeed = Math.min(Math.max(activeSpeedRaw, 0.1), 8.0);
   
   // Per-preset: each video applies its own sync/duration
+  // ANTI-STUTTER: if calculated rate would exceed 2.0x, auto-double the sync
+  // beats (16→32→64) until rate is smooth. Chrome frame-drops above ~2.5x
+  // especially with 4K content, causing visible stutter.
   PRESETS.forEach((preset, i) => {
     if (!preset.videoA) return;
     const v = document.getElementById(`vid${i}`);
-    if (!v || v.readyState < 1) return; // HAVE_METADATA or better
-    const sync = _syncOf(i);
+    if (!v || v.readyState < 1) return;
+    
     const dur  = _durationOf(i);
-    const target = (sync * 60.0) / newBpm;
-    const speed = Math.min(Math.max((dur / target) * videoSpeedMultiplier, 0.1), 8.0);
-    if (Math.abs(v.playbackRate - speed) > 0.005) v.playbackRate = speed;
+    let sync = _syncOf(i);
+    let target = (sync * 60.0) / newBpm;
+    let rate = (dur / target) * videoSpeedMultiplier;
+    
+    // Auto-adjust sync upward if rate is too high for smooth playback
+    let guard = 0;
+    while (rate > 2.0 && sync < 128 && guard++ < 5) {
+      sync *= 2;
+      target = (sync * 60.0) / newBpm;
+      rate = (dur / target) * videoSpeedMultiplier;
+    }
+    // Also auto-adjust downward if rate is too low (video dragging)
+    guard = 0;
+    while (rate < 0.5 && sync > 4 && guard++ < 5) {
+      sync = Math.max(4, Math.floor(sync / 2));
+      target = (sync * 60.0) / newBpm;
+      rate = (dur / target) * videoSpeedMultiplier;
+    }
+    
+    rate = Math.min(Math.max(rate, 0.1), 2.0); // Hard cap to prevent stutter
+    if (Math.abs(v.playbackRate - rate) > 0.005) v.playbackRate = rate;
   });
 }
 
