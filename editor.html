@@ -227,15 +227,70 @@ let editingIdx = -1;
 // Load / Save
 // ═══════════════════════════════════════════════════════════════
 
+function inferThemeId(name) {
+  const n = (name || '').toUpperCase();
+  if (n.startsWith('MON') || n.includes('MONUMENT')) return 'monument';
+  if (n.startsWith('CAM')) return 'camera';
+  if (n.startsWith('TXT') || n.startsWith('TYPO')) return 'typo';
+  return 'omen';
+}
+
+function autoRepairThemes() {
+  if (!scenes || scenes.length === 0) return 0;
+  const allOmen = scenes.every(s => (s.themeId || 'omen') === 'omen');
+  const hasMixedNames = scenes.some(s => /^(MON|CAM|TXT|TYPO)/i.test(s.name || ''));
+  if (!allOmen || !hasMixedNames) return 0;
+  let changed = 0;
+  scenes = scenes.map(s => {
+    const correct = inferThemeId(s.name);
+    if (correct !== (s.themeId || 'omen')) { changed++; return { ...s, themeId: correct }; }
+    return s;
+  });
+  if (changed > 0) {
+    localStorage.setItem('omen_scenes', JSON.stringify(scenes));
+    console.log('[EDITOR] Auto-repaired themeId on ' + changed + ' scenes');
+  }
+  return changed;
+}
+
+async function loadScenesFromServer() {
+  try {
+    const resp = await fetch('https://omen-relay.sony-vega.workers.dev/presets', { cache: 'no-cache' });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data || !Array.isArray(data.presets) || data.presets.length === 0) return;
+    const localVersion = localStorage.getItem('omen_presets_version') || '0';
+    const serverVersion = data.version || '0';
+    const shouldUpgrade = data.presets.length > scenes.length || serverVersion > localVersion;
+    if (shouldUpgrade) {
+      console.log('[EDITOR] Server upgrade: ' + scenes.length + ' → ' + data.presets.length);
+      scenes = data.presets;
+      localStorage.setItem('omen_scenes', JSON.stringify(scenes));
+      localStorage.setItem('omen_presets_version', serverVersion);
+      autoRepairThemes();
+      renderAll();
+      if (typeof setStatus === 'function') setStatus('Loaded ' + scenes.length + ' presets from server');
+    }
+  } catch (err) {
+    console.warn('[EDITOR] Server load failed:', err.message);
+  }
+}
+
 function loadScenes() {
   const saved = localStorage.getItem('omen_scenes');
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
-      if (parsed.length > 0) { scenes = parsed; renderAll(); return; }
+      if (parsed.length > 0) {
+        scenes = parsed;
+        autoRepairThemes();
+        renderAll();
+        loadScenesFromServer();
+        return;
+      }
     } catch(e) {}
   }
-  // Migrate from old presets format
+  // Migrate from old presets format — use name-based inference, not hardcode
   const oldPresets = localStorage.getItem('omen_presets');
   if (oldPresets) {
     try {
@@ -243,11 +298,12 @@ function loadScenes() {
       if (parsed.length > 0) {
         scenes = parsed.map(p => ({
           ...p,
-          themeId: 'omen',
+          themeId: inferThemeId(p.name),
           type: p.videoA ? 'video' : 'gfx',
         }));
         saveToStorage();
         renderAll();
+        loadScenesFromServer();
         return;
       }
     } catch(e) {}
@@ -255,6 +311,7 @@ function loadScenes() {
   // Defaults from presets.js
   scenes = getDefaults();
   renderAll();
+  loadScenesFromServer();
 }
 
 function getDefaults() {
@@ -303,7 +360,25 @@ function saveToStorage() {
   localStorage.setItem('omen_presets', JSON.stringify(presets));
   // Hot-reload: tell player to rebuild presets
   try { new BroadcastChannel('omen').postMessage({ type: 'presets_updated' }); } catch(e) {}
-  setStatus('Saved');
+  setStatus('Saved locally');
+  
+  // v2: Also push to server so other devices get the update
+  fetch('https://omen-relay.sony-vega.workers.dev/presets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ presets: scenes }),  // server stores raw scenes, server returns them on GET
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      setStatus('Saved + synced (' + data.count + ' presets, v' + data.version.slice(-6) + ')');
+    } else {
+      setStatus('Saved locally (server: ' + (data.error || 'failed') + ')');
+    }
+  })
+  .catch(err => {
+    setStatus('Saved locally (server offline)');
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
